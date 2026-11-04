@@ -4,7 +4,7 @@ import { assertUsableApiKey } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { z } from 'zod'
 import type { MemoryModelsSettings, EndpointRoute } from './status-types.ts'
-import { GenesisError } from './error.ts'
+import { AuxiliaryRequestError, GenesisError } from './error.ts'
 
 /** Validated update decision; endpoint probabilities remain distinct from emotion intensity. */
 export const reviewDecisionSchema = z.strictObject({ update: z.boolean(),
@@ -38,9 +38,13 @@ export async function modelHeaders(ctx: Context, route: EndpointRoute): Promise<
  * @param setting - Deployment setting that owns this response limit, included in capacity diagnostics.
  * @returns Parsed, untrusted JSON for protocol-specific validation.
  */
-export async function modelJson(response: Response, limit: number, setting: 'memory.outputChars' | 'modelCatalogChars'): Promise<unknown> {
+export async function modelJson(response: Response, limit: number, setting: 'memory.outputChars' | 'modelCatalogChars' | 'minecraft.responseChars'): Promise<unknown> {
   if (!response.ok || response.body === null) {
     await response.body?.cancel()
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      throw new AuxiliaryRequestError(`Memory endpoint failed (HTTP ${response.status}). Check service availability.`,
+        { code: response.status === 429 ? 'RATE_LIMIT' : response.status === 408 ? 'TIMEOUT' : 'SERVER', status: response.status })
+    }
     throw new GenesisError('memory-provider', `Memory endpoint failed (HTTP ${response.status}). Check its address, model and credential.`)
   }
   const reader = response.body.getReader()
@@ -59,6 +63,9 @@ export async function modelJson(response: Response, limit: number, setting: 'mem
     text += decoder.decode()
     if (text.length > limit) throw new GenesisError('capacity', `Endpoint response exceeds ${setting} (${limit} characters or ${limit * 4} UTF-8 bytes). Increase this response budget if the endpoint is trusted.`)
     return JSON.parse(text)
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error
+    throw new AuxiliaryRequestError('Memory endpoint response was interrupted. Check service connectivity.', { code: 'TRANSPORT' }, { cause: error })
   } finally { await reader.cancel() }
 }
 

@@ -238,6 +238,9 @@
   ],
   "references": [
     { "path": "./packages/experimental/genesis" },
+    { "path": "./packages/experimental/genesis-qq" },
+    { "path": "./packages/experimental/genesis-minecraft" },
+    { "path": "./packages/experimental/genesis-bili-humanism" },
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json" },
     { "path": "./packages/experimental/cot-translation-bundle" },
     { "path": "./packages/experimental/session-search" },
@@ -273,6 +276,7 @@
     { "path": "./packages/api/terminal-controller/tsconfig.host.json" },
     { "path": "./packages/computer-use/computer-use" },
     { "path": "./packages/experimental/computer-use-cua-driver-mcp" },
+    { "path": "./packages/experimental/computer-use-portal" },
     { "path": "./packages/experimental/computer-use-cua-driver-native" },
     { "path": "./packages/experimental/cua" },
     { "path": "./packages/experimental/cua-macos" },

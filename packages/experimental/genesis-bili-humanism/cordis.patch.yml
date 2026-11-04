@@ -1,0 +1,7 @@
+# Included in workspace Genesis Web defaults; requires the Genesis Life overlays.
+- insert:
+    - id: genesis-bili-humanism
+      name: '@deepseek-ai/dsh-experimental-genesis-bili-humanism'
+      config:
+        dataDir: !!js dshHomePath('bili-humanism')
+        localAsr: {}

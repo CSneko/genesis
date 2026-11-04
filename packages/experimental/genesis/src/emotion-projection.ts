@@ -1,9 +1,10 @@
 /** Bounded, replayable dialogue windows for post-reply emotion appraisal. @module */
+import { isHumanSource, personSource, personSourceSchema } from './people-model.ts'
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 
 const messageSchema = z.strictObject({ role: z.enum(['user', 'assistant']), seq: z.number().int().nonnegative(),
-  timestamp: z.iso.datetime(), text: z.string() })
+  timestamp: z.iso.datetime(), text: z.string(), participant: personSourceSchema.optional() })
 const turnSchema = z.strictObject({ turn: z.number().int().nonnegative(), startSeq: z.number().int().nonnegative(),
   completed: z.boolean(), overflow: z.boolean(), messages: z.array(messageSchema) })
 const projectionSchema = z.strictObject({ turns: z.array(turnSchema) })
@@ -42,8 +43,8 @@ export function emotionProjection(windowTurns: number, chars: number): Projectio
         return { turns }
       }
       if (current.overflow) return previous
-      if (event.type === 'user/message' && event.data.source.kind === 'user') {
-        current.messages.push({ role: 'user', seq: event.seq, timestamp: new Date(event.time).toISOString(),
+      if (event.type === 'user/message' && isHumanSource(event.data.source)) {
+        current.messages.push({ role: 'user', ...(personSource(event.data.source) === undefined ? {} : { participant: personSource(event.data.source) }), seq: event.seq, timestamp: new Date(event.time).toISOString(),
           text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n') })
       } else if (event.type === 'assistant/message' && !event.data.interrupted) {
         const text = event.data.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n')

@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for qq.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/genesis/qq.md
+/qq-conversations-and-people:
+  en: c2868024ade7ffc8
+  zh: 5f36aa9c2953dbf7
+/qq-conversations-and-people/summary:
+  en: 60e17bace1c73325
+  zh: 5e959ca780cf9d92
+/qq-conversations-and-people/connect-from-this-workspace:
+  en: d6210b393bd2d5cc
+  zh: 68eb7b9572d33598
+/qq-conversations-and-people/conversation-preferences-and-workspace:
+  en: 2b86287918302419
+  zh: 99ee4dd7414d8afc
+/qq-conversations-and-people/selective-group-replies-and-history:
+  en: 566f8da6aaf487e0
+  zh: 0eff63d9e6cdf5e2
+/qq-conversations-and-people/images-video-files-and-quoted-replies:
+  en: 5b66b3bb0dd2f40d
+  zh: 5431808895cc7d3e
+/qq-conversations-and-people/people-and-relationships:
+  en: 6f72a7cf065a31fc
+  zh: 50c6d492b55d5bda
+/qq-conversations-and-people/mentions:
+  en: 8851581dc2848a87
+  zh: 896f39829bcbf724
+/qq-conversations-and-people/qq-toolkit-permissions:
+  en: d8e1fad625c8415f
+  zh: 5ebbec3ea5caa8f7
+/qq-conversations-and-people/cross-conversation-messages:
+  en: 2a2dcfd77afdf785
+  zh: 18360ae9b16b7123
+/qq-conversations-and-people/memory-and-delivery:
+  en: 3b6f62793653e604
+  zh: 5ae143b2ab99fb31
+/qq-conversations-and-people/limitations:
+  en: 5d26592b44e307d0
+  zh: a64287df2e62eb8c

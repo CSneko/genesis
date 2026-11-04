@@ -13,13 +13,13 @@ export const relationshipVectorSchema = z.strictObject({
 export type RelationshipVector = z.infer<typeof relationshipVectorSchema>
 const origin = z.enum(['unknown', 'model-inference', 'user-stated'])
 const originsSchema = z.strictObject({ affection: origin, trust: origin, attachment: origin, familiarity: origin, feltSecurity: origin })
-/** Explicit single-operator association; other people mentioned in dialogue are never separate targets. */
+/** Explicit operator or authenticated-person association; names never establish identity. */
 export const relationshipSchema = z.strictObject({
   id: z.uuid().transform(value => brandString<RelationshipId>(value)), scope: z.literal('operator'),
   label: z.string().trim().min(1).max(200), values: relationshipVectorSchema, confidence: relationshipVectorSchema, origins: originsSchema,
   updatedAt: z.iso.datetime(),
 })
-/** One persistent operator relationship with per-field inference confidence. */
+/** One persistent relationship with per-field inference confidence. */
 export type RelationshipState = z.infer<typeof relationshipSchema>
 /** A bounded interpretation of new dialogue; all fields remain model inferences. */
 export const appraisalSchema = z.strictObject({

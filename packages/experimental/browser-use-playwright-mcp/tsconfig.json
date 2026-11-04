@@ -4,10 +4,13 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": [
-    "src"
-  ],
   "references": [
+    {
+      "path": "../../mcp/mcp-client"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
     {
       "path": "../../../vendor/cordis"
     },
@@ -16,6 +19,18 @@
     },
     {
       "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../util/values"
     }
+  ],
+  "include": [
+    "src"
   ]
 }

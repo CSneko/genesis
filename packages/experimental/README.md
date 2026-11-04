@@ -37,7 +37,11 @@ Promotion requires a named product role, documented public behavior and limitati
 | Package | Role | ctx key |
 |---|---|---|
 | [`genesis`](genesis/README.md) | Persistent life identity, sourced memories and system growth | `ctx.genesis`, `ctx.genesisStatus` |
+| [`genesis-bili-humanism`](genesis-bili-humanism/README.md) | Bilibili reading and shared viewing notes | — |
+| [`genesis-minecraft`](genesis-minecraft/README.md) | Minecraft Java play and Jev environment monitoring | — |
+| [`genesis-qq`](genesis-qq/README.md) | QQ text conversations and independently sourced people | — |
 | [`client-ui-genesis`](client-ui-genesis/README.md) | Read-only Genesis status in Web settings | — |
+| [`client-ui-browser-preview`](client-ui-browser-preview/README.md) | AI browser tabs, page controls and recent actions | — |
 | [`tool-session-query`](tool-session-query/README.md) | Workspace-authorized model session search, trace, and event reads | — |
 | [`session-search`](session-search/README.md) | Optional experimental global session search tools | — |
 | [`ralph-bundle`](ralph-bundle/README.md) | Optional repeated delegation with an isolated workflow engine | — |
@@ -73,6 +77,7 @@ Promotion requires a named product role, documented public behavior and limitati
 | [macOS CUA](cua-macos/README.md) | Swift native execution and platform preparation. | `ctx.computerUse` |
 | [`computer-use-cua-driver-mcp`](computer-use-cua-driver-mcp/README.md) | Use an installed Cua Driver through MCP | `ctx.computerUse` |
 | [`computer-use-cua-driver-native`](computer-use-cua-driver-native/README.md) | Embed the Cua Driver native npm runtime | `ctx.computerUse` |
+| [`computer-use-portal`](computer-use-portal/README.md) | Consented GNOME Wayland application controls, screenshots and input | `ctx.computerUse` |
 | [`browser-use-playwright-mcp`](browser-use-playwright-mcp/README.md) | Playwright browser tools over MCP | `ctx.browserUse` |
 | [`browser-use-chrome-devtools-mcp`](browser-use-chrome-devtools-mcp/README.md) | Chrome DevTools inspection and browser control over MCP | `ctx.browserUse` |
 | [`browser-use-stagehand-native`](browser-use-stagehand-native/README.md) | Stagehand browser operations with explicitly configured native models | `ctx.browserUse` |

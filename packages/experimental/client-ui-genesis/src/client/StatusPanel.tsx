@@ -1,4 +1,4 @@
-/** Sampled Genesis state and pending first-run naming in its dedicated settings page. @module */
+/** Sampled Genesis state and pending first-run naming on the Genesis overview. @module */
 import { useId } from 'react'
 import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime, PropsLocale, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
@@ -14,8 +14,8 @@ export interface StatusActions {
   /** Checks model and embedding configuration before naming the existing life. */
   initialize(this: void, name: string, signal: AbortSignal): Promise<boolean>
 }
-/** Derived life-settings slot shares, locale and resource seat. */
-export type StatusPanelProps = PropsRuntime<'settings.section'> & PropsLocale<'genesis'> & InjectFace<StatusActions>
+/** Derived Genesis section slot shares, locale and resource seat. */
+export type StatusPanelProps = PropsRuntime<'genesis.page'> & PropsLocale<'genesis'> & InjectFace<StatusActions>
 
 /**
  * Display real sampled identity, counts, capabilities and sourced history.

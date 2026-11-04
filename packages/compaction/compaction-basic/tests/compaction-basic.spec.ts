@@ -642,6 +642,24 @@ describe('pressure measurement and retention', () => {
     await expect(compactIfNeeded(compact, session)).resolves.not.toBeNull()
   })
 
+  it('applies a Session capacity policy without exceeding model capacity and removes it on disposal', async () => {
+    const ctx = createContext(10000)
+    const compact = service({ auto: false, thresholdRatio: 0.5, retainRatio: 0.1 }, ctx)
+    const session = conversation(4)
+    await expect(compactIfNeeded(compact, session)).resolves.toBeNull()
+    const policy = await ctx.plugin((ctx) => {
+      ctx.on('compaction/context-window', ({ session: owner }, next) => owner === session ? Math.min(next(), 1000) : next())
+    })
+    await expect(compactIfNeeded(compact, session)).resolves.not.toBeNull()
+    await policy.dispose()
+    const fresh = conversation(4)
+    await expect(compactIfNeeded(compact, fresh)).resolves.toBeNull()
+    const small = createContext(1000)
+    const smallCompact = service({ auto: false, thresholdRatio: 0.5, retainRatio: 0.1 }, small)
+    small.on('compaction/context-window', (_payload, next) => Math.max(next(), 1000000))
+    await expect(compactIfNeeded(smallCompact, conversation(4))).resolves.not.toBeNull()
+  })
+
   it('gates pressure on the reserve the routed envelope records', async () => {
     const ctx = createContext(1_000)
     const compact = service({ auto: false, thresholdRatio: 0.8, retainRatio: 0.1 }, ctx)

@@ -40,7 +40,10 @@ export function MemoryOrganizer({ sources, maxResults, organize, saved, close, t
     }}>
       <p className={css.secondary}>{t('organizationHint')}</p>
       <details><summary>{t('selectedMemories', { count: sources.length })}</summary>
-        <ol className={css.records}>{sources.map(memory => <li key={memory.id}>{memory.content}</li>)}</ol>
+        <ol className={css.records}>{sources.map(memory => <li key={memory.id}>
+          <p>{memory.summary ?? memory.content}</p>
+          {memory.summary === undefined ? null : <details><summary>{t('viewMemoryContent')}</summary><p>{memory.content}</p></details>}
+        </li>)}</ol>
       </details>
       <Checkbox label={t('organizationAutomaticCount')} checked={count === null} disabled={pending}
         onChange={(checked) => { setCount(checked ? null : 1) }} />

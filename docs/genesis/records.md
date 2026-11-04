@@ -4,7 +4,7 @@ English | [中文](records.zh.md)
 
 ## Start
 
-In this checkout, `pnpm dsh web` enables recording through the life overlay. Open Settings → Her writings to browse records and manage categories. Other compositions enable the optional Genesis `records: {}` configuration together with a private absolute `personalDirectory`; omitting `records` removes the tool and makes the management page explicitly unavailable.
+In this checkout, `pnpm dsh web` enables recording through the life overlay. Open Genesis → Her writings to browse records and manage categories. Other compositions enable the optional Genesis `records: {}` configuration together with a private absolute `personalDirectory`; omitting `records` removes the tool and makes the management page explicitly unavailable.
 
 The character does not receive this tool at birth. Teach her its exact name, `genesis_record`, and let her call `learn`. Learning is durable across conversations and restarts and does not bypass independent execution policies. Disabling the recording plugin does not erase its data.
 
@@ -16,10 +16,10 @@ After learning, she may choose to record during an active conversation without a
 |---|---|
 | `types` | Lists category ids, names, enabled states and writing limits. Continue with `nextOffset` when present. |
 | `write` | Requires her `title`, `content` and an enabled `typeId`. Returns a stable record id, generated creation time and relative file name. |
-| `search` | Optional title/body substring `query`, `typeId`, inclusive ISO `after`/`before` and continuation `offset`. Returns a newest-first list with creation time, title, content excerpt, type, id and matched fields. Empty text browses. |
+| `search` | Optional title/body full-text `query`, `typeId`, inclusive ISO `after`/`before` and continuation `offset`. Returns a relevance-ranked list (newest first for blank queries) with creation time, title, content excerpt, type, id and matched fields. Empty text browses. |
 | `read` | Requires `id`; `offset` starts at zero. Returns text with creation attribution, revision and a continuation position for long bodies. |
 
-Search and read count the complete serialized JSON against `records.resultChars`, including metadata and escaping. Search snippets explicitly report truncation. Continue with the returned `nextOffset` until it is null; search offsets count matching records and read offsets count UTF-16 code units. Read all chunks from the same revision; restart a read when its revision changes. Search matches literal case-insensitive substrings, without embedding or other model calls.
+Search and read count the complete serialized JSON against `records.resultChars`, including metadata and escaping. Search snippets explicitly report truncation. Continue with the returned `nextOffset` until it is null; search offsets count matching records and read offsets count UTF-16 code units. Read all chunks from the same revision; restart a read when its revision changes. Search normalizes case and fullwidth characters, segments Chinese and English, and ranks partial keywords, phrases and multi-keyword coverage with BM25, favoring titles. Excerpts start near a matched body term. It makes no embedding or other model calls.
 
 ## Files and recovery
 
@@ -37,10 +37,12 @@ The management page searches by text, type and local calendar dates, reads full 
 
 The initial types are 日记 and 随笔. Operators may add, rename or disable types. Disabled types retain existing records and cannot receive new writings. Names are display text; stable ids choose directories. Category changes do not grant tool access.
 
+The optional [Bilibili integration](../../packages/experimental/genesis-bili-humanism/README.md) adds a shared viewing-note category. Its explicit legacy migration retains original writing time and source details in the body; creation attribution identifies the Session and tool call performing migration. Trusted adapter `WritingImportId` receipts deduplicate independently of that migration call, preserve operator edits and never recreate deleted records. This uses the existing record format and does not create life memories.
+
 Deleting removes current title/body content from the catalog and its generated file. A receipt containing only the record id and creation fingerprint remains to prevent replay resurrection. Existing Session logs and external backups are independent and may still contain text; remove those separately when required. Empty historical directories may remain.
 
 ## Model context and limits
 
-Writing schemas appear only after learning in life mode. Writings do not automatically enter prompts or become confirmed facts or candidate memories. Explicit tool calls/results use the ordinary Session log, so model-visible readings remain reconstructable. Text can express feelings, interpretations or fiction; retrieved content grants neither instructions nor permissions.
+Writing schemas appear only after learning in life mode. QQ advertises a learned writing tool and executes it only while the current authenticated speaker is the bound operator, so other accounts can neither read nor write records. Writings do not automatically enter prompts or become confirmed facts or candidate memories. Explicit tool calls/results use the ordinary Session log, so model-visible readings remain reconstructable. Text can express feelings, interpretations or fiction; retrieved content grants neither instructions nor permissions.
 
 `records` configures title/body/type-name lengths, category count, retained-record/receipt count, catalog size, page size, snippet length and complete response size. Exhaustion refuses a new mutation without discarding accepted text. The catalog is rewritten atomically and file publication scans its current entries, so this feature targets a bounded personal record collection rather than a large document archive. It adds no automatic reflection, semantic search or idle scheduling.

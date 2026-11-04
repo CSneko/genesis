@@ -81,3 +81,27 @@ it.skipIf(process.platform === 'win32')('contains a replaced directory, recovers
   const damaged = await store(root, lifeId)
   await expect(damaged.records.start()).rejects.toThrow('ownership marker is unreadable')
 })
+
+
+it('ranks Chinese title and body keywords, locates excerpts and keeps paged results after restart', async () => {
+  const root = await directory()
+  const lifeId = brandString<LifeId>(randomUUID())
+  const first = await store(root, lifeId)
+  await first.records.start()
+  const signal = new AbortController().signal
+  const typeId = brandString<WritingTypeId>('diary')
+  const source = (id: string) => ({ sessionId: SessionId('search'), callId: ToolCallId(id) })
+  await first.records.create({ title: '茶叶记录', content: '下午喝了红茶。', typeId }, source('other'), signal)
+  const target = await first.records.create({ title: '乌龙茶冲泡', content: '前言。'.repeat(300) + '乌龙茶适合用热水冲泡。', typeId }, source('target'), signal)
+  await first.close()
+  const restored = await store(root, lifeId)
+  await restored.records.start()
+  const found = await restored.records.search({ text: '冲泡 乌龙茶', typeId }, signal)
+  expect(found.total).toBe(1)
+  expect(found.items[0]?.id).toBe(target.id)
+  expect(found.items[0]?.matchedFields).toEqual(['title', 'content'])
+  expect(found.items[0]?.content).toContain('乌龙茶适合用热水冲泡')
+  expect(found.items[0]?.truncated).toBe(true)
+  expect(found.nextOffset).toBeNull()
+  expect((await restored.records.search({ text: '乌龙茶 冲泡', offset: 1 }, signal)).items).toEqual([])
+})

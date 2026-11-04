@@ -1,4 +1,4 @@
-/** Optional generated Remote and Settings registration with shared resources. @module */
+/** Optional generated Remote, workspace and settings registration with shared resources. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-experimental-genesis/remote'
@@ -10,13 +10,17 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
-import type { LifeStatus, AgencyStatus, PersonalityStatus, InitiativeStatus } from '@deepseek-ai/dsh-experimental-genesis/types'
+import type { ToolkitStatus, LifeStatus, AgencyStatus, PersonalityStatus, InitiativeStatus, PeopleCatalog, PersonDetail } from '@deepseek-ai/dsh-experimental-genesis/types'
 import type { TypertRemoteContribution, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { MemoryNotice, type MemoryNoticeActions, type MemoryNoticeState } from './MemoryNotice.tsx'
 import { operationFailure } from './operation-failure.ts'
 import { StatusResource } from './resource.ts'
-import { RelationshipPanel, type RelationshipActions } from './RelationshipPanel.tsx'
+import { type RelationshipActions } from './RelationshipPanel.tsx'
+import { PeoplePanel, type PeopleActions } from './PeoplePanel.tsx'
+import qqContribution from '@deepseek-ai/dsh-experimental-genesis-qq/remote'
+import { mountTemporary } from './temporary-mount.ts'
+import { mountQq } from './qq-mount.ts'
 import { EmotionPanel, type EmotionActions } from './EmotionPanel.tsx'
 import { AgencyPanel, type AgencyActions } from './AgencyPanel.tsx'
 import { InitiativePanel, type InitiativeActions } from './InitiativePanel.tsx'
@@ -28,15 +32,21 @@ import { ManualMemory, type ManualMemoryActions } from './ManualMemory.tsx'
 import { ReviewNotice } from './ReviewNotice.tsx'
 import { KnowledgePanel, type KnowledgeActions } from './KnowledgePanel.tsx'
 import { en, zh, type GenesisKey } from './locales.ts'
+import { ToolkitsPanel, type ToolkitActions } from './ToolkitsPanel.tsx'
+import minecraftContribution from '@deepseek-ai/dsh-experimental-genesis-minecraft/remote'
+import { mountMinecraft } from './minecraft-mount.ts'
 import { mountRecords } from './records-resources.ts'
+import { mountNavigation } from './navigation.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import { TasksPanel, type TaskActions } from './TasksPanel.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { genesis: GenesisKey }
-  interface ResourceProtocolMap { genesis: LifeStatus; 'genesis-agency': AgencyStatus; 'genesis-personality': PersonalityStatus; 'genesis-initiative': InitiativeStatus }
+  interface ResourceProtocolMap { genesis: LifeStatus; 'genesis-agency': AgencyStatus; 'genesis-personality': PersonalityStatus; 'genesis-initiative': InitiativeStatus; 'genesis-toolkits': ToolkitStatus; 'genesis-people': PeopleCatalog; 'genesis-person': PersonDetail }
 }
 
 /** Required infrastructure, with no stable product import of the experimental namespace. */
-export const inject = ['remote', 'slots', 'locale', 'resources', 'remote.credentials', 'sessions', 'uiWorkspace', 'configForms']
+export const inject = ['remote', 'slots', 'locale', 'resources', 'remote.credentials', 'sessions', 'uiWorkspace', 'configForms', 'layout']
 
 /**
  * Mount Genesis status, credential-first naming and their shared resource.
@@ -46,9 +56,37 @@ export const inject = ['remote', 'slots', 'locale', 'resources', 'remote.credent
  */
 export async function mountStatus(ctx: Context, contribution: TypertRemoteContribution): Promise<() => Promise<void>> {
   const unmount = await ctx.remote.$mount(contribution)
-  const ui = ctx.inject(['remote.genesisStatus', 'remote.genesisAgency', 'remote.genesisInitiativeStatus', 'remote.genesisMemory', 'remote.genesisRecords', 'slots', 'locale', 'resources', 'remote.credentials', 'sessions', 'uiWorkspace', 'configForms'], (scope) => {
+  const ui = ctx.inject(['remote.session', 'remote.genesisPeople', 'remote.genesisToolkits', 'remote.genesisStatus', 'remote.genesisAgency', 'remote.genesisInitiativeStatus', 'remote.genesisMemory', 'remote.genesisRecords', 'slots', 'locale', 'resources', 'remote.credentials', 'sessions', 'uiWorkspace', 'configForms', 'layout'], (scope) => {
     scope.effect(() => scope.locale.register('genesis', { en, zh }))
+    mountNavigation(scope)
+    mountTemporary(scope)
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'outbox', locale: 'genesis', inject: (): InitiativeActions => ({
+        view: 'activity', refresh: () => { resource.refresh() },
+        saveSettings: (...args) => scope.remote.genesisInitiativeStatus.saveSettings(...args),
+      }),
+    }, InitiativePanel))
     const resource = new StatusResource()
+    scope.inject(['remote.genesisTasks'], (taskScope) => {
+      taskScope.effect(() => taskScope.resources.register<'genesis-tasks'>({ protocol: 'genesis-tasks',
+        open: (address, { signal }) => resource.open(owned => taskScope.remote.genesisTasks.catalog(
+          Number(new URL(address).searchParams.get('offset') ?? 0), owned), signal),
+      }))
+    })
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'tasks', locale: 'genesis', inject: (): TaskActions => ({
+        refresh: () => { resource.refresh() }, openSession: (id) => { scope.uiWorkspace.openSession(id) },
+      }),
+    }, TasksPanel))
+    scope.effect(() => scope.resources.register<'genesis-people'>({ protocol: 'genesis-people',
+      open: (address, { signal }) => resource.open(owned => scope.remote.genesisPeople.inspect(Number(new URL(address).searchParams.get('offset') ?? 0), owned), signal),
+    }))
+    scope.effect(() => scope.resources.register<'genesis-person'>({ protocol: 'genesis-person',
+      open: (address, { signal }) => {
+        const params = new URL(address).searchParams
+        return resource.open(owned => scope.remote.genesisPeople.detail(params.get('id') as PersonDetail['person']['id'], Number(params.get('offset') ?? 0), owned), signal)
+      },
+    }))
     scope.effect(() => scope.resources.register<'genesis'>({ protocol: 'genesis',
       open: (_address, { signal }) => resource.open(callerSignal => scope.remote.genesisStatus.inspect(callerSignal), signal),
     }))
@@ -61,10 +99,14 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
     scope.effect(() => scope.resources.register<'genesis-initiative'>({ protocol: 'genesis-initiative',
       open: (_address, { signal }) => resource.open(callerSignal => scope.remote.genesisInitiativeStatus.inspect(callerSignal), signal),
     }))
+    scope.effect(() => scope.resources.register<'genesis-toolkits'>({ protocol: 'genesis-toolkits',
+      open: (_address, { signal }) => resource.open(callerSignal => scope.remote.genesisToolkits.inspect(callerSignal), signal),
+    }))
     scope.on('connection/reset', () => { resource.refresh() })
     scope.slots.inject('settings.section', () => scope.slots.register({
       name: 'settings.section', id: 'genesis-initiative', order: 21, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('initiativeTitle'), inject: (): InitiativeActions => ({
+      label: () => scope.locale.bind('genesis')('initiativePolicyTitle'), inject: (): InitiativeActions => ({
+        view: 'settings',
         refresh: () => { resource.refresh() },
         saveSettings: async (...args) => {
           try { return await scope.remote.genesisInitiativeStatus.saveSettings(...args) } finally { resource.refresh() }
@@ -90,7 +132,9 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
       if (!status.ok || signal.aborted) return false
       const existing = status.value.setup?.firstSessionId
       if (existing !== undefined) { scope.uiWorkspace.openSession(existing); return true }
-      const sessionId = await scope.sessions.create({ agentPreset: 'life' })
+      const created = await scope.remote.session.create({ agentPreset: 'life' })
+      if (!created.ok) return false
+      const sessionId = created.value.sessionId
       signal.throwIfAborted()
       const result = await scope.remote.genesisStatus.greet(sessionId, scope.locale.getSnapshot().active.startsWith('zh') ? 'zh' : 'en', signal)
       resource.refresh()
@@ -129,6 +173,28 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
     })
     const notice = createSnapshotStore<MemoryNoticeState>({ sequence: 0, outcome: null })
     mountRecords(scope, notice)
+    scope.effect(() => mountQq(scope, qqContribution, notice))
+    scope.effect(() => mountMinecraft(scope, minecraftContribution, notice))
+    scope.slots.inject('settings.section', () => scope.slots.register({
+      name: 'settings.section', id: 'genesis-toolkits', order: 22, locale: 'genesis',
+      label: () => scope.locale.bind('genesis')('toolkitsTitle'), inject: (): ToolkitActions => ({
+        refresh: () => { resource.refresh() },
+        save: async (entries, revision, signal) => {
+          const failure = (error: unknown) => ({ ok: false as const, kind: 'toolkits' as const,
+            reason: operationFailure(error, [], scope.locale.bind('genesis')('unknownError')) })
+          try {
+            const result = await scope.remote.genesisToolkits.save(entries, revision, signal)
+            if (!signal?.aborted) notice.update((state) => {
+              state.sequence++; state.outcome = result.ok ? { ok: true, kind: 'toolkits' } : failure(result.error)
+            })
+            return result
+          } catch (error) {
+            if (!signal?.aborted) notice.update((state) => { state.sequence++; state.outcome = failure(error) })
+            throw error
+          } finally { resource.refresh() }
+        },
+      }),
+    }, ToolkitsPanel))
     scope.slots.inject('shell.overlay', () => scope.slots.register({
       name: 'shell.overlay', id: 'genesis-memory-notice', order: 16, locale: 'genesis',
       inject: (): MemoryNoticeActions => ({ hooks: { notice }, dismiss: (sequence) => {
@@ -151,15 +217,33 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
         throw error
       } finally { resource.refresh() }
     }
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis-agency', order: 20, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('agencyTitle'), inject: (): AgencyActions => ({
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'agency', locale: 'genesis', inject: (): AgencyActions => ({
         refresh: () => { resource.refresh() },
         setGoalStatus: (...args) => agencyMutation(() => scope.remote.genesisAgency.setGoalStatus(...args), args[4], false),
         deliberate: (...args) => agencyMutation(() => scope.remote.genesisAgency.deliberate(...args), args[1], true),
       }),
     }, AgencyPanel))
+    const summaryMutation = async <T>(run: () => Promise<RemoteResult<T>>, signal: AbortSignal | undefined): Promise<RemoteResult<T>> => {
+      try {
+        const result = await run()
+        if (!signal?.aborted) notice.update((state) => {
+          state.sequence++
+          state.outcome = result.ok ? { ok: true, kind: 'memory-summary' }
+            : { ok: false, kind: 'memory-summary', reason: operationFailure(result.error, [], scope.locale.bind('genesis')('unknownError')) }
+        })
+        return result
+      } catch (error) {
+        if (!signal?.aborted) notice.update((state) => {
+          state.sequence++
+          state.outcome = { ok: false, kind: 'memory-summary', reason: operationFailure(error, [], scope.locale.bind('genesis')('unknownError')) }
+        })
+        throw error
+      } finally { resource.refresh() }
+    }
     const memories = (): MemoryActions => ({
+      saveSummary: (...args) => summaryMutation(() => scope.remote.genesisMemory.saveSummary(...args), args[3]),
+      summarize: (...args) => summaryMutation(() => scope.remote.genesisMemory.summarize(...args), args[2]),
       saveOperator: async (profile, revision, signal) => {
         try {
           const result = await scope.remote.genesisMemory.saveOperator(profile, revision, signal)
@@ -211,23 +295,20 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
         return result
       },
       convert: async (...args) => { const result = await scope.remote.genesisMemory.convert(...args); resource.refresh(); return result },
-      search: (query, signal) => scope.remote.genesisStatus.memories(query, signal),
+      browse: (query, kind, offset, signal) => scope.remote.genesisStatus.memories(query, kind, offset, signal),
     })
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis', order: 15, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('title'), inject: actions,
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'overview', locale: 'genesis', inject: actions,
     }, StatusPanel))
     scope.slots.inject('settings.section', () => scope.slots.register({
       name: 'settings.section', id: 'genesis-knowledge', order: 16, locale: 'genesis',
       label: () => scope.locale.bind('genesis')('knowledgeTitle'), inject: knowledge,
     }, KnowledgePanel))
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis-memories', order: 17, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('memoryPageTitle'), inject: memories,
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'memories', locale: 'genesis', inject: memories,
     }, MemoryPanel))
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis-personality', order: 17.5, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('personalityTitle'), inject: memories,
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'personality', locale: 'genesis', inject: memories,
     }, PersonalityPanel))
     const emotionMutation = async (work: Promise<RemoteResult<number>>, kind: 'emotion-settings' | 'emotion-adjustment' | 'relationship-adjustment', signal: AbortSignal | undefined) => {
       const failure = (error: unknown) => ({ ok: false as const, kind: 'emotion' as const,
@@ -243,24 +324,38 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
         throw error
       } finally { resource.refresh() }
     }
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis-emotion', order: 18, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('emotionTitle'), inject: (): EmotionActions => ({
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'emotion', locale: 'genesis', inject: (): EmotionActions => ({
         refresh: () => { resource.refresh() },
         saveSettings: (...args) => emotionMutation(scope.remote.genesisStatus.saveEmotionSettings(...args), 'emotion-settings', args[2]),
         adjust: (...args) => emotionMutation(scope.remote.genesisStatus.adjustEmotion(...args), 'emotion-adjustment', args[2]),
       }),
     }, EmotionPanel))
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis-relationship', order: 19, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('relationshipTitle'), inject: (): RelationshipActions => ({
+    scope.slots.inject('genesis.page', () => scope.slots.register({
+      name: 'genesis.page', key: 'relationship', locale: 'genesis', inject: (): RelationshipActions & PeopleActions => ({
+        openSession: (id) => { scope.uiWorkspace.openSession(id) },
+        forget: async (...args) => {
+          const report = (ok: boolean) => notice.update((state) => {
+            if (args[2]?.aborted) return
+            state.sequence++; state.outcome = ok ? { ok: true, kind: 'person' }
+              : { ok: false, kind: 'person', reason: scope.locale.bind('genesis')('peopleOperationHint') }
+          })
+          try { const result = await scope.remote.genesisPeople.forget(...args); report(result.ok); return result }
+          catch (error) { report(false); throw error }
+          finally { resource.refresh() }
+        },
         refresh: () => { resource.refresh() },
         adjust: (...args) => emotionMutation(scope.remote.genesisStatus.adjustRelationship(...args), 'relationship-adjustment', args[2]),
       }),
-    }, RelationshipPanel))
+    }, PeoplePanel))
     scope.slots.inject('conversation.chat.assistant-actions', () => scope.slots.register({
       name: 'conversation.chat.assistant-actions', id: 'genesis-manual-memory', order: 15, locale: 'genesis',
       inject: (sessionId): ManualMemoryActions => ({
+        overview: async (id, signal) => {
+          const result = await scope.remote.genesisMemory.overview(sessionId, id, signal)
+          resource.refresh()
+          return result
+        },
         generate: async (messageId, kind, signal) => {
           const result = await scope.remote.genesisMemory.generate(sessionId, messageId, kind, signal)
           resource.refresh()

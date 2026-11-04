@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-31-genesis-planning-source.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-10-31-genesis-planning-source.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-10-31-genesis-planning-source:
+  en: c946025bc80c9b84
+  zh: 59f860e93d3e7121
+/2026-10-31-genesis-planning-source/summary:
+  en: df8a033e68dc3b7e
+  zh: 4f03baf391996c30
+/2026-10-31-genesis-planning-source/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-10-31-genesis-planning-source/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-10-31-genesis-planning-source/compatibility:
+  en: 05a6e93bdf0df505
+  zh: 5eb8b811950c67b3
+/2026-10-31-genesis-planning-source/verification:
+  en: 4bfd921b6c4fcd46
+  zh: e965fc5827b7a4c8
+/2026-10-31-genesis-planning-source/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

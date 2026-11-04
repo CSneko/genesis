@@ -91,6 +91,18 @@ declare module '@deepseek-ai/cordis' {
   }
   interface Events {
     /**
+     * Reduce the capacity used by automatic pressure policy for one Session.
+     * Providers cap the returned value at the model's actual capacity. Consumers
+     * delegate before applying their limit and retain positive token capacities.
+     * @param payload.session - Session whose conversation policy is measured.
+     * @param payload.modelWindow - Actual model capacity in tokens.
+     * @param next - Delegate to the next capacity policy; defaults to modelWindow.
+     * @returns Effective pressure-policy capacity in tokens.
+     * @mode waterfall
+     */
+    'compaction/context-window'(payload: { session: Session; modelWindow: number }, next: () => number): number
+
+    /**
      * Recover a failed summary request by synchronously recording a durable
      * change to its selected input. Return true only after making progress;
      * the provider re-derives and re-prices the selection before retrying.

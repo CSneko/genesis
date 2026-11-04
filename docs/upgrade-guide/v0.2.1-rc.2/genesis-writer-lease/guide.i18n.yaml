@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-writer-lease/guide.md
+/:
+  en: fb332fe9e8d6f65f
+  zh: 4f865b9c9dd23821
+/genesis-writer-lease-protocol:
+  en: 12c7a3b19a226b9c
+  zh: 5134dc2e592b2ec3
+/genesis-writer-lease-protocol/change:
+  en: f895ebf02d6b94f6
+  zh: 87a76ac924f1f0f7
+/genesis-writer-lease-protocol/migration:
+  en: a663e19845440c0b
+  zh: 482195a1c280925c

@@ -21,26 +21,66 @@ const sample: LifeMemory = { id: brandString<LifeMemory['id']>('1ad3d042-eb44-4e
   importance: 0.8, confidence: 0.8, attribution: 'user-stated', sourceEventIds: [brandString<LifeMemory['sourceEventIds'][number]>('dbb27109-3b62-40bb-aa26-19dd0acc5355')],
   createdAt: '2026-10-23T00:00:00.000Z', updatedAt: '2026-10-23T00:00:00.000Z' }
 function fixture() {
-  const search = vi.fn().mockResolvedValue({ ok: true, value: [sample] })
+  const browse = vi.fn().mockResolvedValue({ ok: true, value: { items: [sample], total: 1, nextOffset: null } })
   const save = vi.fn().mockResolvedValue({ ok: true, value: sample })
   const convert = vi.fn().mockResolvedValue({ ok: true, value: { ...sample, kind: 'non-declarative', updatedAt: '2026-10-23T00:00:01.000Z' } })
   const remove = vi.fn().mockResolvedValue({ ok: true, value: true })
-  const props = { ...globalProps, t, search, save, convert, remove, refresh: vi.fn(), close() {},
-    useResource: () => ({ status: 'live', value: { ...statusFixture(), memories: [sample] }, failure: undefined }),
+  const saveSummary = vi.fn().mockResolvedValue({ ok: true, value: sample })
+  const summarize = vi.fn().mockResolvedValue({ ok: true, value: sample })
+  const props = { ...globalProps, t, browse, save, saveOperator: vi.fn(), organize: vi.fn(), setConsolidation: vi.fn(), consolidate: vi.fn(),
+    saveSummary, summarize, convert, remove, refresh: vi.fn(), close() {},
+    useResource: () => ({ status: 'live', value: statusFixture(), failure: undefined }),
   } as ComponentProps<typeof MemoryPanel>
-  return { props, search, save, convert, remove }
+  return { props, browse, save, saveSummary, summarize, convert, remove }
 }
 
+it('shows short summaries, reveals full content and retains failed summary edits and regeneration', async () => {
+  const { props, saveSummary, summarize } = fixture()
+  const summarized = { ...sample, summary: '用户的饮茶偏好' }
+  const regenerated = { ...summarized, summary: '用户喜欢乌龙茶', updatedAt: '2026-10-31T00:00:01.000Z' }
+  summarize.mockResolvedValueOnce({ ok: false, error: new RemoteError('genesis/operation', 'Writer unavailable', { reason: 'memory-provider' }) })
+    .mockResolvedValueOnce({ ok: true, value: regenerated })
+  saveSummary.mockResolvedValueOnce({ ok: false, error: new RemoteError('genesis/operation', 'Memory changed; refresh.', { reason: 'configuration-conflict' }) })
+    .mockResolvedValueOnce({ ok: true, value: { ...regenerated, summary: '手动确认的短摘要' } })
+  props.browse = vi.fn().mockResolvedValue({ ok: true, value: { items: [summarized], total: 1, nextOffset: null } })
+  render(<MemoryPanel {...props} />)
+  expect(await screen.findByText(summarized.summary)).toBeTruthy()
+  const full = screen.getByText(sample.content).closest('details')!
+  expect(full.open).toBe(false)
+  fireEvent.click(screen.getByText(en.viewMemoryContent))
+  expect(full.open).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: en.regenerateMemorySummary }))
+  expect((await screen.findByRole('alert')).textContent).toContain('Writer unavailable')
+  expect(screen.getByText(summarized.summary)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: en.regenerateMemorySummary }))
+  await screen.findByText(regenerated.summary)
+  expect(summarize).toHaveBeenLastCalledWith(sample.id, sample.updatedAt, expect.any(AbortSignal))
+  fireEvent.click(screen.getByRole('button', { name: en.editMemorySummary }))
+  fireEvent.change(screen.getByLabelText(en.memorySummary), { target: { value: '长'.repeat(40) } })
+  expect(screen.getByRole('button', { name: en.saveMemorySummary })).toHaveProperty('disabled', false)
+  fireEvent.change(screen.getByLabelText(en.memorySummary), { target: { value: '长'.repeat(41) } })
+  expect(screen.getByRole('button', { name: en.saveMemorySummary })).toHaveProperty('disabled', true)
+  fireEvent.change(screen.getByLabelText(en.memorySummary), { target: { value: '手动确认的短摘要' } })
+  fireEvent.click(screen.getByRole('button', { name: en.saveMemorySummary }))
+  expect((await screen.findByRole('alert')).textContent).toContain('Memory changed')
+  expect(screen.getByLabelText(en.memorySummary)).toHaveProperty('value', '手动确认的短摘要')
+  fireEvent.click(screen.getByRole('button', { name: en.saveMemorySummary }))
+  await screen.findByText('手动确认的短摘要')
+  expect(saveSummary).toHaveBeenLastCalledWith(sample.id, '手动确认的短摘要', regenerated.updatedAt, expect.any(AbortSignal))
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
 it('owns memory search independently of Knowledge Base and retains sourced results with concrete query failures', async () => {
-  const { props, search } = fixture()
-  search.mockResolvedValueOnce({ ok: true, value: [sample] }).mockRejectedValueOnce(new Error('disconnected'))
+  const { props, browse } = fixture()
+  browse.mockResolvedValueOnce({ ok: true, value: { items: [sample], total: 1, nextOffset: null } })
+    .mockRejectedValueOnce(new Error('disconnected'))
   render(<MemoryPanel {...props} />)
   expect(screen.getByRole('heading', { name: en.memoryPageTitle })).toBeTruthy()
   expect(screen.queryByText(en.embeddingTitle)).toBeNull()
+  expect(await screen.findByText(sample.content)).toBeTruthy()
   fireEvent.change(screen.getByLabelText(en.searchMemories), { target: { value: 'oolong' } })
   fireEvent.click(screen.getByRole('button', { name: en.search }))
-  await waitFor(() => { expect(search).toHaveBeenCalledWith('oolong', expect.any(AbortSignal)) })
-  fireEvent.click(screen.getByRole('button', { name: en.search }))
+  await waitFor(() => { expect(browse).toHaveBeenLastCalledWith('oolong', 'all', 0, expect.any(AbortSignal)) })
   expect((await screen.findByRole('alert')).textContent).toContain('disconnected')
   expect(screen.getByText(sample.content)).toBeTruthy()
   expect(screen.getByText(sample.sourceEventIds[0]!)).toBeTruthy()
@@ -72,9 +112,11 @@ it('organizes a multi-selection with an explicit count, preserves failures, remo
   const result = { ...sample, id: brandString<LifeMemory['id']>('70cbb56c-338f-4b0a-8ec7-161a2ebec280'), content: 'Combined attributed interpretation.' }
   const organize = vi.fn().mockResolvedValueOnce({ ok: false, error: new RemoteError('genesis/review', 'Writer budget exhausted', { stage: 'writer', reason: 'memory-provider' }) })
     .mockResolvedValueOnce({ ok: true, value: [result] })
+  props.browse = vi.fn().mockResolvedValue({ ok: true, value: { items: [sample, second], total: 2, nextOffset: null } })
   render(<MemoryPanel {...props} organize={organize} useResource={(() => ({ status: 'live', value: {
-    ...statusFixture(), organization: { selectionLimit: 20, maxResults: 8 }, memories: [sample, second],
+    ...statusFixture(), organization: { selectionLimit: 20, maxResults: 8 },
   }, failure: undefined })) as typeof props.useResource} />)
+  expect(await screen.findByText(second.content)).toBeTruthy()
   expect(screen.getByRole('button', { name: en.organizeMemories })).toHaveProperty('disabled', true)
   for (const checkbox of screen.getAllByRole('checkbox', { name: en.selectMemory })) fireEvent.click(checkbox)
   expect(organize).not.toHaveBeenCalled()
@@ -98,6 +140,7 @@ it('keeps rejected edit drafts, fences the retry, and converts and deletes only 
   save.mockResolvedValueOnce({ ok: false, error: new RemoteError('genesis/operation', 'Memory changed; refresh.', { reason: 'configuration-conflict' }) })
     .mockResolvedValueOnce({ ok: true, value: { ...sample, content: 'The user prefers green tea.', updatedAt: '2026-10-23T00:00:00.100Z' } })
   render(<MemoryPanel {...props} />)
+  await screen.findByText(sample.content)
   fireEvent.click(screen.getByRole('button', { name: en.editMemory }))
   fireEvent.change(screen.getByLabelText(en.memoryContent), { target: { value: 'The user prefers green tea.' } })
   fireEvent.click(screen.getByRole('button', { name: en.saveMemory }))
@@ -131,6 +174,27 @@ it('allocates a stable ID for a new draft and retains it when saving fails', asy
   expect(save).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ content: 'Use a gentle tone.', kind: 'non-declarative' }), null, expect.any(AbortSignal))
 })
 
+it('organizes the whole conversation through the memory dialog and retains its request identity after failure', async () => {
+  const overview = vi.fn().mockResolvedValueOnce({ ok: false, error: new RemoteError('genesis/review', 'Writer offline', { stage: 'writer', reason: 'model' }) })
+    .mockResolvedValueOnce({ ok: true, value: true })
+  const generate = vi.fn()
+  const props = { t, generate, overview, messageId: 'reply-one', sessionId: 'life-session',
+    useResource: () => ({ value: { lifePreset: 'life' } }),
+    useSessions: (select: (state: unknown) => unknown) => select({ byId: { 'life-session': { projectionValues: { agentPreset: 'life' } } } }),
+  } as ComponentProps<typeof ManualMemory>
+  render(<ManualMemory {...props} />)
+  fireEvent.click(screen.getByRole('button', { name: en.manualMemory }))
+  fireEvent.click(screen.getByRole('button', { name: en.manualConversationScope }))
+  expect(screen.getByText(en.manualConversationDescription)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: en['kind.declarative'] })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: en.manualConversationGenerate }))
+  expect((await screen.findByRole('alert')).textContent).toContain('Writer offline')
+  fireEvent.click(screen.getByRole('button', { name: en.manualConversationGenerate }))
+  await screen.findByRole('status')
+  expect(overview.mock.calls[1]?.[0]).toBe(overview.mock.calls[0]?.[0])
+  expect(generate).not.toHaveBeenCalled()
+})
+
 it('offers explicit per-reply destinations and shows the actual generation error', async () => {
   const generate = vi.fn().mockResolvedValueOnce({ ok: false, error: new RemoteError('genesis/review', 'HTTP 429 from writer', { stage: 'writer', reason: 'model' }) })
     .mockResolvedValueOnce({ ok: true, value: true })
@@ -161,8 +225,9 @@ it('separates current understanding, previous versions and experience time in th
     sessionId: brandString<NonNullable<LifeMemory['experience']>['sessionId']>('experience-session'), startedAt: '2026-10-23T00:00:00.000Z', endedAt: '2026-10-23T00:01:00.000Z', topics: ['tea'] },
   category: 'episodic', history: [{ content: sample.content, category: 'semantic', importance: 0.8, confidence: 0.8,
     sourceEventIds: sample.sourceEventIds, recordedAt: sample.createdAt, supersededAt: '2026-10-23T00:01:00.000Z' }] }
-  render(<MemoryPanel {...props} useResource={(() => ({ status: 'live', value: { ...statusFixture(), memories: [memory] }, failure: undefined })) as typeof props.useResource} />)
-  expect(screen.getByText(en.currentUnderstanding)).toBeTruthy()
+  props.browse = vi.fn().mockResolvedValue({ ok: true, value: { items: [memory], total: 1, nextOffset: null } })
+  render(<MemoryPanel {...props} />)
+  expect(await screen.findByText(en.currentUnderstanding)).toBeTruthy()
   expect(screen.getByText(memory.content)).toBeTruthy()
   fireEvent.click(screen.getByText(en.pastUnderstandings.replace('{count}', '1')))
   expect(await screen.findByText(sample.content)).toBeTruthy()
@@ -176,7 +241,7 @@ it('exposes persistent consolidation controls with specific writer failures and 
   const consolidate = vi.fn().mockResolvedValue({ ok: false, error: new RemoteError('genesis/review', 'HTTP 429 from memory writer', { stage: 'writer', reason: 'provider' }) })
   props.setConsolidation = setConsolidation
   props.consolidate = consolidate
-  props.useResource = (() => ({ status: 'live', value: { ...statusFixture(), memories: [sample], consolidation: {
+  props.useResource = (() => ({ status: 'live', value: { ...statusFixture(), consolidation: {
     enabled: true, revision: 2, completed: 1, failures: 1, maxFailures: 3, minHabitSupport: 3,
     requestedAt: sample.updatedAt, failure: { stage: 'writer', code: 'provider', message: 'HTTP 429 from memory writer' },
   } }, failure: undefined })) as ComponentProps<typeof MemoryPanel>['useResource']
@@ -186,5 +251,25 @@ it('exposes persistent consolidation controls with specific writer failures and 
   fireEvent.click(screen.getByRole('button', { name: en.consolidateNow }))
   await waitFor(() => { expect(consolidate).toHaveBeenCalledWith(expect.any(AbortSignal)) })
   expect(screen.getAllByRole('alert').some(alert => alert.textContent?.includes('HTTP 429 from memory writer'))).toBe(true)
-  expect(screen.getByText(sample.content)).toBeTruthy()
+  expect(await screen.findByText(sample.content)).toBeTruthy()
+})
+
+it('pages through every stored memory newest first', async () => {
+  const { props, browse } = fixture()
+  const memories = Array.from({ length: 12 }, (_unused, index) => ({ ...sample,
+    id: brandString<LifeMemory['id']>(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
+    content: `Memory ${index}.`, createdAt: `2026-10-23T00:00:${String(index).padStart(2, '0')}.000Z` }))
+  const sorted = [...memories].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  browse.mockImplementation((_query: string, _kind: string, offset: number) => Promise.resolve({ ok: true, value: {
+    items: sorted.slice(offset, offset + 10), total: sorted.length,
+    nextOffset: offset + 10 < sorted.length ? offset + 10 : null,
+  } }))
+  render(<MemoryPanel {...props} />)
+  expect(await screen.findByText('Memory 11.')).toBeTruthy()
+  expect(screen.queryByText('Memory 0.')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: en.nextPage }))
+  expect(await screen.findByText('Memory 0.')).toBeTruthy()
+  expect(screen.queryByText('Memory 11.')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: en.previousPage }))
+  expect(await screen.findByText('Memory 11.')).toBeTruthy()
 })

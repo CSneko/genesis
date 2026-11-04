@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-task-delivery/guide.md
+/:
+  en: 7dc5ef91ba427b14
+  zh: 6103b4ddbe782158
+/genesis-task-delivery-and-execution-controls:
+  en: bbad8d96fa3e115b
+  zh: 3a08be71f106e970
+/genesis-task-delivery-and-execution-controls/change:
+  en: 23fb7f3ac28b300f
+  zh: 9fe499dd1d9883cf
+/genesis-task-delivery-and-execution-controls/migration:
+  en: 84217fa33a582191
+  zh: 16a9040b844c4d3e

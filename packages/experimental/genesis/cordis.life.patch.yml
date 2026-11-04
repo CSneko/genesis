@@ -11,12 +11,16 @@
 - id: genesis
   config:
     leasePath: !!js dshHomePath('genesis.writer.lock')
+    memorySharing: life
+    maxRecords: 100000
+    maxStateChars: 50000000
     personalDirectory: !!js dshHomePath('personal')
     records: {}
     personality: {}
     emotion: {}
     interest: {}
-    deliberation: {}
+    deliberation:
+      requestMode: context-only
     socialInitiative:
       enabled: false
     awakening:

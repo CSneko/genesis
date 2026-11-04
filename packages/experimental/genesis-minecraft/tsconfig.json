@@ -1,0 +1,69 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../preset/agent-preset-registry"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../genesis"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../../core/agent-default-model"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../../ptc-runtime/ptc-runtime"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../sandbox/sandbox-policy"
+    }
+  ]
+}

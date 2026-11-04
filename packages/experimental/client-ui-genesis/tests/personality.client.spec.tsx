@@ -23,7 +23,7 @@ const style: LifeMemory = { ...personality, id: brandString<LifeMemory['id']>('7
 function fixture() {
   const save = vi.fn().mockResolvedValue({ ok: true, value: personality })
   const refresh = vi.fn()
-  const props = { ...globalProps, t, save, refresh, remove: vi.fn(), convert: vi.fn(),
+  const props = { ...globalProps, t, save, refresh, browse: vi.fn(), saveSummary: vi.fn(), summarize: vi.fn(), remove: vi.fn(), convert: vi.fn(),
     useResource: () => ({ status: 'live', value: { entries: [personality, style], omitted: 2 }, failure: undefined }),
   } as ComponentProps<typeof PersonalityPanel>
   return { props, save, refresh }

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-minecraft-connection/guide.md
+/:
+  en: bb73774fedeb62b3
+  zh: 8ca17e8fdf98b6a4
+/minecraft-connection-parameters:
+  en: 9018e004af18bfa3
+  zh: ec4ffe987f663e21
+/minecraft-connection-parameters/change:
+  en: 01b952d39cbfe526
+  zh: 1e2661b57c8e8748
+/minecraft-connection-parameters/migration:
+  en: 87084244954d8a1d
+  zh: 1b374b1eb7ffaeec

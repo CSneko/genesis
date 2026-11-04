@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, rename, rm, stat, readFile, readdir } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { stateSchema, type LifeState } from './model.ts'
-import { manifestSchema, recordTableSchema, type LifeManifest, type LifeRecord } from './storage-layout.ts'
+import { manifestSchema, recordTableSchema, type LifeManifest, type LifeRecordReference, type LifeRecord } from './storage-layout.ts'
 import { joinState } from './storage-state.ts'
 import { GenesisError } from './error.ts'
 
@@ -44,14 +44,14 @@ export async function hasBackup(path: string): Promise<boolean> {
  * Publish independent components before replacing the backup manifest; then remove unreachable records.
  * @param path - Resolved destination, independent of the primary storage backend.
  * @param snapshot - Encoded committed life, including text, evidence and vector cache.
- * @param previous - Manifest verified by this writer; omission verifies existing component files before reuse.
+ * @param previous - Complete record references verified by this writer; omission verifies existing component files before reuse.
  * @returns After component fsync, manifest replacement and unreachable-record cleanup; failures may follow a committed manifest.
  */
 export async function writeBackup(path: string, snapshot: { manifest: LifeManifest; records: LifeRecord[] },
-  previous?: LifeManifest): Promise<void> {
+  previous?: readonly LifeRecordReference[]): Promise<void> {
   const { manifest, records } = snapshot
   const root = `${path}.d`
-  const verified = new Set(previous?.records.map(record => `${record.table}/${record.key}.json`))
+  const verified = new Set(previous?.map(record => `${record.table}/${record.key}.json`))
   for (const { table, key, value } of records) {
     if (verified.has(`${table}/${key}.json`)) continue
     const destination = join(root, table, `${key}.json`)
@@ -66,7 +66,7 @@ export async function writeBackup(path: string, snapshot: { manifest: LifeManife
   await writeAtomicText(path, JSON.stringify(manifest) + '\n')
   const retained = new Set(records.map(record => `${record.table}/${record.key}.json`))
   if (previous !== undefined) {
-    for (const { table, key } of previous.records) {
+    for (const { table, key } of previous) {
       if (!retained.has(`${table}/${key}.json`)) await rm(join(root, table, `${key}.json`))
     }
     return

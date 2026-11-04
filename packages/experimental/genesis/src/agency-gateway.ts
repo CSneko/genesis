@@ -106,10 +106,10 @@ export class GenesisAgencyGateway extends TypertRemoteService {
   }
 
   /**
-   * Request a new autonomous deliberation in an idle character conversation; the chosen action may execute.
+   * Ask the main model in an idle character conversation to consider its plans and choose its next action.
    * @param sessionId - Live idle Session selected explicitly by the operator.
    * @param signal - Caller cancellation; committed choices remain auditable.
-   * @returns After the choice commits and any selected follow-up is enqueued.
+   * @returns After the planning opportunity is reserved and enqueued without an auxiliary choice.
    */
   @Remote('deliberate')
   async deliberate(sessionId: SessionId, signal: AbortSignal): Promise<void> {

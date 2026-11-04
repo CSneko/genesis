@@ -9,6 +9,8 @@ import css from './StatusPanel.module.css'
 
 /** Real bounded status reads and persisted policy saves. */
 export interface InitiativeActions {
+  /** Omitted retains the combined view; registered Settings and main pages select their own content. */
+  view?: 'settings' | 'activity'
   refresh(this: void): void
   saveSettings: TypertClientRemote['genesisInitiativeStatus']['saveSettings']
 }
@@ -16,15 +18,15 @@ export interface InitiativeActions {
 /**
  * Show active policy, trigger decisions and actual receipts, including unavailable channels.
  * @param props - Shared resource, generated actions and localized copy.
- * @returns A settings page that preserves failed drafts and explicitly marks sampled status.
+ * @returns A policy editor or delivery monitor that retains failed drafts and marks sampled status.
  */
-export function InitiativePanel({ useResource, saveSettings, refresh, t }: PropsRuntime<'settings.section'> &
+export function InitiativePanel({ useResource, saveSettings, refresh, view, t }: PropsRuntime<'settings.section'> &
   PropsLocale<'genesis'> & InjectFace<InitiativeActions>) {
   const id = useId()
   const resource = useResource<'genesis-initiative'>('dsh-resource://genesis-initiative/status')
   const sample = resource.value
   return <section className={css.panel} aria-labelledby={`${id}-title`}>
-    <header className={css.header}><h3 id={`${id}-title`}>{t('initiativeTitle')}</h3>
+    <header className={css.header}><h3 id={`${id}-title`}>{t(view === 'settings' ? 'initiativePolicyTitle' : view === 'activity' ? 'outboxTitle' : 'initiativeTitle')}</h3>
       <Button variant="outline" onClick={refresh} disabled={resource.status === 'loading'}>{t('refresh')}</Button></header>
     <p>{t('initiativeDescription')}</p>
     {resource.status === 'failed' ? <p role="alert">{t('failed')}</p> : null}
@@ -32,45 +34,47 @@ export function InitiativePanel({ useResource, saveSettings, refresh, t }: Props
       <p role="status">{t(`initiativeMode.${sample.mode}`)}</p>
       <p className={css.secondary}>{t('initiativeSampled')}: <time dateTime={sample.sampledAt}>{new Date(sample.sampledAt).toLocaleString()}</time></p>
       {sample.failure === null ? null : <p role="alert">{sample.failure.message}</p>}
-      <dl className={css.facts}>
+      {view === 'settings' ? null : <dl className={css.facts}>
         <dt>{t('initiativeLastCheck')}</dt><dd>{sample.lastCheckAt === null ? t('agencyNone') : new Date(sample.lastCheckAt).toLocaleString()}</dd>
         <dt>{t('initiativeNextCheck')}</dt><dd>{sample.nextCheckAt === null ? t('agencyNone') : new Date(sample.nextCheckAt).toLocaleString()}</dd>
         {(Object.keys(sample.counts) as Array<keyof typeof sample.counts>).map(state => <Fragment key={state}>
           <dt>{t(`initiativeState.${state}`)}</dt><dd>{sample.counts[state]}</dd></Fragment>)}
-      </dl>
-      {sample.available && sample.settings !== null
+      </dl>}
+      {view === 'activity' ? null : sample.available && sample.settings !== null
         ? <PolicyEditor sample={sample} settings={sample.settings} saveSettings={saveSettings} refresh={refresh} t={t} />
         : <p>{t('initiativeUnavailable')}</p>}
-      <h4>{t('initiativeChannels')}</h4>
-      {sample.channels.length ? <ul>{sample.channels.map(channel => <li key={channel.id}>
-        {channel.id} · {t(channel.idle ? 'agencyIdle' : 'agencyRunning')}</li>)}</ul> : <p>{t('initiativeNoChannel')}</p>}
-      {sample.channelsOmitted ? <p>{t('omitted', { count: sample.channelsOmitted })}</p> : null}
-      <h4>{t('initiativeLatestMessage')}</h4>
-      {sample.lastMessage === null ? <p>{t('initiativeNoSent')}</p> : <>
-        <p>{sample.lastMessage.message}</p>
-        <p>{sample.lastMessage.sessionId} · {sample.lastMessage.sentAt === undefined ? t('agencyNone')
-          : <time dateTime={sample.lastMessage.sentAt}>{new Date(sample.lastMessage.sentAt).toLocaleString()}</time>}</p>
-        {sample.lastMessageTruncated ? <p>{t('initiativeTruncated')}</p> : null}
+      {view === 'settings' ? null : <>
+        <h4>{t('initiativeChannels')}</h4>
+        {sample.channels.length ? <ul>{sample.channels.map(channel => <li key={channel.id}>
+          {channel.id} · {t(channel.idle ? 'agencyIdle' : 'agencyRunning')}</li>)}</ul> : <p>{t('initiativeNoChannel')}</p>}
+        {sample.channelsOmitted ? <p>{t('omitted', { count: sample.channelsOmitted })}</p> : null}
+        <h4>{t('initiativeLatestMessage')}</h4>
+        {sample.lastMessage === null ? <p>{t('initiativeNoSent')}</p> : <>
+          <p>{sample.lastMessage.message}</p>
+          <p>{sample.lastMessage.sessionId} · {sample.lastMessage.sentAt === undefined ? t('agencyNone')
+            : <time dateTime={sample.lastMessage.sentAt}>{new Date(sample.lastMessage.sentAt).toLocaleString()}</time>}</p>
+          {sample.lastMessageTruncated ? <p>{t('initiativeTruncated')}</p> : null}
+        </>}
+        <h4>{t('initiativeHistory')}</h4>
+        {sample.records.length ? <ul className={css.records}>{sample.records.map(({ record, triggerType, choice, messageTruncated }) =>
+          <li key={record.id}>
+            <div className={css.header}><strong>{t(`initiativeState.${record.status}`)}</strong>
+              <time dateTime={record.createdAt}>{new Date(record.createdAt).toLocaleString()}</time></div>
+            <p>{t('initiativeTrigger')}: {record.key.startsWith('timer:') ? t('initiativeTimer') : t('initiativeEvent')} · {triggerType}</p>
+            <p>{t('initiativeChoice')}: {choice === null ? t('agencyNone') : t(`agencyChoice.${choice}`)}</p>
+            {record.reason ? <p>{record.reason}</p> : null}
+            {record.note ? <p>{t('initiativeNote')}: {record.note}</p> : null}
+            {record.message ? <p>{record.message}</p> : null}
+            {messageTruncated ? <p>{t('initiativeTruncated')}</p> : null}
+            {record.sentAt ? <p>{t('initiativeSentAt')}: <time dateTime={record.sentAt}>{new Date(record.sentAt).toLocaleString()}</time></p> : null}
+            <details><summary>{t('agencyEvidence')}</summary>
+              <p>{t('source')}: {record.sourceEventId}</p>
+              <p>{t('initiativeTarget')}: {record.sessionId ?? t('agencyNone')}</p>
+              <p>{t('initiativeReceipt')}: {record.messageSeq ?? t('agencyNone')}</p>
+            </details>
+          </li>)}</ul> : <p>{t('initiativeNoHistory')}</p>}
+        {sample.omitted ? <p>{t('omitted', { count: sample.omitted })}</p> : null}
       </>}
-      <h4>{t('initiativeHistory')}</h4>
-      {sample.records.length ? <ul className={css.records}>{sample.records.map(({ record, triggerType, choice, messageTruncated }) =>
-        <li key={record.id}>
-          <div className={css.header}><strong>{t(`initiativeState.${record.status}`)}</strong>
-            <time dateTime={record.createdAt}>{new Date(record.createdAt).toLocaleString()}</time></div>
-          <p>{t('initiativeTrigger')}: {record.key.startsWith('timer:') ? t('initiativeTimer') : t('initiativeEvent')} · {triggerType}</p>
-          <p>{t('initiativeChoice')}: {choice === null ? t('agencyNone') : t(`agencyChoice.${choice}`)}</p>
-          {record.reason ? <p>{record.reason}</p> : null}
-          {record.note ? <p>{t('initiativeNote')}: {record.note}</p> : null}
-          {record.message ? <p>{record.message}</p> : null}
-          {messageTruncated ? <p>{t('initiativeTruncated')}</p> : null}
-          {record.sentAt ? <p>{t('initiativeSentAt')}: <time dateTime={record.sentAt}>{new Date(record.sentAt).toLocaleString()}</time></p> : null}
-          <details><summary>{t('agencyEvidence')}</summary>
-            <p>{t('source')}: {record.sourceEventId}</p>
-            <p>{t('initiativeTarget')}: {record.sessionId ?? t('agencyNone')}</p>
-            <p>{t('initiativeReceipt')}: {record.messageSeq ?? t('agencyNone')}</p>
-          </details>
-        </li>)}</ul> : <p>{t('initiativeNoHistory')}</p>}
-      {sample.omitted ? <p>{t('omitted', { count: sample.omitted })}</p> : null}
     </>}
   </section>
 }

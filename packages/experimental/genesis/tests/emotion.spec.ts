@@ -19,7 +19,7 @@ afterEach(async () => {
   if (errors.length) throw new AggregateError(errors, 'Emotion fixture teardown')
 })
 
-it('foregrounds the strongest quantized states and reports independent percentages without storage metadata', () => {
+it('foregrounds degree bands without percentages or storage metadata', () => {
   const config = Config({ leasePath: '/unused-context.lock', emotion: {} }).emotion!
   const state = initialEmotion(config, '2026-10-24T00:00:00.000Z')
   state.current.anger = 0.81
@@ -28,11 +28,29 @@ it('foregrounds the strongest quantized states and reports independent percentag
   state.needs.exploration = 0.71
   const before = structuredClone(state)
   const text = emotionContext(state, 0.05)
-  expect(text.split('\n')[0]).toBe('Most salient now: mood valence -95%; inclination toward exploration 70%.')
-  expect(text).toContain('Immediate feelings, strongest first: anger 80%; happiness 30%')
-  expect(text).toContain('Longer-term mood: valence -95% (negative to positive); arousal 30%.')
-  expect(text).not.toMatch(/updatedAt|revision|version|sourceEventIds|\{/u)
+  expect(text.split('\n')[0]).toBe('Most salient now: mood valence very strong negative; inclination toward exploration strong.')
+  expect(text).toContain('Immediate feelings, strongest first: anger strong; happiness mild')
+  expect(text).toContain('Longer-term mood: valence very strong negative; arousal mild.')
+  expect(text).not.toMatch(/updatedAt|revision|version|sourceEventIds|%|\{/u)
   expect(state).toEqual(before)
+})
+
+it('keeps wording and ranking stable within degree bands and changes them at band boundaries', () => {
+  const config = Config({ leasePath: '/unused-degrees.lock', emotion: {} }).emotion!
+  const state = initialEmotion(config, '2026-10-24T00:00:00.000Z')
+  state.current.anger = 0.4
+  state.current.happiness = 0.55
+  state.mood.valence = -0.01
+  const before = emotionContext(state, config.contextStep)
+  state.current.anger = 0.55
+  state.current.happiness = 0.4
+  state.mood.valence = 0.01
+  expect(emotionContext(state, config.contextStep)).toBe(before)
+  state.current.anger = 0.7
+  expect(emotionContext(state, config.contextStep)).not.toBe(before)
+  expect(emotionContext(state, config.contextStep)).toContain('anger strong')
+  state.current.anger = 0
+  expect(emotionContext(state, config.contextStep)).toContain('anger negligible')
 })
 
 it.each([0, 0.5, 1, 2])('scales emotion, mood, attachment and recovery by sensitivity %s', (sensitivity) => {

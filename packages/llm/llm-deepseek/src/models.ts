@@ -13,6 +13,15 @@ export const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
     toolUpdate: 'addition-only',
   },
   {
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek Flash (V4 compatibility name)',
+    description: 'Compatibility name routed to the current multimodal Flash model by the official API.',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    inputModalities: ['text', 'image'],
+    systemPromptUpdate: 'in-history',
+    toolUpdate: 'addition-only',
+  },
+  {
     id: 'deepseek-v4-pro',
     name: 'DeepSeek-V4-Pro',
     description: 'Stronger agentic coding, knowledge, and difficult reasoning; suited to complex or quality-critical tasks at higher cost.',

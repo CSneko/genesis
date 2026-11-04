@@ -1,4 +1,4 @@
-/** Optional Genesis status page, with its own generated experimental Remote. @module */
+/** Optional Genesis workspace and settings, with its own generated experimental Remote. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import contribution from '@deepseek-ai/dsh-experimental-genesis/remote'
 import { mountStatus } from './mount.ts'

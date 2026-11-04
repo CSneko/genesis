@@ -2,27 +2,27 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/genesis/motivation.md
-/genesis-motivation-and-deliberation:
-  en: d96eb80d1c59040b
-  zh: cc5c62a5ecc42a1e
-/genesis-motivation-and-deliberation/summary:
-  en: 326b9cc36e31d920
-  zh: 1ed0093775b51c6a
-/genesis-motivation-and-deliberation/enable:
-  en: 89d865e3b813ee1d
-  zh: 6a480e7cf522f828
-/genesis-motivation-and-deliberation/persistent-state:
-  en: 8ed8bdb95426e414
-  zh: e4a3b5d20083cf12
-/genesis-motivation-and-deliberation/request-decisions:
-  en: 0afe798e0078522f
-  zh: eaf9bea0d615c5bd
-/genesis-motivation-and-deliberation/autonomous-entry-and-outcomes:
-  en: bbc0efd73f549575
-  zh: 828dee2ca6883b26
-/genesis-motivation-and-deliberation/limits-and-extension:
-  en: 0f7e9017e6b62562
-  zh: 7f0451e0b83f588b
-/genesis-motivation-and-deliberation/dev-note:
+/genesis-motivation-and-life-plans:
+  en: 596c38f25e647b2a
+  zh: fd83063fd7b2418b
+/genesis-motivation-and-life-plans/summary:
+  en: 32168823debb3350
+  zh: f4f61d9faaef234d
+/genesis-motivation-and-life-plans/enable:
+  en: a94519d6d1306ec0
+  zh: d6a13012d4dd9cd9
+/genesis-motivation-and-life-plans/persistent-state:
+  en: 4155864d78add288
+  zh: 06a8d8df1b1bb627
+/genesis-motivation-and-life-plans/request-decisions:
+  en: 0cb9d481d84aa163
+  zh: 11ae5bfb2410d343
+/genesis-motivation-and-life-plans/autonomous-entry-and-outcomes:
+  en: a2c48944def346e3
+  zh: f157f8321684e16e
+/genesis-motivation-and-life-plans/limits-and-extension:
+  en: 454e77bafa9bd48a
+  zh: 449812cd316fe8aa
+/genesis-motivation-and-life-plans/dev-note:
   en: b75c8458928b72b9
-  zh: 45e76642489dcc3c
+  zh: 003ba4e17b4b5269

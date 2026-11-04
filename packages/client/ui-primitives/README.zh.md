@@ -33,6 +33,10 @@ kind: "package-library"
 
 只要 Web 客户端需要标准控件或 agent 输出渲染器，就用这些原子组件拼装功能 UI。它们只经 React 渲染，并从主题取得 `--dsw-*` 设计 token，因此无需导入主题或 slot 系统即可适配任意插件。
 
+源码工作区修改共享原语导出时，需要同时重建 Web 壳与动态客户端插件；`pnpm --filter @deepseek-ai/dsh-web-frontend build` 可更新该壳。
+
+`ConfigField` 是受控配置字段，可显示多行文本、秘密输入或有限选项；调用方提供本地化标签、校验和重置行为。
+
 <a id="component-catalog"></a>
 ### 组件目录
 

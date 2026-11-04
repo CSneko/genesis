@@ -1,17 +1,20 @@
 /** Life status and one-time naming, exported through the existing authenticated Gateway. @module */
+import { searchText, memoryDocument } from './search.ts'
 import { isNonDeclarative } from './personality.ts'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { LifeMemoryEngine } from './memory.ts'
 import type { ModelPreferences } from './model-preferences.ts'
 import { catalogModels, modelCatalogUrl, modelHeaders, modelJson } from './model-endpoint.ts'
 import type { MemoryModelsSettings } from './status-types.ts'
-import type { LifeStatus, PersonalityStatus } from './status-types.ts'
+import type { LifeStatus, MemoryCatalog, MemoryKind, PersonalityStatus } from './status-types.ts'
 import type { Config } from './config.ts'
+import { auxiliaryCall } from './auxiliary-call.ts'
+import { reviewDecisionSchema } from './model-endpoint.ts'
 import { GenesisError } from './error.ts'
 import { memoryView } from './memory.ts'
 import { configuredEmbeddings } from './embedding.ts'
@@ -58,6 +61,36 @@ export class GenesisStatusGateway extends TypertRemoteService {
     ctx.effect(() => async () => {
       this.lifetime.abort()
       await Promise.allSettled(this.operations)
+    })
+  }
+
+  /** Read the current auxiliary decision route without constructing a full status response.
+   * @returns Detached operator route.
+   */
+  decisionModel(): MemoryModelsSettings['decision'] { return this.options.models.read().models.decision }
+
+  /**
+   * Evaluate a binary question through the configured decision route with durable request/response audit.
+   * @param session - Actual caller's inference log.
+   * @param question - Trusted binary question; generative routes receive explicit JSON output instructions.
+   * @param input - Complete bounded evidence with explicitly scoped participants.
+   * @param criteria - Trusted yes/no interpretations for binary endpoints.
+   * @param signal - Caller cancellation; the shared auxiliary deadline also applies.
+   * @param route - Optional channel-only decision route; shared settings remain unchanged.
+   * @returns Validated answer and genuine endpoint probability when supplied; failure authorizes no action.
+   */
+  async decide(session: Session, question: string, input: Record<string, unknown> & { participants: object },
+    criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision']): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }> {
+    return this.operation(signal, async (owned) => {
+      const config = this.options.config.memory
+      if (config === undefined) throw new GenesisError('invalid-state', 'Configure the Genesis decision model before enabling automatic group replies.')
+      const shared = this.options.models.read().models
+      const models = route === undefined ? shared : { ...shared, decision: route }
+      const system = models.decision.kind === 'jev' ? question : `${question}\nReturn only JSON: {"update":true} or {"update":false}.`
+      const result = await auxiliaryCall(this.ctx, session, 'decision', system, input,
+        AbortSignal.any([owned, AbortSignal.timeout(config.timeoutMs)]), models, config, criteria)
+      const answer = reviewDecisionSchema.parse(result)
+      return models.decision.kind === 'jev' ? answer : { update: answer.update }
     })
   }
 
@@ -299,27 +332,37 @@ export class GenesisStatusGateway extends TypertRemoteService {
   }
 
   /**
-   * Browse or search stored memory text without requiring an embedding request.
-   * @param query - Literal search text, bounded by the configured response budget.
+   * Search stored memories by relevance, or browse newest first, without an embedding request.
+   * @param query - Multilingual keywords, partial names or an exact memory ID; blank text lists every memory.
+   * @param kind - Layer filter; `all` includes both layers.
+   * @param offset - Zero-based page offset within the filtered ranking.
    * @param signal - Caller cancellation.
-   * @returns Sourced candidate memories within the configured item and response limits, without vectors.
+   * @returns One bounded page, its filtered total and the continuation offset; vectors are excluded.
    */
   @Remote('memories')
-  async memories(query: string, signal: AbortSignal): Promise<LifeStatus['memories']> {
+  async memories(query: string, kind: MemoryKind | 'all', offset: number, signal: AbortSignal): Promise<MemoryCatalog> {
     return this.operation(signal, async (signal) => {
+      z.enum(['all', 'declarative', 'non-declarative']).parse(kind)
+      z.number().int().nonnegative().parse(offset)
       if (query.length > this.options.config.resultChars) throw new GenesisError('capacity', 'Narrow the memory search text.')
       const state = await this.ctx.genesis.snapshot()
       signal.throwIfAborted()
-      const needle = query.trim().toLowerCase()
-      const found = state.memories.filter(memory => memory.content.toLowerCase().includes(needle))
-        .sort((left, right) => right.importance - left.importance || right.updatedAt.localeCompare(left.updatedAt))
-      const visible: LifeStatus['memories'] = []
-      for (const memory of found) {
-        if (visible.length >= this.options.config.queryLimit) break
-        const view = memoryView(memory)
-        if (JSON.stringify([...visible, view]).length <= this.options.config.resultChars) visible.push(view)
+      const needle = query.trim()
+      const eligible = state.memories.filter(memory => (kind === 'all'
+        || (memory.kind ?? (memory.category === 'procedural' ? 'non-declarative' : 'declarative')) === kind))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.updatedAt.localeCompare(left.updatedAt))
+      const found = needle ? searchText(needle, eligible.map(memoryDocument)).map(match => match.value) : eligible
+      const items: LifeStatus['memories'] = []
+      for (const memory of found.slice(offset, offset + this.options.config.queryLimit)) items.push(memoryView(memory))
+      const result: MemoryCatalog = { items, total: found.length,
+        nextOffset: offset + items.length < found.length ? offset + items.length : null }
+      while (items.length > 1 && JSON.stringify(result).length > this.options.config.resultChars) {
+        items.pop(); result.nextOffset = offset + items.length
       }
-      return visible
+      if (JSON.stringify(result).length > this.options.config.resultChars) {
+        throw new GenesisError('capacity', 'Memory page exceeds resultChars. Increase the response budget before browsing memories.')
+      }
+      return result
     })
   }
 

@@ -1,0 +1,29 @@
+.root { box-sizing: border-box; min-width: 0; height: 100%; overflow-y: auto; padding: 12px; color: var(--dsw-alias-label-primary); font-size: 13px; }
+.header { display: grid; gap: 6px; margin-bottom: 12px; }
+.hint, .title, .url, .notice { margin: 0; overflow-wrap: anywhere; }
+.hint, .time { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.title { font-size: 13px; font-weight: 500; }
+.url { color: var(--dsw-alias-label-secondary); font-size: 12px; user-select: text; }
+.viewport { display: grid; min-height: 120px; margin: 12px 0; border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-md); overflow: hidden; }
+.image { display: block; width: 100%; height: auto; }
+.empty { align-self: center; text-align: center; padding: 16px; color: var(--dsw-alias-label-secondary); }
+.notice { padding: 8px; border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-md); }
+.root > .title { margin-top: 16px; }
+.actions { list-style: none; margin: 8px 0 0; padding: 0; }
+.action { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; padding: 8px 0; border-bottom: 1px solid var(--dsw-alias-border-l4); }
+.tool { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.status { font-size: 12px; }
+.status[data-status='failed'] { color: var(--dsw-alias-label-primary); font-weight: 500; }
+
+.tabHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.tabs { list-style: none; margin: 8px 0; display: grid; gap: 8px; max-height: min(32vh, 260px); overflow-y: auto; padding: 2px; }
+.tab { min-width: 0; padding: 8px; border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-md); }
+.tab[data-selected='true'] { border-color: var(--dsw-alias-state-business-primary); }
+.tabSelect { display: grid; gap: 4px; width: 100%; min-width: 0; padding: 0; text-align: start; background: transparent; color: inherit; border: 0; cursor: pointer; }
+.tabSelect:focus-visible { outline: 1px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+.tabControls { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; margin-top: 8px; }
+.inputRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.inputRow > input { flex: 1 1 140px; min-width: 0; }
+.interactive { min-width: 0; cursor: crosshair; outline-offset: -2px; }
+.interactive:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); }
+.interactive[aria-disabled='true'] { cursor: wait; }

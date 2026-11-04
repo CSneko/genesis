@@ -24,7 +24,12 @@ export function genesisLaunch(argv: readonly string[], version: string, root: st
   const defaults = [
     'packages/experimental/genesis/cordis.patch.yml',
     'packages/experimental/genesis/cordis.life.patch.yml',
+    'packages/experimental/genesis-bili-humanism/cordis.patch.yml',
+    'packages/experimental/genesis-minecraft/cordis.patch.yml',
+    'packages/experimental/genesis-qq/cordis.patch.yml',
     'packages/experimental/client-ui-genesis/cordis.patch.yml',
+    'config/genesis-browser.patch.yml',
+    'config/genesis-computer.patch.yml',
     'config/genesis-web.patch.yml',
   ].map(path => resolve(root, path))
   const testNoLogin = invocation.mode === 'profile' && invocation.args.includes('--test-no-login')

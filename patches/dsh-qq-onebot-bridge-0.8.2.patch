@@ -1,0 +1,162 @@
+diff --git a/lib/onebot.d.ts b/lib/onebot.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5265ed17f027f41c6c57cec4da9f8d68c981c798
+--- /dev/null
++++ b/lib/onebot.d.ts
+@@ -0,0 +1,17 @@
++/** Typed use of the pinned bridge's patched transport export; raw frames remain untrusted. */
++import { EventEmitter } from 'node:events'
++interface Socket { readonly readyState: number; readonly OPEN: number }
++export function parseMessage(message: unknown, botQq: number): { text: string }
++export class OneBotServer extends EventEmitter {
++  constructor(config: { host: string; port: number; accessToken: string; botQq: number; maxFrameBytes: number; actionTimeoutMs: number },
++    logger: { info(message: string): void; warn(message: string): void; error(message: string): void })
++  start(options: { timeoutMs: number }): Promise<{ ok: boolean; code?: string; reason?: string }>
++  connect(url: string, options: { timeoutMs: number; signal: AbortSignal }): Promise<{ ok: boolean; code?: string; reason?: string }>
++  stop(): Promise<void>
++  address(): { address: string; port: number } | string | null
++  getGroupInfo(socket: Socket, groupId: number, noCache?: boolean): Promise<unknown>
++  sendSegments(socket: Socket, messageType: 'group' | 'private', targetId: number, segments: Array<{ type: string; data: Record<string, unknown> }>): Promise<unknown>
++  callRaw(socket: Socket, action: string, params?: Record<string, unknown>): Promise<unknown>
++  getMsg(socket: Socket, messageId: string): Promise<unknown>
++  sendText(socket: Socket, messageType: 'group' | 'private', targetId: number, text: string): Promise<unknown>
++}
+diff --git a/lib/onebot.js b/lib/onebot.js
+index 91b5888ac8743401aff81e056e16abc13d1bd91f..89d30c98cfbe1f2821a8e800e4ad4f6de29261e9 100644
+--- a/lib/onebot.js
++++ b/lib/onebot.js
+@@ -7,7 +7,7 @@
+  * bot instance.
+  */
+ import { EventEmitter } from 'node:events'
+-import { WebSocketServer } from 'ws'
++import { WebSocket, WebSocketServer } from 'ws'
+
+ const ACTION_TIMEOUT_MS = 10_000
+
+@@ -182,6 +182,7 @@ export class OneBotServer extends EventEmitter {
+   #connections = new Map()
+   #echo = 0
+   #pending = new Map()
++  #outgoing = null
+
+   constructor(config, logger) {
+     super()
+@@ -256,7 +257,7 @@ export class OneBotServer extends EventEmitter {
+       try { this.#wss.close() } catch {}
+       this.#wss = null
+     }
+-    this.#wss = new WebSocketServer({ host, port })
++    this.#wss = new WebSocketServer({ host, port, maxPayload: this.config.maxFrameBytes })
+     const wss = this.#wss
+     wss.on('error', (error) => {
+       this.logger.error(`OneBot server error: ${error.message}`)
+@@ -300,9 +301,49 @@ export class OneBotServer extends EventEmitter {
+     return promise
+   }
+
++  connect(url, { timeoutMs, signal }) {
++    const socket = new WebSocket(url, {
++      headers: { Authorization: `Bearer ${this.config.accessToken}` }, handshakeTimeout: timeoutMs, maxPayload: this.config.maxFrameBytes,
++    })
++    this.#outgoing = socket
++    socket.on('error', () => {})
++    return new Promise(resolve => {
++      let settled = false
++      const finish = (result) => {
++        if (settled) return
++        settled = true
++        signal.removeEventListener('abort', abort)
++        socket.off('open', open)
++        socket.off('error', error)
++        socket.off('close', close)
++        if (!result.ok) socket.terminate()
++        resolve(result)
++      }
++      const abort = () => finish({ ok: false, code: 'ABORTED' })
++      const error = () => finish({ ok: false, code: 'CONNECT_FAILED' })
++      const close = () => finish({ ok: false, code: 'CLOSED' })
++      const open = () => {
++        if (signal.aborted) return abort()
++        this.#accept(socket, { headers: { authorization: `Bearer ${this.config.accessToken}` }, socket: { remoteAddress: new URL(url).hostname } })
++        finish({ ok: true })
++      }
++      socket.once('open', open)
++      socket.once('error', error)
++      socket.once('close', close)
++      signal.addEventListener('abort', abort, { once: true })
++      if (signal.aborted) abort()
++    })
++  }
++
++  address() { return this.#wss?.address() ?? null }
++
+   async stop() {
++    this.#outgoing?.terminate()
++    this.#outgoing = null
++    for (const settle of this.#pending.values()) settle({ status: 'failed', retcode: -1 })
++    this.#pending.clear()
+     for (const socket of this.#connections.values()) {
+-      try { socket.close(1000, 'bridge shutdown') } catch {}
++      try { socket.terminate() } catch {}
+     }
+     this.#connections.clear()
+     if (this.#wss) await new Promise((resolve) => this.#wss.close(() => resolve()))
+@@ -319,7 +360,11 @@ export class OneBotServer extends EventEmitter {
+     const id = `${request.socket.remoteAddress}:${Date.now()}:${++this.#echo}`
+     this.#connections.set(id, socket)
+     this.logger.info(`OneBot bot connected (${this.#connections.size} active)`)
+-    socket.on('message', (data) => this.#onFrame(socket, data))
++    socket.on('message', (data) => {
++      try { this.#onFrame(socket, data) } catch (error) {
++        this.logger.warn('Malformed OneBot frame refused; check the connected client.')
++      }
++    })
+     socket.on('close', () => {
+       this.#connections.delete(id)
+       this.logger.info(`OneBot bot disconnected (${this.#connections.size} active)`)
+@@ -346,7 +391,8 @@ export class OneBotServer extends EventEmitter {
+       const groupId = messageType === 'group' ? Number(frame.group_id) : undefined
+       const parsed = parseMessage(frame.message, this.config.botQq ?? 0)
+       // 转发卡片也算"有内容"：否则「只发一张聊天记录卡片」的消息会在这里被静默丢掉（连 trace 都没有）。
+-      if ((parsed.text === '' && parsed.records.length === 0 && parsed.images.length === 0 && parsed.files.length === 0 && parsed.forwards.length === 0) || !Number.isFinite(userId)) return
++      const hasExtra = Array.isArray(frame.message) ? frame.message.some(part => ['video', 'mface', 'face', 'reply'].includes(part?.type)) : /\[CQ:(?:video|mface|face|reply),/.test(String(frame.message))
++      if ((!hasExtra && parsed.text === '' && parsed.ats.length === 0 && parsed.records.length === 0 && parsed.images.length === 0 && parsed.files.length === 0 && parsed.forwards.length === 0) || !Number.isFinite(userId)) return
+       const atMe = messageType === 'group'
+         ? (this.config.botQq ?? 0) === 0 || parsed.ats.includes(this.config.botQq)
+         : false
+@@ -371,7 +417,7 @@ export class OneBotServer extends EventEmitter {
+     if (frame.post_type === 'notice') {
+       const notice = parseNotice(frame)
+       if (notice && Number.isFinite(notice.userId)) {
+-        this.emit('notice', { bot: socket, ...notice })
++        this.emit('notice', { bot: socket, ...notice, raw: frame })
+       }
+     }
+     if (frame.post_type === 'request') {
+@@ -857,7 +903,7 @@ export class OneBotServer extends EventEmitter {
+       const timer = setTimeout(() => {
+         this.#pending.delete(echo)
+         reject(new Error(`OneBot action ${action} timed out`))
+-      }, ACTION_TIMEOUT_MS)
++      }, this.config.actionTimeoutMs ?? ACTION_TIMEOUT_MS)
+       this.#pending.set(echo, (response) => {
+         clearTimeout(timer)
+         if (response && response.status === 'ok' && response.retcode === 0) resolve(response.data)
+diff --git a/package.json b/package.json
+index 2fa60994585d03936875d90aa7420ec084f65e99..5e2f55be0fd24e2dd8db23c309fc45c8afe33c93 100644
+--- a/package.json
++++ b/package.json
+@@ -30,7 +30,11 @@
+     "./extension": "./lib/extension.js",
+     "./client": "./client/client.js",
+     "./cordis.patch.yml": "./cordis.patch.yml",
+-    "./package.json": "./package.json"
++    "./package.json": "./package.json",
++    "./onebot": {
++      "types": "./lib/onebot.d.ts",
++      "default": "./lib/onebot.js"
++    }
+   },
+   "files": [
+     "lib",

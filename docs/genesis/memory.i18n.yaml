@@ -3,41 +3,47 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/genesis/memory.md
 /genesis-long-term-memory:
-  en: 6e47f5f16465da82
-  zh: 6c51f716540ee1e8
+  en: e2395ff5aa460974
+  zh: 844298a31a8b0fa3
 /genesis-long-term-memory/enable:
-  en: 667c8454bfdee75d
-  zh: 3b1e40fdfe8cf4a8
+  en: fd90349ca33bd940
+  zh: bddb70a44b97604d
 /genesis-long-term-memory/web-configuration:
   en: c8b34a1d50a02d4c
   zh: 0ab48023d2516c51
 /genesis-long-term-memory/participant-identity:
-  en: a261ea33f7d925f2
-  zh: 9a7e521941530796
+  en: 37850afbb147be0a
+  zh: 969e10e56635e949
 /genesis-long-term-memory/memory-time:
-  en: ab95f8c447683065
-  zh: 53bf00ea09d788ec
+  en: d1e3900a5375ba8b
+  zh: 6d07015fd4e1f12a
 /genesis-long-term-memory/personality-and-speaking-habits:
-  en: 3a2599ff51479d2d
-  zh: 36a4d3bc9414fecd
+  en: 00e7381fe81f63cc
+  zh: 2d84f74ce9b4697b
 /genesis-long-term-memory/recall-and-updates:
-  en: 98c34b8800669b39
-  zh: 1f75478902af7ad7
+  en: c6d80af756c16b58
+  zh: a9bbd53fbec19422
 /genesis-long-term-memory/experiences-previous-interpretations-and-association:
-  en: 7d8149a372898603
-  zh: 6ff2cbebc86d2d6c
+  en: 07ef1f3a43278893
+  zh: 6507d5b7c15987a5
 /genesis-long-term-memory/automatic-habits-and-idle-consolidation:
-  en: 330c5d21078cbcd4
-  zh: bbb73be7749c02c7
+  en: 2ae6476e2a5bdc39
+  zh: 2465cf8423dc7f04
+/genesis-long-term-memory/whole-conversation-overview:
+  en: 7ef1795dcfbad041
+  zh: a90cf34d9e137f0a
 /genesis-long-term-memory/selected-memory-organization:
-  en: 543819e25f92ff06
-  zh: f94309edec6016c5
+  en: 9d0993cfa35d1a0e
+  zh: 6e25af5f8fdccf0e
+/genesis-long-term-memory/short-summaries:
+  en: fd1ee4c68933ad38
+  zh: 9a1e7b970bd49ed1
 /genesis-long-term-memory/manual-memory-controls:
-  en: 287dde1a3bbf5db0
-  zh: e433f2ccb06f126b
+  en: 83b01d625c78742b
+  zh: 2e80d2b88975b8d6
 /genesis-long-term-memory/persistence-and-local-backup:
   en: aec325aabbab48c3
   zh: d1de9b56f8220674
 /genesis-long-term-memory/verification-and-limits:
-  en: 314b2fb161144a23
-  zh: 3a650665c84be03c
+  en: d562935d1f2abdb7
+  zh: 6356c3251dd1ab0a

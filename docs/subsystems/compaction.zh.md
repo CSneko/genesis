@@ -255,6 +255,30 @@ Source: [`packages/compaction/compaction-tool-result-pruner/src/index.ts`](../..
 
 ### `compaction/*` events
 
+<a id="compactioncontext-window--waterfall"></a>
+
+#### `compaction/context-window` — waterfall
+
+Reduce the capacity used by automatic pressure policy for one Session. Providers cap the returned value at the model's actual capacity. Consumers delegate before applying their limit and retain positive token capacities.
+
+```ts cordis-catalog
+/**
+ * Reduce the capacity used by automatic pressure policy for one Session.
+ * Providers cap the returned value at the model's actual capacity. Consumers
+ * delegate before applying their limit and retain positive token capacities.
+ * @param payload.session - Session whose conversation policy is measured.
+ * @param payload.modelWindow - Actual model capacity in tokens.
+ * @param next - Delegate to the next capacity policy; defaults to modelWindow.
+ * @returns Effective pressure-policy capacity in tokens.
+ * @mode waterfall
+ */
+'compaction/context-window'(payload: { session: Session; modelWindow: number }, next: () => number): number
+```
+
+Types: [Session](session.zh.md)
+
+Source: [`packages/compaction/compaction/src/index.ts`](../../packages/compaction/compaction/src/index.ts)
+
 <a id="compactionsummary-error--waterfall"></a>
 
 #### `compaction/summary-error` — waterfall

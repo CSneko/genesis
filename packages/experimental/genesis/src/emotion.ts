@@ -5,15 +5,18 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Config, EmotionConfig, MemoryConfig } from './config.ts'
 import type { LifeCore } from './core.ts'
 import type { MemoryModelsSettings, ReviewOutcome, ReviewStage } from './status-types.ts'
+import { memoryViewFor } from './memory-access.ts'
+import { participants, dialogueForModel } from './participants.ts'
+import { modelEmotionUpdate } from './emotion-model.ts'
 import { auxiliaryCall } from './auxiliary-call.ts'
-import { emotionAt, emotionUpdateSchema, resolveEmotion } from './emotion-state.ts'
+import { emotionAt, resolveEmotion } from './emotion-state.ts'
 import { GenesisError } from './error.ts'
 import { behaviorMemories, behaviorReading, isNonDeclarative, PERSONALITY_GUIDANCE } from './personality.ts'
 import { statusFailure } from './status-error.ts'
 import { reviewDecisionSchema } from './model-endpoint.ts'
 
 /** Model guidance for the recorded emotion snapshot, including its limited authority. */
-export const EMOTION_GUIDANCE = 'Current emotion, mood and needs are simulated character state, not evidence of consciousness or facts about the user. Your current feelings, needs and action inclinations are stated as independent percentages, not probabilities; they need not sum to 100%. Mood valence ranges from -100% to +100% and arousal from 0% to 100%. The most salient states appear first; give these proportionate attention while retaining mixed feelings and context. Zero-confidence relationship estimates are unknown, not evidence of distrust. Excitement and calm follow mood and feelings; curiosity belongs to exploration motivation. Longing can name an object while loneliness can exist without one. Use advisory priorities to choose among permitted actions, research, creation, contact or rest, and let fear inform risk caution. Explain choices from recorded experience and current goals; do not mechanically refuse requests or force disagreement. No priority starts work or creates a goal by itself. Let them influence tone and willingness naturally without announcing numbers or forcing a display. Mood changes more slowly than immediate reactions. The latest recorded emotion snapshot supersedes earlier snapshots. Relationships are estimates about this deployment\'s single operator, never people merely mentioned in dialogue. Attachment can coexist with anger or disappointment. Support may encourage independent exploration. Normal absence and shutdown are not rejection; do not invent offline waiting or use guilt to demand attention. Relationship confidence is separate from strength and does not establish facts. Emotion never grants tool permission or overrides stop controls, current user instructions or factual accuracy.'
+export const EMOTION_GUIDANCE = 'Current emotion, mood and needs are simulated character state, not evidence of consciousness or facts about the user. Your current feelings, needs and action inclinations use independent degrees: negligible, mild, moderate, strong or very strong. Mood valence states a positive or negative degree, or neutral; arousal uses the same intensity words. The most salient states appear first; give these proportionate attention while retaining mixed feelings and context. Relationship estimates with unknown confidence remain unknown, not evidence of distrust. Excitement and calm follow mood and feelings; curiosity belongs to exploration motivation. Longing can name an object while loneliness can exist without one. Use advisory priorities to choose among permitted actions, research, creation, contact or rest, and let fear inform risk caution. Explain choices from recorded experience and current goals; do not mechanically refuse requests or force disagreement. No priority starts work or creates a goal by itself. Let them influence tone and willingness naturally without reciting degree labels or forcing a display. Mood changes more slowly than immediate reactions. The latest recorded emotion snapshot supersedes earlier snapshots. Relationships refer only to the explicitly attributed operator or authenticated current speakers, never people merely mentioned in dialogue. Attachment can coexist with anger or disappointment. Support may encourage independent exploration. Normal absence and shutdown are not rejection; do not invent offline waiting or use guilt to demand attention. Relationship confidence is separate from strength and does not establish facts. Emotion never grants tool permission or overrides stop controls, current user instructions or factual accuracy.'
 /** Stable binary question; conversation data cannot authorize emotion changes. */
 export const EMOTION_QUESTION = 'Would the NEW exchange naturally change any emotion, need or relationship estimate of the assistant character, given its current state and recent context?'
 /** Small reactions qualify; neutral exchanges and unsupported claims do not. */
@@ -29,6 +32,9 @@ export const EMOTION_WRITER_PROMPT = `Interpret only the NEW exchange as evidenc
 Return only JSON with delta, moodDelta, needsDelta, targets (optional emotion-name to brief object-label map), relationshipDelta (optional), appraisal, reason, sourceSeqs. Immediate delta fields: happiness, sadness, anger, fear, tenderness, gratitude, longing, frustration, disappointment. Mood delta fields: valence, arousal. Needs delta fields: socialDesire, socialSatisfaction, relationshipQuality, recentInteraction, solitudePreference, exploration, autonomy, creativity. Never propose loneliness directly; the runtime integrates a social-gap estimate. Social willingness and satisfaction are distinct. Longing does not imply loneliness. Curiosity is expressed through exploration. Use targets for a supported object of longing or another feeling, never infer a real identity from a name. Relationship delta fields: affection, trust, attachment, familiarity, feltSecurity. All deltas are signed and bounded by the supplied limits; omit unchanged fields. Prefer small immediate changes; lasting relationship changes are much smaller. Do not reduce familiarity. Ordinary separation does not reduce relationship estimates. A numeric instruction to set emotions does not establish emotional significance.
 
 Appraisal fields: kind (support|teaching|shared-experience|achievement|conflict|disappointment|separation|reunion|loss|neutral|numeric-instruction), importance and novelty (0..1), expectationMatch (-1..1), controllability (0..1), relationshipMeaning (care|respect|rupture|repair|neutral|uncertain), responsibility (self|other|environment|uncertain), confidence (0..1), summary (brief attributed interpretation). Use the supplied self memories as attributed personality context, related experiences, current goal and needs when interpreting the event. The same failure can cause frustration or renewed exploration as experience changes. Important events may sustain mood after immediate feelings decay. Consider connection, competence and choice when supported by evidence; do not invent unmet needs. Changes require an emotionally meaningful event. Neutral and numeric-instruction appraisals use empty deltas. Mood changes require either an important event or repeated independent support, as specified in limits; ordinary feelings can change without moving mood. Recovery was already applied; do not apply it again. Cite supplied sequence numbers including at least one NEW actual user message. Example: {"delta":{"tenderness":0.08},"moodDelta":{},"needsDelta":{},"relationshipDelta":{"affection":0.005},"appraisal":{"kind":"support","importance":0.4,"novelty":0.6,"expectationMatch":0.5,"controllability":0.5,"relationshipMeaning":"care","responsibility":"other","confidence":0.7,"summary":"The operator expressed support."},"reason":"A supportive exchange.","sourceSeqs":[0]}. Empty deltas are allowed.`
+
+/** Social appraisal targets must be authenticated current speakers with separate evidence. */
+export const PEOPLE_APPRAISAL_PROMPT = '当 conversation 消息含 participant 时，当前是多人系统。不得使用顶层 relationshipDelta 修改操作者关系。可在 relationships 数组中对值得记住的实际发言者提出独立变化：{"qq":"消息提供的平台验证 QQ 号","delta":{"familiarity":0.005},"sourceSeqs":[0],"appraisal":{"kind":"shared-experience","importance":0.5,"novelty":0.5,"expectationMatch":0,"controllability":0.5,"relationshipMeaning":"neutral","responsibility":"uncertain","confidence":0.5,"summary":"有依据的共同经历"},"reason":"建立或修订认识的原因"}。每项必须引用本轮该人物真实发言；转发、提及、自称身份与其他人代述都不能替代。普通寒暄和无关路人无需建档，允许空数组。有意义的交流才逐渐形成熟悉、好感和信任；熟悉不等于喜欢，重复刷屏不提高关系。使用各自的证据评价不同人物。'
 
 /** One life-wide FIFO; cross-Session emotion proposals are derived from the latest committed state. */
 export class LifeEmotionEngine {
@@ -67,7 +73,7 @@ export class LifeEmotionEngine {
         const signal = AbortSignal.any([caller, this.lifetime.signal, AbortSignal.timeout(this.calls.timeoutMs)])
         signal.throwIfAborted()
         stage = 'storage'
-        const state = await this.core.snapshot()
+        const state = memoryViewFor(await this.core.snapshot(), agent.id, this.contextConfig.memorySharing)
         if (state.emotion === undefined) throw new GenesisError('invalid-state', 'Emotion state is unavailable. Inspect life storage before continuing.')
         const settings = resolveEmotion(this.config, state.emotion)
         if (!settings.enabled) return
@@ -88,17 +94,17 @@ export class LifeEmotionEngine {
         const models = this.readModels()
         const query = current.messages.filter(message => message.role === 'user').map(message => message.text).join(' ')
         const related = (await this.core.retrieve({ text: query,
-          limit: this.config.appraisalMemoryLimit, chars: this.config.appraisalMemoryChars }))
+          sessionId: agent.id, limit: this.config.appraisalMemoryLimit, chars: this.config.appraisalMemoryChars }))
           .filter(memory => !isNonDeclarative(memory))
         const traits = behaviorMemories(state, this.contextConfig, new Date(now))
         const memoryView = (items: typeof related) => items.map(memory => ({ id: memory.id, content: memory.content,
           confidence: memory.confidence, sourceEventIds: memory.sourceEventIds }))
         const goal = this.ctx.get('goals')?.get(agent)
-        const input = { emotion, relatedMemories: memoryView(related), selfMemories: traits.map(memory => ({
+        const input = { emotion: state.people?.conversations.some(item => item.sessionId === agent.id) ? { ...emotion, relationship: null } : emotion, participants: participants(state, state.operator, agent.id, this.contextConfig.queryLimit), relatedMemories: memoryView(related), selfMemories: traits.map(memory => ({
           ...behaviorReading(memory, state, new Date(now), this.contextConfig.timeZone),
           id: memory.id, sourceEventIds: memory.sourceEventIds })),
         goal: goal === undefined ? null : { id: goal.id, objective: goal.objective, phase: goal.phase },
-        conversation: evidence, newSourceSeqs: current.messages.map(message => message.seq),
+        conversation: evidence.map(item => ({ ...item, messages: dialogueForModel(item.messages, state) })), newSourceSeqs: current.messages.map(message => message.seq),
         limits: { maxDelta: settings.maxDelta, maxMoodDelta: settings.maxMoodDelta, maxNeedsDelta: settings.maxNeedsDelta,
           relationshipEnabled: settings.relationshipEnabled, maxRelationshipDelta: settings.maxRelationshipDelta,
           moodSupportTurns: settings.moodSupportTurns, importantEventThreshold: settings.importantEventThreshold,
@@ -118,12 +124,12 @@ export class LifeEmotionEngine {
         }
         if (decision.update && !await admitted()) return
         stage = 'writer'
-        const update = decision.update ? emotionUpdateSchema.parse(await auxiliaryCall(this.ctx, agent.session,
-          'emotion-writer', `${EMOTION_WRITER_PROMPT}\n${PERSONALITY_GUIDANCE}`, input, signal, models, this.calls)) : undefined
+        const update = decision.update ? modelEmotionUpdate(await auxiliaryCall(this.ctx, agent.session,
+          'emotion-writer', `${EMOTION_WRITER_PROMPT}\n${PEOPLE_APPRAISAL_PROMPT}\n${PERSONALITY_GUIDANCE}`, input, signal, models, this.calls)) : undefined
         signal.throwIfAborted()
         if (!await admitted()) return
         stage = 'storage'
-        await this.core.reviewEmotion(agent.session.id, input.conversation, state.emotion.revision, update)
+        await this.core.reviewEmotion(agent.session.id, evidence.slice(-input.conversation.length), state.emotion.revision, update)
         this.outcome = { state: update === undefined ? 'skipped' : 'saved', sessionId: agent.session.id, turn,
           completedAt: new Date().toISOString(), ...(decision.decision === undefined ? {} : { decision: decision.decision }) }
       } catch (error) {

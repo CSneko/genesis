@@ -4,7 +4,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
-import type { MemoryId, LifeMemory, MemoryDraft, MemoryOrganizationRequest } from './status-types.ts'
+import type { MemoryId, LifeMemory, MemoryDraft, MemoryOrganizationRequest, MemoryOrganizationId } from './status-types.ts'
 import type { MemoryKind } from './status-types.ts'
 import type { LifeMemoryEngine } from './memory.ts'
 import type { MemoryConsolidator } from './consolidation.ts'
@@ -62,6 +62,28 @@ export class GenesisMemoryGateway extends TypertRemoteService {
     })
   }
   /**
+   * Let the independent writer organize all chat text and memories associated with one open Life conversation.
+   * @param sessionId - Authorized source conversation; tool and injected output are excluded.
+   * @param id - Stable operator request UUID, retained across failed or uncertain retries.
+   * @param signal - Caller cancellation; admitted storage writes drain.
+   * @returns Whether valid entries changed memories after version checks; invalid entries are logged and deletions withheld; repeated committed requests are idempotent.
+   */
+  @Remote({ name: 'overview', resources: { session: (sessionId: SessionId) => sessionId } })
+  overview(sessionId: SessionId, id: MemoryOrganizationId, signal: AbortSignal): Promise<boolean> {
+    return this.operation(signal, async (owned) => {
+      const agent = this.ctx.agents.get(sessionId)
+      if (agent === undefined) throw new GenesisError('invalid-state', 'Open the original conversation before organizing its memories.')
+      if (!this.options.participates(agent)) throw new GenesisError('invalid-source', 'Only a Life conversation can organize life memories.')
+      const memory = this.options.memory
+      if (memory === undefined) throw new GenesisError('invalid-state', 'Configure the memory writer and embeddings before organizing this conversation.')
+      await agent.whenIdle()
+      owned.throwIfAborted()
+      const updated = await memory.overview(agent, id, owned)
+      this.options.consolidation?.kick()
+      return updated
+    })
+  }
+  /**
    * Create a sourced operator candidate or directly update its current fields without an edit event or revision.
    * @param id - Client-allocated memory UUID, retained across retries.
    * @param draft - Editable fields; attribution and sources are assigned by the core.
@@ -77,6 +99,37 @@ export class GenesisMemoryGateway extends TypertRemoteService {
         this.options.config.memory?.maxImplicitMemories ?? this.options.config.maxRecords))
       this.options.consolidation?.kick()
       return saved
+    })
+  }
+  /**
+   * Save or remove a short description without changing memory content, attribution or habit evidence.
+   * @param id - Existing memory identifier.
+   * @param summary - At most forty characters, or null to remove the description.
+   * @param updatedAt - Displayed memory version.
+   * @param signal - Cancellation before storage admission.
+   * @returns Accepted memory without vector caches; stale edits are refused.
+   */
+  @Remote('saveSummary')
+  saveSummary(id: MemoryId, summary: string | null, updatedAt: string, signal: AbortSignal): Promise<LifeMemory> {
+    return this.operation(signal, async (owned) => {
+      owned.throwIfAborted()
+      return memoryView(await this.ctx.genesis.setMemorySummary(id, summary, updatedAt))
+    })
+  }
+
+  /**
+   * Generate a short description from the current memory through the saved independent writer.
+   * @param id - Existing memory identifier.
+   * @param updatedAt - Displayed version, checked again after inference.
+   * @param signal - Caller cancellation; retries retain the original deadline.
+   * @returns Memory with its new summary; failure leaves the selected version unchanged.
+   */
+  @Remote('summarize')
+  summarize(id: MemoryId, updatedAt: string, signal: AbortSignal): Promise<LifeMemory> {
+    return this.operation(signal, async (owned) => {
+      const memory = this.options.memory
+      if (memory === undefined) throw new GenesisError('invalid-state', 'Configure the memory writer before generating a summary.')
+      return memory.summarize(id, updatedAt, owned)
     })
   }
   /**

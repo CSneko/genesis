@@ -1,0 +1,14 @@
+# One character-owned profile shared across conversations and DSH restarts.
+- insert:
+    - id: browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+    - id: genesis-browser-playwright
+      name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
+      config:
+        mode: persistent
+        preview: {}
+        userDataDir: !!js dshHomePath('browser/playwright')
+        headless: true
+        executablePath: !!js process.env.GENESIS_BROWSER_EXECUTABLE
+    - id: genesis-browser-preview
+      name: '@deepseek-ai/dsh-experimental-client-ui-browser-preview'

@@ -389,7 +389,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
   })
 
-  it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
+  it.each(['deepseek-flash', 'deepseek-v4-flash'])('uploads a durable image once and sends only its Files API id to %s', async (model) => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const signalSeen: (AbortSignal | undefined)[] = []
     const policies: unknown[] = []
@@ -402,7 +402,7 @@ describe('DeepSeekAdapter against a mock server', () => {
 
     await drain(adapter.stream({
       provider: 'deepseek-official',
-      model: 'deepseek-flash',
+      model,
       messages: [createUserMessage({
         content: [
           { type: 'text', text: 'describe ' },
@@ -413,7 +413,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     }))
 
     expect(server.requests[0]).toMatchObject({
-      model: 'deepseek-flash',
+      model,
       messages: [{
         role: 'user',
         content: [
@@ -1138,7 +1138,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(server.fileRequests.filter(request => request.method === 'POST')).toHaveLength(2)
   })
 
-  it.each(['deepseek-v4-flash', 'unlisted-pass-through'])(
+  it.each(['deepseek-v4-pro', 'unlisted-pass-through'])(
     'rejects image input for text-only model %s before credentials, image reads, or fetch',
     async (model) => {
       const server = await mockServer([])
@@ -1795,6 +1795,8 @@ describe('plugin registration and config', () => {
     expect(ctx.llm.listProviders()).toEqual([{ id: 'deepseek-official', name: 'DeepSeek' }])
     await expect(ctx.llm.listModels('deepseek-official')).resolves.toEqual([
       { provider: 'deepseek-official', id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash', inputModalities: ['text', 'image'] },
+      { provider: 'deepseek-official', id: 'deepseek-v4-flash', name: 'DeepSeek Flash (V4 compatibility name)',
+        description: 'Compatibility name routed to the current multimodal Flash model by the official API.', inputModalities: ['text', 'image'] },
       {
         provider: 'deepseek-official',
         id: 'deepseek-v4-pro',
@@ -1923,6 +1925,8 @@ describe('plugin registration and config', () => {
     LlmDeepSeek.apply(ctx, LlmDeepSeek.Config({ baseURL: 'http://127.0.0.1:1' }))
     await expect(ctx.llm.listModels('deepseek-official')).resolves.toEqual([
       { provider: 'deepseek-official', id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash', inputModalities: ['text', 'image'] },
+      { provider: 'deepseek-official', id: 'deepseek-v4-flash', name: 'DeepSeek Flash (V4 compatibility name)',
+        description: 'Compatibility name routed to the current multimodal Flash model by the official API.', inputModalities: ['text', 'image'] },
       {
         provider: 'deepseek-official',
         id: 'deepseek-v4-pro',

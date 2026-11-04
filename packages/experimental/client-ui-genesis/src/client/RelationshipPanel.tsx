@@ -6,6 +6,7 @@ import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { LifeStatus, RelationshipVector } from '@deepseek-ai/dsh-experimental-genesis/types'
 import { operationFailure } from './operation-failure.ts'
 import css from './StatusPanel.module.css'
+import { RelationshipValues } from './RelationshipValues.tsx'
 import emotionCss from './EmotionPanel.module.css'
 
 const fields = ['affection', 'trust', 'attachment', 'familiarity', 'feltSecurity'] as const
@@ -69,9 +70,9 @@ function RelationshipEditor({ sample, adjust, close, saved, t }: PropsLocale<'ge
 /**
  * Show one deployment operator relationship, its uncertainty and sourced changes.
  * @param props - Shared resource seat, localization and authenticated editor actions.
- * @returns Responsive settings page; refresh failures retain the last sample and pending drafts.
+ * @returns Responsive Genesis relationship page; refresh failures retain the last sample and pending drafts.
  */
-export function RelationshipPanel({ useResource, adjust, refresh, t }: PropsRuntime<'settings.section'> & PropsLocale<'genesis'> & InjectFace<RelationshipActions>) {
+export function RelationshipPanel({ useResource, adjust, refresh, t }: PropsRuntime<'genesis.page'> & PropsLocale<'genesis'> & InjectFace<RelationshipActions>) {
   const resource = useResource<'genesis'>('dsh-resource://genesis/status')
   const emotion = resource.value?.emotion
   const relation = emotion?.relationship
@@ -90,11 +91,7 @@ export function RelationshipPanel({ useResource, adjust, refresh, t }: PropsRunt
       {relation === null || relation === undefined ? <p>{t('relationshipUnknown')}</p> : <section className={emotionCss.card}>
         <h4>{relation.label === 'operator' ? t('relationshipOperator') : relation.label}</h4>
         <p className={css.secondary}>{t('relationshipStableId', { id: relation.id })}</p>
-        <dl className={emotionCss.meters}>{fields.map(field => <div key={field}>
-          <dt>{t(`relationship.${field}`)}</dt><dd>{relation.confidence[field] === 0 ? <span>{t('relationshipUncertain')}</span>
-            : <><meter min={0} max={1} value={relation.values[field]} aria-label={t(`relationship.${field}`)} /><span>{Math.round(relation.values[field] * 100)}%</span></>}</dd>
-          <dd className={emotionCss.meterHint}>{t(`relationshipHint.${field}`)} · {relation.origins[field] === 'user-stated' ? t('relationshipOperatorValue') : t('relationshipConfidence', { value: Math.round(relation.confidence[field] * 100) })}</dd>
-        </div>)}</dl>
+        <RelationshipValues relationship={relation} t={t} />
       </section>}
       <h4>{t('relationshipHistory')}</h4>
       {history.length === 0 ? <p>{t('relationshipNoHistory')}</p> : <ul className={css.records}>{history.map(entry => <li key={entry.id}>

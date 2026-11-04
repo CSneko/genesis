@@ -10,6 +10,7 @@ import type { LifeMemory } from './model.ts'
 export function retainMemoryHistory(previous: LifeMemory | undefined, next: LifeMemory): LifeMemory {
   if (previous === undefined) return next
   const fields = (memory: LifeMemory) => ({ content: memory.content, category: memory.category,
+    ...(memory.summary === undefined ? {} : { summary: memory.summary }),
     ...(memory.habit === undefined ? {} : { habit: memory.habit }),
     importance: memory.importance, confidence: memory.confidence,
     ...(memory.kind === undefined ? {} : { kind: memory.kind }),

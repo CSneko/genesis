@@ -1,4 +1,5 @@
 /** Replayable, bounded exchange evidence for interest review. @module */
+import { isHumanSource, personSource, personSourceSchema } from './people-model.ts'
 import { z } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { DecisionId } from './agency-state.ts'
@@ -9,7 +10,7 @@ const turnSchema = z.strictObject({
   decisionId: z.uuid().transform(brandString<DecisionId>).optional(),
   completed: z.boolean(), overflow: z.boolean(),
   messages: z.array(z.strictObject({ role: z.enum(['user', 'assistant']), seq: z.number().int().nonnegative(),
-    timestamp: z.iso.datetime(), text: z.string() })),
+    timestamp: z.iso.datetime(), text: z.string(), participant: personSourceSchema.optional() })),
   tools: z.array(z.strictObject({ callId: z.string(), name: z.string(), resultSeq: z.number().int().nonnegative().optional(),
     timestamp: z.iso.datetime().optional(), success: z.boolean().optional() })),
 })
@@ -48,8 +49,8 @@ export function interestProjection(windowTurns: number, chars: number): Projecti
       if (current.overflow) return previous
       if (event.type === 'user/message' && event.data.source.kind === 'genesis-deliberation') {
         current.decisionId = event.data.source.decisionId
-      } else if (event.type === 'user/message' && event.data.source.kind === 'user') {
-        current.messages.push({ role: 'user', seq: event.seq, timestamp: new Date(event.time).toISOString(),
+      } else if (event.type === 'user/message' && isHumanSource(event.data.source)) {
+        current.messages.push({ role: 'user', ...(personSource(event.data.source) === undefined ? {} : { participant: personSource(event.data.source) }), seq: event.seq, timestamp: new Date(event.time).toISOString(),
           text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n') })
       } else if (event.type === 'assistant/message' && !event.data.interrupted) {
         const text = event.data.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n')

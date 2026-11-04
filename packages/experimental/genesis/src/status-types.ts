@@ -10,6 +10,27 @@ export type { OperatorIdentity } from './model.ts'
 import type { EmotionState, EmotionSettings, Mood, Needs, EmotionCurrent } from './emotion-state.ts'
 import type { RelationshipState, EmotionAppraisal } from './relationship-state.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+
+/** Bounded operator-only task monitoring; prompts and caller credentials are excluded. */
+export interface ManagedTaskCatalog {
+  sampledAt: string
+  items: Array<{
+    id: SessionId
+    workspaceId: WorkspaceId
+    workspaceTitle: string
+    mode: string
+    delivery: 'pending' | 'delivered' | 'withdrawn'
+    state: string
+    executionState: string
+    turn: number
+    attempts: number
+    activeWork: number
+    readable: boolean
+    confirmed: boolean
+  }>
+  nextOffset: number | null
+}
 import type { Branded } from '@deepseek-ai/dsh-brand'
 export type { WritingId, WritingTypeId, WritingEntry, WritingType, WritingDraft, WritingQuery, WritingMatch, WritingSearch, WritingRead, WritingCatalog } from './records-model.ts'
 import type { InitiativeSettings, InteractionRecord } from './social-state.ts'
@@ -58,6 +79,8 @@ export interface ProviderRoute { kind: 'provider'; provider: string; model: stri
 export interface EndpointRoute { kind: 'jev' | 'openai'; url: string; model: string; keyRef?: string | undefined }
 /** Independent memory routes shared by all conversation modes. */
 export interface MemoryModelsSettings {
+  /** Additional auxiliary inference attempts; omission inherits the deployment setting. */
+  maxRetries?: number | undefined
   decision: ProviderRoute | (EndpointRoute & { kind: 'jev'; threshold: number })
   writer: ProviderRoute | (EndpointRoute & { kind: 'openai' })
 }
@@ -169,6 +192,13 @@ export interface LifeStatus {
   omitted: { capabilities: number; memories: number; growth: number }
 }
 
+/** Bounded, newest-first memory page; null nextOffset means the filtered selection is exhausted. */
+export interface MemoryCatalog {
+  items: LifeStatus['memories']
+  total: number
+  nextOffset: number | null
+}
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'genesis/operation': { reason: string }
@@ -187,3 +217,9 @@ export interface AgencyStatus {
   sessions: Array<{ id: SessionId; idle: boolean }>
   omitted: { motivations: number; goals: number; decisions: number; sessions: number }
 }
+
+export type { ToolkitId, ToolkitDefinition, ToolkitStatus } from './toolkit-types.ts'
+
+export type { PersonSummary, PeopleCatalog, PersonDetail, PersonEvidence, PersonId } from './people-status.ts'
+
+export type { TemporaryMemoryId, TemporaryMemory, TemporarySettings, TemporaryStatus } from './temporary-model.ts'

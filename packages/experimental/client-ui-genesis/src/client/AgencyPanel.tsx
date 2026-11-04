@@ -19,9 +19,9 @@ type Goal = AgencyStatus['goals'][number]
 /**
  * Show sourced inclinations, persistent commitments and candidate comparisons without exposing private reasoning.
  * @param props - Shared resource hook, localized copy and authenticated actions.
- * @returns A wrapping settings view retaining its last sample and operator drafts on failure.
+ * @returns A wrapping Genesis goals view retaining its last sample and operator drafts on failure.
  */
-export function AgencyPanel({ useResource, refresh, setGoalStatus, deliberate, t }: PropsRuntime<'settings.section'> &
+export function AgencyPanel({ useResource, refresh, setGoalStatus, deliberate, t }: PropsRuntime<'genesis.page'> &
   PropsLocale<'genesis'> & InjectFace<AgencyActions>) {
   const id = useId()
   const resource = useResource<'genesis-agency'>('dsh-resource://genesis-agency/status')

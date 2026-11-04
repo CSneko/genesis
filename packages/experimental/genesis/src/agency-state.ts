@@ -10,8 +10,14 @@ export type MotivationId = Branded<'GenesisMotivationId'>
 export type LifeGoalId = Branded<'GenesisLifeGoalId'>
 /** Stable identifier of one deliberation and its observed outcome. */
 export type DecisionId = Branded<'GenesisDecisionId'>
-const motivationId = z.uuid().transform(brandString<MotivationId>)
-const goalId = z.uuid().transform(brandString<LifeGoalId>)
+/** Model-chosen names for new commitments; UUIDs remain readable only in existing records. */
+export const readablePlanId = z.string().min(2).max(80)
+  .regex(/^[\p{L}\p{N}]+(?:[-_][\p{L}\p{N}]+)*$/u)
+  .refine(value => /\p{L}/u.test(value) && !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/iu.test(value) && !/^[a-f\d]{24,}$/iu.test(value),
+    'Choose a descriptive name, not a UUID or opaque numeric/hex identifier')
+const storedPlanId = z.union([z.uuid(), readablePlanId])
+const motivationId = storedPlanId.transform(brandString<MotivationId>)
+const goalId = storedPlanId.transform(brandString<LifeGoalId>)
 const decisionId = z.uuid().transform(brandString<DecisionId>)
 const text = z.string().trim().min(1).max(800)
 const unit = z.number().min(0).max(1)
@@ -36,7 +42,8 @@ export const deliberationPlanSchema = z.strictObject({
     nextAction: text, failures: z.number().int().nonnegative().optional(), ...proposalTimes,
   }).transform(({ failures: _failures, createdAt: _createdAt, updatedAt: _updatedAt, ...proposal }) => proposal)).max(4),
   candidates: z.array(z.strictObject({ disposition, action: text, reason: text, factors,
-    goalIds: z.array(goalId).max(20), motivationIds: z.array(motivationId).max(20) })).min(1).max(6),
+    goalIds: z.array(goalId).max(20).describe('For accept, link only active goals from the supplied context. Never link a paused or terminal goal to accepted execution.'),
+    motivationIds: z.array(motivationId).max(20) })).min(1).max(6),
   selected: z.number().int().min(0).max(5), reason: text,
 }).refine(plan => plan.selected < plan.candidates.length, 'Selected candidate is absent')
 /** Validated model proposal; all references are checked against the supplied evidence before commit. */

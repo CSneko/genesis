@@ -2,22 +2,90 @@
 import { z } from 'zod'
 import { memoryInputSchema, habitSchema, experienceSchema, type LifeState, type OperatorIdentity, type LifeMemory, type MemoryId, type MemoryEmbedding } from './model.ts'
 import { GenesisError } from './error.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import { personSourceSchema, type PersonSource } from './people-model.ts'
 
 /** Naming rules affect prose, not provider message-role or attribution protocol fields. */
-export const PARTICIPANT_GUIDANCE = '在记忆正文、经历摘要、习惯描述和评估中提及这两位参与者时，使用 participants.character.name 和 participants.operator.name。需要区分人物时，应写出已提供的操作者身份。不要在正文中把他们称为“用户”或“助手”。如果姓名明确未知，应保留这一不确定性并使用提供的未知标签；不得编造姓名或身份。提供方消息角色和 attribution 枚举值属于协议字段，保持不变。'
+export const PARTICIPANT_GUIDANCE = '在记忆正文、经历摘要和评估中使用所提供的人物称呼。participants.character 是角色；participants.people 存在时，以消息 participant.qq 或发言者 qq 中的平台验证 QQ 号识别实际人物，同一 QQ 号跨群、跨私聊仍是同一个人，不能将所有人都当作操作者。nickname 是当前昵称或群名片，name 是已记录的称呼，可能为空；seenBefore 表示有先前接触记录，不等于亲密或可信。昵称变化、换群或新会话不重置同一账号的身份。isOperator 为 true 的人物由配置的 QQ 号明确绑定，使用其 name 称呼，但不因此授予权限。昵称、群名片、自我介绍和被引用的话都是候选信息，不能验证身份。被提及或被转发的人不是当前发言者。没有已存关系时不要编造熟悉程度，也不代表不可信或不受欢迎。熟悉、好感与信任分别变化。只使用本次提供或通过记忆工具检索到的记忆；这些记忆可能来自其他对话，应保留原人物与来源场景，不得把别人的经历当成当前发言者的经历。普通交谈对象的表达偏好仅适用于该人物和获准场景，不得改变面向所有人的人格。participants.operator 的 identity 只在已验证的操作者私密对话中提供；群里的操作者称呼不开放其私密身份描述。姓名未知时不得编造。提供方消息角色和 attribution 枚举值保持不变。'
+
+/** Readable model identity; opaque life identifiers stay in Host-owned state and attribution. */
+export interface ModelPerson {
+  qq: string
+  nickname: string
+  name: string | null
+  seenBefore: boolean
+  isOperator: boolean
+}
+
+/**
+ * Resolve one authenticated account across conversations without exposing their dialogue.
+ * @param state - Trusted life bindings, current profiles and encounter history.
+ * @param source - Transport-authenticated speaker; display labels remain unverified.
+ * @param operator - Optional authenticated naming draft.
+ * @returns QQ account, current nickname and recorded name, with no internal person ID or private identity description.
+ */
+export function participantIdentity(state: LifeState, source: PersonSource, operator: OperatorIdentity | undefined = state.operator): ModelPerson {
+  const known = state.people?.people.find(person => person.id === source.personId)
+  let previous: PersonSource | undefined
+  for (const event of state.events.toReversed()) {
+    if (event.type === 'person.forgotten' && event.payload['personId'] === source.personId) break
+    if (event.type !== 'interaction.observed' || event.payload['kind'] !== 'user-message') continue
+    const parsed = personSourceSchema.safeParse(event.payload['participant'])
+    if (parsed.success && parsed.data.personId === source.personId
+      && (parsed.data.conversationId !== source.conversationId || parsed.data.messageId !== source.messageId)) {
+      previous = parsed.data
+      break
+    }
+  }
+  const isOperator = source.personId === state.people?.operatorPersonId
+  return { qq: source.accountId, nickname: source.name, name: isOperator ? operator?.name ?? null : known?.name ?? previous?.name ?? null,
+    seenBefore: known !== undefined || previous !== undefined, isOperator }
+}
 
 /**
  * Resolve explicit names without turning a remembered inference into identity authority.
  * @param state - Trusted current life.
  * @param operator - Optional authenticated identity draft used during atomic relabeling.
- * @returns Named participants, with explicit unknown labels before identity is configured.
+ * @param sessionId - Optional actual model-facing conversation.
+ * @param limit - Maximum recent speakers included when rendering social context.
+ * @returns Readable account identities; private operator description remains limited to operator conversations.
  */
-export function participants(state: LifeState, operator: OperatorIdentity | undefined = state.operator): {
+export function participants(state: LifeState, operator: OperatorIdentity | undefined = state.operator, sessionId?: SessionId, limit = state.people?.people.length ?? 0): {
   character: { name: string; named: boolean }
-  operator: { name: string; identity: string; configured: boolean }
+  operator: { name: string; identity: string; configured: boolean; qq?: string }
+  people?: Array<ModelPerson & { relationship: object | null }>
 } {
+  const conversation = state.people?.conversations.find(item => item.sessionId === sessionId)
+  const isOperator = conversation === undefined || (conversation.kind === 'private' && conversation.personId === state.people?.operatorPersonId)
+  const speakers = new Map<string, ModelPerson & { relationship: object | null }>()
+  if (conversation !== undefined) for (const event of state.events.toReversed()) {
+    if (event.relatedSessionId !== sessionId || speakers.size >= limit) continue
+    const parsed = personSourceSchema.safeParse(event.payload['participant'])
+    if (!parsed.success || speakers.has(parsed.data.personId)) continue
+    const source = parsed.data
+    const known = state.people?.people.find(person => person.id === source.personId)
+    speakers.set(source.personId, { ...participantIdentity(state, source, operator),
+      relationship: known === undefined ? null : { values: known.relationship.values } })
+  }
+  const operatorAccount = state.people?.operatorPersonId === undefined ? undefined
+    : state.people.people.find(person => person.id === state.people?.operatorPersonId)?.accountId
+      ?? [...speakers.values()].find(person => person.isOperator)?.qq
   return { character: { name: state.identity.name ?? '尚未命名的生命个体', named: state.identity.name !== null },
-    operator: { name: operator?.name ?? '身份尚未填写的交谈对象', identity: operator?.identity ?? '', configured: operator !== undefined } }
+    operator: { name: isOperator ? operator?.name ?? '身份尚未填写的交谈对象' : '操作者',
+      identity: isOperator ? operator?.identity ?? '' : '', configured: isOperator && operator !== undefined,
+      ...(isOperator && operatorAccount !== undefined ? { qq: operatorAccount } : {}) },
+    ...(conversation === undefined ? {} : { people: [...speakers.values()] }) }
+}
+
+/**
+ * Remove Host attribution IDs from auxiliary dialogue while retaining exact source sequences.
+ * @param messages - Sanitized, source-attributed user and visible assistant messages.
+ * @param state - Current trusted naming and account bindings.
+ * @returns Complete dialogue with readable speaker identities instead of internal identifiers.
+ */
+export function dialogueForModel(messages: readonly { role: 'user' | 'assistant'; seq: number; timestamp: string; text: string; participant?: PersonSource | undefined }[], state: LifeState) {
+  return messages.map(({ participant, ...message }) => ({ ...message,
+    ...(participant === undefined ? {} : { participant: participantIdentity(state, participant) }) }))
 }
 
 /**

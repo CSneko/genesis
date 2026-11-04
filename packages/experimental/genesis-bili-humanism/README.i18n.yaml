@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-bili-humanism/README.md
+/:
+  en: e0bfb3db5a6063e8
+  zh: 52c11343fc6434a6
+/deepseek-ai-dsh-experimental-genesis-bili-humanism:
+  en: 1606cd9cf821f5cc
+  zh: 62a7947c11089f51
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/summary:
+  en: 3b4ce9ca40c946c4
+  zh: e46bad8bdeea363b
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/table-of-contents:
+  en: 990504b7974bdecf
+  zh: ac7586ec75cb1008
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/use:
+  en: a95bf62575648303
+  zh: b197a517b03705de
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/use/local-media-setup:
+  en: b0ab7632a0c33f2e
+  zh: b62d1deb7dd11f95
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/configuration:
+  en: 319a0bcf3cb07f8f
+  zh: 849f3dfa90859c4e
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/implementation:
+  en: 775558f781c5ded1
+  zh: ba87bb44ae92d7f3
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/further-exploration:
+  en: 4d51169e4b0db0b3
+  zh: 078b90fb6f2fc142
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/model-experience/reading-and-shared-writing:
+  en: 36e5a81ffbb4ac36
+  zh: 2886f716843be59e
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/model-experience/reading-and-shared-writing/what-the-model-sees:
+  en: fc95e31182a94521
+  zh: cfddbc1acf9c7ca1
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/model-experience/reading-and-shared-writing/token-effect:
+  en: 6ed629c13284140e
+  zh: f7c351a3d08fecf8
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/model-experience/reading-and-shared-writing/kv-cache-effect:
+  en: defd0a3951fb43be
+  zh: 64c0f34107ac0c69
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/known-limitations-and-deferred-work:
+  en: 67105df9899de52e
+  zh: 10fb3b87f45278f2
+/deepseek-ai-dsh-experimental-genesis-bili-humanism/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

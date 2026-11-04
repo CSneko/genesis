@@ -4,9 +4,9 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { DeliberationConfig } from './config.ts'
 import type { LifeEvent, LifeEventId, LifeState, MemoryId, InterestId } from './model.ts'
-import { deliberationPlanSchema, motivationStrength, type DeliberationPlan, type LifeDecision,
+import { deliberationPlanSchema, readablePlanId, motivationStrength, type DeliberationPlan, type LifeDecision,
   type DecisionId, type MotivationId, type LifeGoalId } from './agency-state.ts'
-import { GenesisError } from './error.ts'
+import { GenesisError, InactiveLifeGoalsError } from './error.ts'
 
 /** Evidence captured by the integration before an auxiliary call; not supplied by the model. */
 export interface DeliberationCommit {
@@ -58,7 +58,7 @@ export function applyDeliberation(state: LifeState, commit: DeliberationCommit, 
       throw new GenesisError('invalid-source', 'Motivation referenced an absent or unselected interest.')
     }
     const old = proposal.id === undefined ? undefined : agency.motivations.find(item => item.id === proposal.id)
-    if (proposal.id !== undefined && old === undefined) throw new GenesisError('invalid-source', 'Motivation is absent. Refresh life state.')
+    if (old === undefined && proposal.id !== undefined) readablePlanId.parse(proposal.id)
     if (old !== undefined && changedMotivations.includes(old.id)) throw new GenesisError('invalid-source', 'Motivation changed twice in one proposal.')
     if (old === undefined && agency.motivations.some(item => item.content.toLocaleLowerCase() === proposal.content.toLocaleLowerCase())) {
       throw new GenesisError('invalid-source', 'Update the existing motivation instead of duplicating it.')
@@ -66,7 +66,7 @@ export function applyDeliberation(state: LifeState, commit: DeliberationCommit, 
     const anchor = old === undefined ? 0 : motivationStrength(old, now, config.motivationHalfLifeMs)
     const strength = Math.max(0, Math.min(1, anchor + Math.max(-config.maxStrengthDelta,
       Math.min(config.maxStrengthDelta, proposal.strength - anchor))))
-    const item = { ...proposal, id: old?.id ?? brandString<MotivationId>(randomUUID()), strength,
+    const item = { ...proposal, id: old?.id ?? proposal.id ?? brandString<MotivationId>(randomUUID()), strength,
       createdAt: old?.createdAt ?? now, updatedAt: now }
     if (old === undefined) agency.motivations.push(item)
     else agency.motivations[agency.motivations.indexOf(old)] = item
@@ -77,7 +77,7 @@ export function applyDeliberation(state: LifeState, commit: DeliberationCommit, 
   for (const proposal of plan.goals) {
     check(proposal.sourceEventIds, proposal.memoryIds)
     const old = proposal.id === undefined ? undefined : agency.goals.find(item => item.id === proposal.id)
-    if (proposal.id !== undefined && old === undefined) throw new GenesisError('invalid-source', 'Life goal is absent. Refresh life state.')
+    if (old === undefined) readablePlanId.parse(proposal.id)
     if (old !== undefined && (['completed', 'abandoned'].includes(old.status) || changedGoals.includes(old.id))) {
       throw new GenesisError('invalid-source', 'Terminal goals are immutable and each goal may change once per deliberation.')
     }
@@ -93,7 +93,7 @@ export function applyDeliberation(state: LifeState, commit: DeliberationCommit, 
     const motivationIds = proposal.motivationIds.length ? proposal.motivationIds : changedMotivations
     if (motivationIds.some(id => !agency.motivations.some(item => item.id === id))
       || (proposal.origin === 'autonomous' && !motivationIds.length)) throw new GenesisError('invalid-source', 'Autonomous goals require recorded motivations.')
-    const item = { ...proposal, id: old?.id ?? brandString<LifeGoalId>(randomUUID()), motivationIds,
+    const item = { ...proposal, id: old?.id ?? brandString<LifeGoalId>(readablePlanId.parse(proposal.id)), motivationIds,
       createdAt: old?.createdAt ?? now, updatedAt: now, failures: old?.failures ?? 0,
       history: [...(old?.history ?? []), { timestamp: now, status: proposal.status, nextAction: proposal.nextAction,
         reason: proposal.reason, decisionId: id }] }
@@ -119,8 +119,9 @@ export function applyDeliberation(state: LifeState, commit: DeliberationCommit, 
   if (selected.disposition === 'accept' && commit.trigger === 'event' && commit.purpose !== 'interaction' && !goalIds.length) {
     throw new GenesisError('invalid-source', 'Autonomous execution requires an active life goal.')
   }
-  if (selected.disposition === 'accept' && goalIds.some(id => !agency.goals.some(item => item.id === id && item.status === 'active'))) {
-    throw new GenesisError('invalid-source', 'Paused or terminal life goals cannot execute.')
+  if (selected.disposition === 'accept') {
+    const inactive = goalIds.filter(id => !agency.goals.some(item => item.id === id && item.status === 'active'))
+    if (inactive.length) throw new InactiveLifeGoalsError(inactive)
   }
   if (['decline', 'defer', 'negotiate'].includes(selected.disposition) && !goalIds.length && !motivationIds.length) {
     throw new GenesisError('invalid-source', 'A refusal or trade-off needs a recorded goal or motivation, not arbitrary disagreement.')

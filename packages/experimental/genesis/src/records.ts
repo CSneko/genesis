@@ -1,4 +1,5 @@
 /** Serialized record operations under the life writer lease, with recoverable Markdown publication. @module */
+import { searchText } from './search.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -10,7 +11,7 @@ import type { RecordsConfig } from './config.ts'
 import { GenesisError } from './error.ts'
 import { publishWritingFiles, writingOwner } from './records-files.ts'
 import { writingsDomain, writingIdSchema, writingTypeIdSchema } from './records-model.ts'
-import type { WritingCatalog, WritingDraft, WritingEntry, WritingId, WritingMatch, WritingQuery, WritingRead, WritingSearch, WritingState, WritingType, WritingTypeId } from './records-model.ts'
+import type { WritingCatalog, WritingDraft, WritingEntry, WritingId, WritingImportId, WritingMatch, WritingQuery, WritingRead, WritingReceipt, WritingSearch, WritingState, WritingType, WritingTypeId } from './records-model.ts'
 
 function fileName(entry: Pick<WritingEntry, 'id' | 'createdAt' | 'typeId'>): string {
   return `${entry.typeId}/${entry.createdAt.slice(0, 4)}/${entry.createdAt.slice(5, 7)}/${entry.createdAt.replace(/[-:.]/g, '')}_${entry.id}.md`
@@ -33,7 +34,7 @@ function fitText<T>(text: string, build: (content: string) => T, budget: number)
     if (JSON.stringify(build(text.slice(0, middle))).length <= budget) low = middle
     else high = middle - 1
   }
-  if (low > 0 && /[\uD800-\uDBFF]/.test(text[low - 1]!)) low--
+  if (low > 0 && /[\uD800-\uDBFF]/.test(text.charAt(low - 1))) low--
   return build(text.slice(0, low))
 }
 
@@ -62,8 +63,8 @@ export class WritingRecords {
     const owner = await writingOwner(this.root)
     if (state === undefined) {
       if (owner !== null) throw new GenesisError('invalid-state', 'The records catalog is missing but its directory has an owner. Restore genesis_writings storage before restarting; records were not reset.')
-      state = { schemaVersion: 1, lifeId: this.lifeId, root: this.root, revision: 1, entries: [], receipts: [], retiredPaths: [], pendingFiles: true,
-        types: [{ id: brandString<WritingTypeId>('diary'), name: '日记', enabled: true, revision: 1 },
+      state = { schemaVersion: 1, lifeId: this.lifeId, root: this.root, revision: 1, entries: [], receipts: [], retiredPaths: [],
+        pendingFiles: true, types: [{ id: brandString<WritingTypeId>('diary'), name: '日记', enabled: true, revision: 1 },
           { id: brandString<WritingTypeId>('essay'), name: '随笔', enabled: true, revision: 1 }] }
       await this.commit(state)
       return
@@ -113,7 +114,8 @@ export class WritingRecords {
   }
   private draft(draft: WritingDraft): WritingDraft {
     const parsed = z.strictObject({ title: z.string().trim().min(1).max(this.config.titleChars),
-      content: z.string().min(1).max(this.config.contentChars).refine(text => text.trim().length > 0), typeId: writingTypeIdSchema }).parse(draft)
+      content: z.string().min(1).max(this.config.contentChars).refine(text => text.trim().length > 0),
+      typeId: writingTypeIdSchema }).parse(draft)
     return parsed
   }
   private type(state: WritingState, id: WritingTypeId): WritingType {
@@ -138,14 +140,17 @@ export class WritingRecords {
    * @param draft - Required title, content and enabled type.
    * @param source - Actual calling Session and tool call, never model-supplied attribution.
    * @param signal - Cancellation checked before durable admission; admitted commits drain.
-   * @returns Stable receipt with system time and path, or an already-deleted status; conflicting reuse rejects.
+   * @param imported - Trusted adapter receipt and original time; attribution still identifies the actual migration call.
+   * @returns Stable receipt with creation time and path, or an already-deleted status; conflicting reuse rejects.
    */
-  create(draft: WritingDraft, source: { sessionId: SessionId; callId: ToolCallId }, signal: AbortSignal): Promise<{ id: WritingId; status: 'saved' | 'already-deleted'; createdAt?: string; fileName?: string }> {
+  create(draft: WritingDraft, source: { sessionId: SessionId; callId: ToolCallId }, signal: AbortSignal,
+    imported?: { id: WritingImportId; createdAt: string }): Promise<WritingReceipt> {
     const parsed = this.draft(draft)
     return this.operation(signal, async () => {
       const state = structuredClone(this.state())
-      const id = brandString<WritingId>(digest(JSON.stringify([this.lifeId, source.sessionId, source.callId])))
-      const fingerprint = digest(JSON.stringify(parsed))
+      const id = brandString<WritingId>(digest(JSON.stringify(imported === undefined
+        ? [this.lifeId, source.sessionId, source.callId] : [this.lifeId, 'import', imported.id])))
+      const fingerprint = digest(JSON.stringify(imported === undefined ? parsed : [parsed, imported.createdAt]))
       const previous = state.receipts.find(receipt => receipt.id === id)
       if (previous !== undefined) {
         if (previous.fingerprint !== fingerprint) fail('This record creation call was already used with different content. Do not reuse its call id.')
@@ -154,11 +159,33 @@ export class WritingRecords {
       }
       if (!this.type(state, parsed.typeId).enabled) fail('This record type is disabled. Use the types operation to choose an enabled type.')
       const now = new Date().toISOString()
-      const entry: WritingEntry = { ...parsed, id, createdAt: now, updatedAt: now, revision: 1, source, updatedBy: 'agent', fileName: '' }
+      const createdAt = imported?.createdAt ?? now
+      const entry: WritingEntry = { ...parsed, id, createdAt, updatedAt: now, revision: 1, source, updatedBy: 'agent', fileName: '' }
       entry.fileName = fileName(entry)
       state.entries.push(entry); state.receipts.push({ id, fingerprint }); state.revision++
       await this.commit(state)
-      return { id, status: 'saved', createdAt: now, fileName: entry.fileName }
+      return { id, status: 'saved', createdAt, fileName: entry.fileName }
+    })
+  }
+
+  /**
+   * Add an integration-owned category without renaming or enabling an operator's existing category.
+   * @param id - Stable directory-safe category id from trusted deployment configuration.
+   * @param name - Initial display name, used only when absent.
+   * @param signal - Cancellation before admission.
+   * @returns Existing or newly saved type; operator edits remain authoritative.
+   */
+  ensureType(id: WritingTypeId, name: string, signal: AbortSignal): Promise<WritingType> {
+    writingTypeIdSchema.parse(id)
+    const label = z.string().trim().min(1).max(this.config.typeChars).parse(name)
+    return this.operation(signal, async () => {
+      const state = structuredClone(this.state())
+      const existing = state.types.find(type => type.id === id)
+      if (existing !== undefined) return structuredClone(existing)
+      if (state.types.some(type => type.name.toLowerCase() === label.toLowerCase())) fail('A different record category already uses this name. Configure the existing category id or a different name.')
+      const type = { id, name: label, enabled: true, revision: 1 }
+      state.types.push(type); state.revision++; await this.commit(state)
+      return type
     })
   }
 
@@ -173,7 +200,7 @@ export class WritingRecords {
     writingIdSchema.parse(id); z.number().int().nonnegative().parse(offset)
     return this.operation(signal, () => {
       const entry = this.state().entries.find(entry => entry.id === id) ?? fail('Record not found. Refresh the search results.')
-      if (offset > entry.content.length || (offset > 0 && /[\uD800-\uDBFF]/.test(entry.content[offset - 1]!))) fail('Invalid record content offset. Continue with the returned nextOffset.')
+      if (offset > entry.content.length || (offset > 0 && /[\uD800-\uDBFF]/.test(entry.content.charAt(offset - 1)))) fail('Invalid record content offset. Continue with the returned nextOffset.')
       const { content, ...metadata } = entry
       const result = fitText(content.slice(offset), chunk => ({ ...metadata, content: chunk, offset,
         nextOffset: offset + chunk.length < content.length ? offset + chunk.length : null }), this.config.resultChars)
@@ -184,7 +211,7 @@ export class WritingRecords {
 
   /**
    * Search title and body with bounded output and advancing pagination.
-   * @param query - Substring, type and inclusive creation-time filters.
+   * @param query - Multilingual full-text query, type and inclusive creation-time filters; blank text lists newest records.
    * @param signal - Caller cancellation.
    * @returns Budgeted matches with excerpts and continuation offset.
    */
@@ -194,25 +221,30 @@ export class WritingRecords {
       offset: z.number().int().nonnegative().default(0) }).parse(query)
     if (parsed.after !== undefined && parsed.before !== undefined && Date.parse(parsed.after) > Date.parse(parsed.before)) fail('The search start time must not follow its end time.')
     return this.operation(signal, () => {
-      const state = this.state(); const needle = parsed.text.toLowerCase().trim()
+      const state = this.state(); const needle = parsed.text.trim()
       if (parsed.typeId !== undefined) this.type(state, parsed.typeId)
-      const found = state.entries.filter(entry => (parsed.typeId === undefined || entry.typeId === parsed.typeId)
+      const eligible = state.entries.filter(entry => (parsed.typeId === undefined || entry.typeId === parsed.typeId)
         && (parsed.after === undefined || Date.parse(entry.createdAt) >= Date.parse(parsed.after))
-        && (parsed.before === undefined || Date.parse(entry.createdAt) <= Date.parse(parsed.before))
-        && (!needle || entry.title.toLowerCase().includes(needle) || entry.content.toLowerCase().includes(needle)))
+        && (parsed.before === undefined || Date.parse(entry.createdAt) <= Date.parse(parsed.before)))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      const found = needle ? searchText(needle, eligible.map(entry => ({ value: entry, id: entry.id,
+        fields: [{ text: entry.title, weight: 3 }, { text: entry.content, weight: 1 }] })))
+        : eligible.map(value => ({ value, positions: [-1, -1] }))
       const result: WritingSearch = { items: [], total: found.length, nextOffset: null, revision: state.revision }
-      for (const entry of found.slice(parsed.offset, parsed.offset + this.config.queryLimit)) {
+      for (const { value: entry, positions } of found.slice(parsed.offset, parsed.offset + this.config.queryLimit)) {
         const { source: _source, content, ...metadata } = entry
-        const start = needle ? Math.max(0, content.toLowerCase().indexOf(needle) - Math.floor(this.config.snippetChars / 4)) : 0
+        const start = Math.max(0, (positions[1] ?? -1) - Math.floor(this.config.snippetChars / 4))
         const snippet = content.slice(start, start + this.config.snippetChars)
         const matchedFields: WritingMatch['matchedFields'] = []
-        if (needle && entry.title.toLowerCase().includes(needle)) matchedFields.push('title')
-        if (needle && content.toLowerCase().includes(needle)) matchedFields.push('content')
+        if ((positions[0] ?? -1) >= 0) matchedFields.push('title')
+        if ((positions[1] ?? -1) >= 0) matchedFields.push('content')
         const nextOffset = parsed.offset + result.items.length + 1 < found.length ? parsed.offset + result.items.length + 1 : null
-        if (result.items.length && JSON.stringify({ ...result, items: [...result.items, { ...metadata, content: snippet, matchedFields, truncated: snippet.length !== content.length }], nextOffset }).length > this.config.resultChars) break
+        if (result.items.length && JSON.stringify({ ...result, items: [...result.items,
+          { ...metadata, content: snippet, matchedFields, truncated: snippet.length !== content.length }],
+        nextOffset }).length > this.config.resultChars) break
         const fitted = fitText(snippet, chunk => ({ ...result, items: [...result.items,
-          { ...metadata, content: chunk, truncated: start > 0 || chunk.length < content.length, matchedFields }], nextOffset }), this.config.resultChars)
+          { ...metadata, content: chunk, truncated: start > 0 || chunk.length < content.length, matchedFields }],
+        nextOffset }), this.config.resultChars)
         result.items = fitted.items; result.nextOffset = fitted.nextOffset
       }
       return result

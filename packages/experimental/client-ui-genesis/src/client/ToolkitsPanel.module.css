@@ -1,0 +1,17 @@
+.input {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+.fields legend {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.actions > button {
+  max-width: 100%;
+  min-height: 36px;
+  height: auto;
+  padding-block: 7px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,75 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../preset/agent-preset-registry"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../genesis"
+    },
+    {
+      "path": "../../core/agent-default-model"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../../session/session-title"
+    },
+    {
+      "path": "../../compaction/compaction"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../sandbox/sandbox"
+    },
+    {
+      "path": "../../session/session-projection"
+    }
+  ]
+}

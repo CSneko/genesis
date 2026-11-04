@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-minecraft/README.md
+/:
+  en: b70c0f68fc531c84
+  zh: 2b59312ace359050
+/deepseek-ai-dsh-experimental-genesis-minecraft:
+  en: e9c00f3424093761
+  zh: f6f3c1a4adf89013
+/deepseek-ai-dsh-experimental-genesis-minecraft/summary:
+  en: b98c197991d5f46b
+  zh: 89a0c2e0ec5e2c16
+/deepseek-ai-dsh-experimental-genesis-minecraft/table-of-contents:
+  en: ea6598e45d398358
+  zh: 8da3f0e86e5a30d9
+/deepseek-ai-dsh-experimental-genesis-minecraft/use:
+  en: b0c10fba2d9918ec
+  zh: 5ed7c0d5c402e33a
+/deepseek-ai-dsh-experimental-genesis-minecraft/configuration:
+  en: a5ae90967cda3fcc
+  zh: e8ee872734a5cc67
+/deepseek-ai-dsh-experimental-genesis-minecraft/understand-the-implementation:
+  en: 7e576148c529db1d
+  zh: 37dd82e8364d68b8
+/deepseek-ai-dsh-experimental-genesis-minecraft/further-exploration:
+  en: 330101e00670f6d1
+  zh: 86f7d1e0ab196efe
+/deepseek-ai-dsh-experimental-genesis-minecraft/model-experience:
+  en: 60e7a32d9a90b9c9
+  zh: 2cdd3ec9a38a053e
+/deepseek-ai-dsh-experimental-genesis-minecraft/known-limitations-and-deferred-work:
+  en: ea69840e3abab3fb
+  zh: a7b31a42d6f6b35a

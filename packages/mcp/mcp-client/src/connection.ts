@@ -321,6 +321,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         throw new Error(`${label}: server instructions exceed maxInstructionBytes (${maxInstructionBytes})`)
       }
       await enqueueSync(generation, startup ? startupOpts : opts)
+      if (config.shutdownTool !== undefined && !disposers.has(`mcp__${config.serverName}__${config.shutdownTool}`)) {
+        throw new Error(`${label}: shutdownTool is not advertised by this server; configure an available upstream tool name`)
+      }
     } catch (error) {
       if (firstAttemptError === undefined) firstAttemptError = error
       // Disposal clears current ownership before it closes the generation, so
@@ -393,8 +396,17 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         reconnectTimer = undefined
       }
       const close = closeClient
+      const departing = client
       client = undefined
       closeClient = undefined
+      if (departing !== undefined && connectedAt !== undefined && config.shutdownTool !== undefined) {
+        try {
+          const result = await departing.callTool({ name: config.shutdownTool, arguments: {} }, { timeout: config.toolCallTimeoutMs })
+          if (result.isError) ctx.logger.error(`${label}: shutdown tool failed; server data may be incomplete — inspect its saved state before restarting`)
+        } catch (error) {
+          ctx.logger.error(`${label}: shutdown tool failed; server data may be incomplete — inspect its saved state before restarting: ${String(error)}`)
+        }
+      }
       if (close !== undefined && !await close()) {
         ctx.logger.error(incompleteDisposalMessage)
       }

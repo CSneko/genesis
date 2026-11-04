@@ -11,6 +11,7 @@ const endpoint = { url: z.url().refine((value) => {
 }), model: z.string().trim().min(1).max(512), keyRef: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional() }
 const provider = z.strictObject({ kind: z.literal('provider'), provider: z.string().trim().min(1).max(512), model: endpoint.model })
 const modelsSchema = z.strictObject({
+  maxRetries: z.number().int().min(0).max(100).optional(),
   decision: z.discriminatedUnion('kind', [provider, z.strictObject({ kind: z.literal('jev'), ...endpoint, threshold: z.number().min(0).max(1) })]),
   writer: z.discriminatedUnion('kind', [provider, z.strictObject({ kind: z.literal('openai'), ...endpoint })]),
 })
@@ -24,8 +25,9 @@ export const modelPreferencesDomain = defineDomain({ name: 'genesis_model_settin
  * @param memory - Optional memory deployment.
  * @returns Nonsecret decision and writer routes; missing models remain visibly pending.
  */
-export function memoryModels(memory?: MemoryConfig): MemoryModelsSettings {
+export function memoryModels(memory?: MemoryConfig): MemoryModelsSettings & { maxRetries: number } {
   return {
+    maxRetries: memory?.maxRetries ?? 3,
     decision: memory?.decisionUrl === undefined
       ? { kind: 'provider', provider: memory?.decisionProvider ?? '', model: memory?.decisionModel ?? '' }
       : { kind: 'jev', url: memory.decisionUrl, model: memory.decisionModel, threshold: memory.decisionThreshold ?? 0.5,
@@ -49,7 +51,8 @@ export class ModelPreferences {
     if (this.closing !== undefined) throw new GenesisError('closed', 'Memory model settings are closing.')
     const saved = this.domain.table('settings').get('models')
     return saved === undefined ? { revision: 0, models: memoryModels(this.config.memory) }
-      : { revision: saved.revision, models: structuredClone(saved.models) }
+      : { revision: saved.revision, models: { ...structuredClone(saved.models),
+        maxRetries: saved.models.maxRetries ?? memoryModels(this.config.memory).maxRetries } }
   }
   /**
    * Persist only validated nonsecret routes; stale edits cannot overwrite newer settings.

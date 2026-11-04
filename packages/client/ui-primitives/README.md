@@ -33,6 +33,10 @@ This package is a Web-shell build input. Its static ESM retains third-party impo
 
 Compose feature UI from these atoms whenever the web client needs a standard control or an agent-output renderer. They render through React only and take `--dsw-*` design tokens from the theme, so they fit any plugin without importing the theme or the slot system.
 
+Source-workspace changes to shared primitive exports require rebuilding the Web shell as well as dynamic client plugins; `pnpm --filter @deepseek-ai/dsh-web-frontend build` refreshes that shell.
+
+`ConfigField` is a controlled configuration field with a multiline text area, secret input or finite choices; the owner supplies localized labels, validation and reset behavior.
+
 <a id="component-catalog"></a>
 ### Component catalog
 

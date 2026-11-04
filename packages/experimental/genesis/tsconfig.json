@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../../native/system/packages/entry"
+    },
+    {
       "path": "../../../vendor/cosmokit"
     },
     {
@@ -70,6 +73,12 @@
     },
     {
       "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../jobs/jobs"
+    },
+    {
+      "path": "../../subagent/subagent"
     }
   ]
 }

@@ -1211,6 +1211,60 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'One life owner. Writes serialize components and replace one manifest, so facts and state commit together. Storage failures poison this instance until reload; validation and capacity refusals leave it usable. Returned data is detached.',
     methods: [
       {
+        signature: 'bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>',
+        description: 'Bind an authenticated platform route to one durable Session before accepting messages.',
+        parameters: [{ name: 'conversation', description: 'Exact route and reserved Session; reuse may not silently replace it.' }, { name: 'operatorPersonId', description: 'Explicit deployment binding, never inferred from a name or relationship.' }],
+        returns: 'After the route is durable; conflicting routes or operator identities are refused.',
+      },
+      {
+        signature: 'confirmConversationSession(sessionId: SessionId): Promise<void>',
+        description: 'Confirm successful Session publication before any external input can be reserved.',
+        parameters: [{ name: 'sessionId', description: 'Successfully created or resumed bound Session.' }],
+        returns: 'After the publication marker is durable; repeats are idempotent.',
+      },
+      {
+        signature: 'forgetPerson(personId: PersonId, updatedAt?: string): Promise<boolean>',
+        description: 'Delete a retained profile, earlier account recognition and memories citing that person\'s messages, preserving audited Session evidence.',
+        parameters: [{ name: 'personId', description: 'Explicit operator-selected identity; names cannot select a person.' }, { name: 'updatedAt', description: 'Optional displayed profile version; changed or missing profiles refuse deletion.' }],
+        returns: 'Whether a retained profile existed; raw Session logs require separate lifecycle deletion.',
+      },
+      {
+        signature: 'reservePersonMessage(sessionId: SessionId, source: PersonSource, digest: string): Promise<boolean>',
+        description: 'Reserve one authenticated platform delivery before queueing it; uncertain deliveries are never replayed automatically.',
+        parameters: [{ name: 'sessionId', description: 'Previously bound route\'s Session.' }, { name: 'source', description: 'Validated transport author and external message identifier.' }, { name: 'digest', description: 'Hash of the complete admitted content, preventing conflicting retries.' }],
+        returns: 'Whether this caller reserved the delivery; an identical replay returns false.',
+      },
+      {
+        signature: 'reserveQqReply(sessionId: SessionId, seq: number, parts: number): Promise<boolean>',
+        description: 'Reserve one external assistant delivery before calling the platform; a crash leaves an explicit unknown result.',
+        parameters: [{ name: 'sessionId', description: 'Bound channel Session containing the committed assistant message.' }, { name: 'seq', description: 'Committed assistant event sequence, unique within that Session.' }, { name: 'parts', description: 'Complete number of planned outbound chunks.' }],
+        returns: 'Whether this caller owns the send; replay never sends twice.',
+      },
+      {
+        signature: 'settleQqReply(sessionId: SessionId, seq: number, status: \'confirmed\' | \'uncertain\', messageIds: string[]): Promise<void>',
+        description: 'Record actual platform acknowledgements, retaining partial sends and unknown outcomes without retrying them.',
+        parameters: [{ name: 'sessionId', description: 'Reserved reply\'s Session.' }, { name: 'seq', description: 'Assistant event sequence.' }, { name: 'status', description: 'Confirmed only when every planned chunk was acknowledged.' }, { name: 'messageIds', description: 'Actual OneBot message identifiers received before settlement.' }],
+        returns: 'After the append-only receipt is durable; repeated identical receipts are idempotent.',
+      },
+      {
+        signature: 'isOperatorSession(sessionId: SessionId): boolean',
+        description: 'Check whether a model conversation may use operator-owned tools and legacy private memories.',
+        parameters: [{ name: 'sessionId', description: 'Actual invoking Session.' }],
+        returns: 'False for groups and unbound external people; familiarity never grants authority.',
+      },
+      {
+        signature: 'isQqSession(sessionId: SessionId): boolean',
+        description: 'Identify a bound QQ Session for channel-specific data and tool restrictions.',
+        parameters: [{ name: 'sessionId', description: 'Actual calling Session.' }],
+        returns: 'Whether the Session belongs to the authenticated QQ adapter.',
+      },
+      {
+        signature: 'isOperatorPerson(personId: PersonId): boolean',
+        description: 'Match an authenticated account to the configured operator; names and relationships never qualify.',
+        parameters: [{ name: 'personId', description: 'Transport-verified person identity.' }],
+        returns: 'Whether this exact account has the durable operator binding.',
+      },
+      {
         signature: 'onCommitted(listener: (events: readonly LifeEvent[]) => void): () => void',
         description: 'Subscribe to newly committed life events; listeners must contain their own asynchronous failures.',
         parameters: [{ name: 'listener', description: 'Nonthrowing observer; callbacks must not mutate event values.' }],
@@ -1221,6 +1275,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Initialize the optional outbox without replacing prior history.',
         parameters: [],
         returns: 'After the state is durably initialized.',
+      },
+      {
+        signature: 'configureInitiative(settings: InitiativeSettings, revision: number): Promise<number>',
+        description: 'Save complete proactive policy atomically; enabling starts with current events, preserving existing pending records.',
+        parameters: [{ name: 'settings', description: 'Validated operator policy.' }, { name: 'revision', description: 'Last displayed settings revision; receipt changes do not invalidate a draft.' }],
+        returns: 'New revision, only after durable commit.',
+      },
+      {
+        signature: 'advanceInitiativeCursor(eventId: LifeEventId): Promise<void>',
+        description: 'Advance the event catch-up cursor monotonically without manufacturing an experience.',
+        parameters: [{ name: 'eventId', description: 'Last examined committed event.' }],
+        returns: 'After the cursor is durable; old cursors cannot move it backwards.',
       },
       {
         signature: 'requestInteraction(key: string, sourceEventId: LifeEventId): Promise<InteractionRecord>',
@@ -1249,8 +1315,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'commitDeliberation(commit: DeliberationCommit): Promise<LifeDecision>',
         description: 'Publish a validated deliberation and all its state transitions atomically.',
-        parameters: [{ name: 'commit', description: 'Captured evidence, revision and proposal from the independent writer.' }],
+        parameters: [{ name: 'commit', description: 'Captured evidence, revision and proposal from the owning integration.' }],
         returns: 'Committed choice; replay returns the original choice without further changes.',
+      },
+      {
+        signature: 'editPlan(change: PlanChange, source: { sessionId: SessionId; callId: ToolCallId }): Promise<{ id: PlanChange[\'id\']; revision: number }>',
+        description: 'Commit a main-model plan edit and its tool-call evidence atomically; failures preserve previous state.',
+        parameters: [{ name: 'change', description: 'Validated explicit create/update with the observed agency revision.' }, { name: 'source', description: 'Actual calling Session and logged tool call, supplied by the integration.' }],
+        returns: 'Stable plan id and committed revision; an identical replay returns its original receipt.',
+      },
+      {
+        signature: 'reservePlanning(sessionId: SessionId, key: string, sourceEventId: LifeEventId): Promise<LifeEvent | undefined>',
+        description: 'Reserve one main-model planning opportunity; replay never queues the same opportunity again.',
+        parameters: [{ name: 'sessionId', description: 'Actual receiving conversation.' }, { name: 'key', description: 'Trusted adapter\'s stable replay key.' }, { name: 'sourceEventId', description: 'Existing life evidence that prompted consideration.' }],
+        returns: 'A new reservation, or undefined for a replay; reservation alone does not confirm dispatch.',
       },
       {
         signature: 'reserveDecisionDispatch(id: DecisionId): Promise<boolean>',
@@ -1299,6 +1377,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Commit an emotion appraisal and its deduplication marker atomically with cited life evidence.',
         parameters: [{ name: 'sessionId', description: 'Source conversation, never another Session\'s text.' }, { name: 'evidence', description: 'Current exchange and optional earlier complete exchanges.' }, { name: 'revision', description: 'Emotion revision captured before inference; stale proposals are refused.' }, { name: 'update', description: 'Validated signed changes; omitted records a no-change decision.' }],
         returns: 'After durable commit; replay is a no-op and storage uncertainty stops dependent operations.',
+      },
+      {
+        signature: 'checkpointEmotion(): Promise<void>',
+        description: 'Save elapsed online affect time without changing operator revisions or creating an experience.',
+        parameters: [],
+        returns: 'After the online-only anchor is durable; storage uncertainty stops dependent operations.',
       },
       {
         signature: 'configureEmotion(settings: EmotionSettings, revision: number): Promise<number>',
@@ -1397,6 +1481,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Committed candidate retaining its identity and earlier sources when edited.',
       },
       {
+        signature: 'setMemorySummary(id: MemoryId, summary: string | null, updatedAt: string): Promise<LifeMemory>',
+        description: 'Replace or remove only a memory\'s short description, preserving its evidence and behavioral metadata.',
+        parameters: [{ name: 'id', description: 'Existing memory identifier.' }, { name: 'summary', description: 'At most forty characters, or null to remove the description.' }, { name: 'updatedAt', description: 'Displayed version; concurrent content or summary edits are refused.' }],
+        returns: 'Committed memory; an unchanged description adds no revision or event.',
+      },
+      {
         signature: 'convertMemory(id: MemoryId, kind: \'declarative\' | \'non-declarative\', updatedAt: string, maxImplicit: number): Promise<LifeMemory>',
         description: 'Change only the memory layer, retaining content, sources, identity and its embedding.',
         parameters: [{ name: 'id', description: 'Existing memory.' }, { name: 'kind', description: 'Explicit operator choice.' }, { name: 'updatedAt', description: 'Version observed by the editor; stale conversions are refused.' }, { name: 'maxImplicit', description: 'Whole-life non-declarative count budget.' }],
@@ -1421,9 +1511,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'A detached memory or undefined if absent or deleted.',
       },
       {
-        signature: 'reviewMemory(key: string, changes: MemoryChange[], maxImplicit: number, experience?: ExperienceChange, evidence?: ReviewEvidence): Promise<void>',
+        signature: 'reviewMemory(key: string, changes: MemoryChange[], maxImplicit: number, experience?: ExperienceChange, evidence?: ReviewEvidence, scope?: ConversationMemoryScope): Promise<void>',
         description: 'Atomically apply an independent writer\'s changes and record a completed review once.',
-        parameters: [{ name: 'key', description: 'Stable source turn or explicit user-memory request key.' }, { name: 'changes', description: 'Validated changes; all references must belong to this life.' }, { name: 'maxImplicit', description: 'Whole-life non-declarative record limit.' }, { name: 'experience', description: 'Optional remembered event; commits atomically with the derived entries.' }, { name: 'evidence', description: 'Completed user exchange metadata for independent habit support and durable maintenance.' }],
+        parameters: [{ name: 'key', description: 'Stable source turn or explicit user-memory request key.' }, { name: 'changes', description: 'Validated changes; all references must belong to this life.' }, { name: 'maxImplicit', description: 'Whole-life non-declarative record limit.' }, { name: 'experience', description: 'Optional remembered event; commits atomically with the derived entries.' }, { name: 'evidence', description: 'Completed user exchange metadata for independent habit support and durable maintenance.' }, { name: 'scope', description: 'Optional whole-conversation selection; every supplied version and mutation is checked atomically.' }],
         returns: 'After all changes and the replay marker commit, or no-op on replay.',
       },
       {
@@ -1495,9 +1585,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'deliberate\') async deliberate(sessionId: SessionId, signal: AbortSignal): Promise<void>',
-        description: 'Request a new autonomous deliberation in an idle character conversation; the chosen action may execute.',
+        description: 'Ask the main model in an idle character conversation to consider its plans and choose its next action.',
         parameters: [{ name: 'sessionId', description: 'Live idle Session selected explicitly by the operator.' }, { name: 'signal', description: 'Caller cancellation; committed choices remain auditable.' }],
-        returns: 'After the choice commits and any selected follow-up is enqueued.',
+        returns: 'After the planning opportunity is reserved and enqueued without an auxiliary choice.',
       },
     ],
   },
@@ -1508,15 +1598,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async admit(agent: Agent, messages: UserMessage[], signal: AbortSignal): Promise<UserMessage[]>',
-        description: 'Deliberate before real user input is admitted; preserve the original input and append the logged choice.',
+        description: 'Admit ordinary requests without auxiliary judgment; restore only attributed autonomous choices.',
         parameters: [{ name: 'agent', description: 'Actual conversation scope.' }, { name: 'messages', description: 'Accepted pre-step input from downstream listeners.' }, { name: 'signal', description: 'Current turn cancellation.' }],
-        returns: 'Original input plus one source-tagged choice, or unchanged continuation input.',
+        returns: 'Original user input without stale choices, or validated autonomous choice notices.',
       },
       {
-        signature: 'async deliberate(agent: Agent, request: { key: string; sourceEventId: LifeEventId }, signal: AbortSignal): Promise<LifeDecision>',
-        description: 'Run one externally triggered autonomous deliberation without a user assignment; enqueue only its chosen response/action.',
-        parameters: [{ name: 'agent', description: 'Idle live Agent receiving logged inference and any chosen follow-up.' }, { name: 'request', description: 'Stable replay key and an existing life event, supplied by a trusted adapter or future scheduler.' }, { name: 'signal', description: 'Caller cancellation; no background wake timer is installed.' }],
-        returns: 'Committed choice. Waiting queues nothing; replay never dispatches the same decision again.',
+        signature: 'deliberate(agent: Agent, request: { key: string; sourceEventId: LifeEventId }, caller: AbortSignal): Promise<void>',
+        description: 'Ask the main model to consider its plans, without an external model choosing a goal or action.',
+        parameters: [{ name: 'agent', description: 'Idle live character conversation receiving the logged opportunity.' }, { name: 'request', description: 'Stable replay key and an existing life event, supplied by a trusted adapter or future scheduler.' }, { name: 'caller', description: 'Caller cancellation; no background wake timer is installed.' }],
+        returns: 'After reservation and enqueue; replay never redispatches an existing reservation, including after uncertain shutdown.',
       },
       {
         signature: 'considerInteraction(agent: Agent, key: string, source: LifeEventId, signal: AbortSignal): Promise<LifeDecision>',
@@ -1550,9 +1640,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async start(): Promise<void>',
-        description: 'Subscribe to life events and arm the configured proactive checks.',
+        description: 'Initialize pending deliveries and schedule checks from the saved policy.',
         parameters: [],
-        returns: 'After durable initialization and subscription; no immediate unsolicited message is forced.',
+        returns: 'After initialization, pending-receipt recovery and timer setup; startup creates no new opportunity.',
+      },
+      {
+        signature: 'status(): { working: boolean; nextCheckAt: string | null; failure: { code: string; message: string } | null }',
+        description: 'Read the current delivery schedule and failure state.',
+        parameters: [],
+        returns: 'Current runtime evidence; configuration and receipts remain core-owned.',
       },
       {
         signature: 'considerInteraction(request: { key: string; sourceEventId: LifeEventId }, signal?: AbortSignal): Promise<InteractionRecord>',
@@ -1561,7 +1657,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Durable outcome, including pending when there is no usable channel.',
       },
       {
-        signature: 'async tick(): Promise<void>',
+        signature: 'tick(): Promise<void>',
         description: 'One scheduled wake; the persisted bucket also deduplicates restarts within the interval.',
         parameters: [],
         returns: 'After event catch-up and one scheduled opportunity.',
@@ -1574,9 +1670,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'resume(): Promise<void>',
-        description: 'Settle deliveries from the replayable receipt and retry only confirmed pending opportunities.',
+        description: 'Settle live or stored assistant receipts without waking cold Agents; only pending opportunities may dispatch.',
         parameters: [],
-        returns: 'After currently available channels have been reconciled and pending work considered.',
+        returns: 'After receipt reconciliation and pending consideration; storage failures remain visible without resending.',
       },
       {
         signature: 'observe(session: Session): void',
@@ -1592,6 +1688,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'genesisInitiativeStatus',
+    summary: 'Settings revisions are independent of background receipt commits.',
+    description: 'Settings revisions are independent of background receipt commits.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<InitiativeStatus>',
+        description: 'Read settings, channel availability and bounded actual decisions and receipts.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'A complete bounded sample with truncation and omission counts; no delivery is implied by enqueueing.',
+      },
+      {
+        signature: '@Remote(\'saveSettings\') saveSettings(settings: InitiativeSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save policy for subsequent opportunities and admission; previously admitted assistant turns may finish.',
+        parameters: [{ name: 'settings', description: 'Complete policy, validated at this wire boundary.' }, { name: 'revision', description: 'Displayed settings revision.' }, { name: 'signal', description: 'Caller cancellation; an admitted storage commit drains.' }],
+        returns: 'Committed revision; failures preserve the operator draft.',
+      },
+    ],
+  },
+  {
     key: 'genesisMemory',
     summary: 'Explicit user memory controls; errors retain their actual stage and safe diagnostic.',
     description: 'Explicit user memory controls; errors retain their actual stage and safe diagnostic.',
@@ -1603,10 +1718,28 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Whether changes were saved; repeated requests are idempotent.',
       },
       {
+        signature: '@Remote({ name: \'overview\', resources: { session: (sessionId: SessionId) => sessionId } }) overview(sessionId: SessionId, id: MemoryOrganizationId, signal: AbortSignal): Promise<boolean>',
+        description: 'Let the independent writer organize all chat text and memories associated with one open Life conversation.',
+        parameters: [{ name: 'sessionId', description: 'Authorized source conversation; tool and injected output are excluded.' }, { name: 'id', description: 'Stable operator request UUID, retained across failed or uncertain retries.' }, { name: 'signal', description: 'Caller cancellation; admitted storage writes drain.' }],
+        returns: 'Whether valid entries changed memories after version checks; invalid entries are logged and deletions withheld; repeated committed requests are idempotent.',
+      },
+      {
         signature: '@Remote(\'save\') save(id: MemoryId, draft: MemoryDraft, updatedAt: string | null, signal: AbortSignal): Promise<LifeMemory>',
         description: 'Create a sourced operator candidate or directly update its current fields without an edit event or revision.',
         parameters: [{ name: 'id', description: 'Client-allocated memory UUID, retained across retries.' }, { name: 'draft', description: 'Editable fields; attribution and sources are assigned by the core.' }, { name: 'updatedAt', description: 'Displayed version, or null when creating.' }, { name: 'signal', description: 'Cancellation before storage admission.' }],
         returns: 'Accepted memory without its vector cache.',
+      },
+      {
+        signature: '@Remote(\'saveSummary\') saveSummary(id: MemoryId, summary: string | null, updatedAt: string, signal: AbortSignal): Promise<LifeMemory>',
+        description: 'Save or remove a short description without changing memory content, attribution or habit evidence.',
+        parameters: [{ name: 'id', description: 'Existing memory identifier.' }, { name: 'summary', description: 'At most forty characters, or null to remove the description.' }, { name: 'updatedAt', description: 'Displayed memory version.' }, { name: 'signal', description: 'Cancellation before storage admission.' }],
+        returns: 'Accepted memory without vector caches; stale edits are refused.',
+      },
+      {
+        signature: '@Remote(\'summarize\') summarize(id: MemoryId, updatedAt: string, signal: AbortSignal): Promise<LifeMemory>',
+        description: 'Generate a short description from the current memory through the saved independent writer.',
+        parameters: [{ name: 'id', description: 'Existing memory identifier.' }, { name: 'updatedAt', description: 'Displayed version, checked again after inference.' }, { name: 'signal', description: 'Caller cancellation; retries retain the original deadline.' }],
+        returns: 'Memory with its new summary; failure leaves the selected version unchanged.',
       },
       {
         signature: '@Remote(\'deleteMemory\') deleteMemory(id: MemoryId, updatedAt: string, signal: AbortSignal): Promise<boolean>',
@@ -1647,10 +1780,193 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'genesisMinecraft',
+    summary: 'Operator access does not teach or enable any model tool.',
+    description: 'Operator access does not teach or enable any model tool.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<MinecraftStatus>',
+        description: 'Read settings and sampled status without a connection side effect.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Current nonsecret status.',
+      },
+      {
+        signature: '@Remote(\'save\') save(settings: MinecraftSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Persist settings, stopping the existing game before changes.',
+        parameters: [{ name: 'settings', description: 'Complete operator draft.' }, { name: 'revision', description: 'Displayed revision.' }, { name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: '@Remote(\'connect\') connect(connection: MinecraftConnection, signal: AbortSignal): Promise<void>',
+        description: 'Connect with explicit server choices in a connection-owned Life conversation.',
+        parameters: [{ name: 'connection', description: 'Server, offline player name and protocol selection.' }, { name: 'signal', description: 'Cancels setup.' }],
+        returns: 'After real spawn and camera readiness.',
+      },
+      {
+        signature: '@Remote(\'stop\') stop(signal: AbortSignal): Promise<void>',
+        description: 'Stop skills immediately without waiting for Jev or a chat response.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'After controls are cleared.',
+      },
+      {
+        signature: '@Remote(\'disconnect\') disconnect(signal: AbortSignal): Promise<void>',
+        description: 'Disconnect without automatic reconnection.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'After all game resources close.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *watch(signal: AbortSignal): AsyncIterable<MinecraftStatus>',
+        description: 'Stream bounded sampled status while this settings resource is open.',
+        parameters: [{ name: 'signal', description: 'Ends the subscription.' }],
+        returns: 'Current snapshots; cancellation creates no additional work.',
+      },
+    ],
+  },
+  {
+    key: 'genesisPeople',
+    summary: 'Operator-only, paged relationship inspection and explicit retention deletion.',
+    description: 'Operator-only, paged relationship inspection and explicit retention deletion.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(offset: number, signal: AbortSignal): Promise<PeopleCatalog>',
+        description: 'List current retained profiles in stable ID order without creating profiles for strangers.',
+        parameters: [{ name: 'offset', description: 'Zero-based page offset.' }, { name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'One bounded page, total count and continuation offset.',
+      },
+      {
+        signature: '@Remote(\'detail\') detail(id: PersonId, offset: number, signal: AbortSignal): Promise<PersonDetail>',
+        description: 'Read relationship appraisals with links to their actual source Sessions.',
+        parameters: [{ name: 'id', description: 'Stable person identity selected from the catalogue.' }, { name: 'offset', description: 'Evidence page offset, newest first.' }, { name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'Current profile and a bounded evidence page; missing profiles fail visibly.',
+      },
+      {
+        signature: '@Remote(\'forget\') forget(id: PersonId, updatedAt: string, signal: AbortSignal): Promise<void>',
+        description: 'Remove a displayed relationship and its dependent memories without deleting original Session audits.',
+        parameters: [{ name: 'id', description: 'Explicit operator-selected stable identity.' }, { name: 'updatedAt', description: 'Displayed profile version; concurrent changes refuse deletion.' }, { name: 'signal', description: 'Caller cancellation before admission; accepted writes drain on teardown.' }],
+        returns: 'After the retained profile and dependent memories are durably removed.',
+      },
+    ],
+  },
+  {
+    key: 'genesisQq',
+    summary: 'Settings remain available when OneBot is absent or its listener cannot start.',
+    description: 'Settings remain available when OneBot is absent or its listener cannot start.',
+    methods: [
+      {
+        signature: 'async start(): Promise<void>',
+        description: 'Restore saved choices without preventing the settings page from reporting transport failure.',
+        parameters: [],
+        returns: 'After setup settles.',
+      },
+      {
+        signature: 'saveConnection(connection: QqConnection, revision: number): Promise<number>',
+        description: 'Save choices and reconnect; a failed reconnect remains visible and can be retried by saving again.',
+        parameters: [{ name: 'connection', description: 'Complete nonsecret choices.' }, { name: 'revision', description: 'Displayed connection revision.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: 'setToken(value: string | undefined): Promise<void>',
+        description: 'Store or remove the channel token, stopping the old connection before touching credentials.',
+        parameters: [{ name: 'value', description: 'New token, or undefined to remove it.' }],
+        returns: 'After credential persistence and optional reconnection.',
+      },
+      {
+        signature: 'async inspect(): Promise<QqStatus>',
+        description: 'Inspect without connecting or exposing secrets.',
+        parameters: [],
+        returns: 'Current nonsecret connection and bounded receipt sample.',
+      },
+      {
+        signature: 'saveDecision(settings: QqDecisionSettings, revision: number): Promise<number>',
+        description: 'Save QQ-only inference choices.',
+        parameters: [{ name: 'settings', description: 'Operator route.' }, { name: 'revision', description: 'Revision fence.' }],
+        returns: 'New revision.',
+      },
+      {
+        signature: 'setDecisionKey(value: string | undefined): Promise<void>',
+        description: 'Store a dedicated key without modifying memory credentials.',
+        parameters: [{ name: 'value', description: 'Secret or removal.' }],
+        returns: 'After provider confirmation.',
+      },
+      {
+        signature: 'address(): { address: string; port: number } | string | null',
+        description: 'Return the current listener address.',
+        parameters: [],
+        returns: 'Null while disabled or disconnected.',
+      },
+      {
+        signature: 'observe(sessionId: SessionId, event: SessionEvent): void',
+        description: 'Forward committed replies only to the current transport.',
+        parameters: [{ name: 'sessionId', description: 'Session owner.' }, { name: 'event', description: 'Committed Session event.' }],
+      },
+      {
+        signature: 'close(): Promise<void>',
+        description: 'Stop admission and drain reconfiguration before disposing transport.',
+        parameters: [],
+        returns: 'After all channel work closes.',
+      },
+    ],
+  },
+  {
+    key: 'genesisQqSettings',
+    summary: 'Only operator policy can change admission; inspecting receipts has no external send side effect.',
+    description: 'Only operator policy can change admission; inspecting receipts has no external send side effect.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<QqStatus>',
+        description: 'Read secret-free connection and delivery diagnostics.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Current bounded sample.',
+      },
+      {
+        signature: '@Remote(\'saveConnection\') saveConnection(connection: QqConnection, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Persist nonsecret connection choices and replace the old transport.',
+        parameters: [{ name: 'connection', description: 'Complete operator choices.' }, { name: 'revision', description: 'Displayed connection revision.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'Committed connection revision.',
+      },
+      {
+        signature: '@Remote(\'setToken\') setToken(value: string | undefined, signal: AbortSignal): Promise<void>',
+        description: 'Save or remove the OneBot token through credential storage; no token is returned.',
+        parameters: [{ name: 'value', description: 'Token or undefined for removal.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'After credential persistence.',
+      },
+      {
+        signature: '@Remote(\'saveDecision\') saveDecision(settings: QqDecisionSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save an independent QQ decision route.',
+        parameters: [{ name: 'settings', description: 'Nonsecret route.' }, { name: 'revision', description: 'Revision fence.' }, { name: 'signal', description: 'Cancellation.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: '@Remote(\'setDecisionKey\') setDecisionKey(value: string | undefined, signal: AbortSignal): Promise<void>',
+        description: 'Save/remove the QQ decision credential.',
+        parameters: [{ name: 'value', description: 'Secret or removal.' }, { name: 'signal', description: 'Cancellation.' }],
+        returns: 'After credential confirmation.',
+      },
+      {
+        signature: '@Remote(\'save\') save(settings: QqSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save route policy independently of connection settings.',
+        parameters: [{ name: 'settings', description: 'Complete operator admission policy.' }, { name: 'revision', description: 'Last displayed revision.' }, { name: 'signal', description: 'Caller cancellation before admission; admitted writes drain on teardown.' }],
+        returns: 'Committed revision; the next queued operation checks the new policy.',
+      },
+    ],
+  },
+  {
     key: 'genesisRecords',
     summary: 'Operator API; disabling recording keeps the namespace mounted with an explicit unavailable catalog.',
     description: 'Operator API; disabling recording keeps the namespace mounted with an explicit unavailable catalog.',
     methods: [
+      {
+        signature: 'ensureType(id: WritingTypeId, name: string, signal: AbortSignal): Promise<WritingType>',
+        description: 'Initialize a trusted integration category; this is not exposed to Remote callers or model tools.',
+        parameters: [{ name: 'id', description: 'Stable integration category identity.' }, { name: 'name', description: 'Initial label, never overwriting operator changes.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Existing or created category; disabled recording rejects.',
+      },
+      {
+        signature: 'importRecord(draft: WritingDraft, source: { sessionId: SessionId; callId: ToolCallId }, imported: { id: WritingImportId; createdAt: string }, signal: AbortSignal): Promise<WritingReceipt>',
+        description: 'Import a legacy writing without changing life memory or exposing arbitrary import keys to the model.',
+        parameters: [{ name: 'draft', description: 'Complete attributed text and current category.' }, { name: 'source', description: 'Actual Session and tool call performing migration.' }, { name: 'imported', description: 'Adapter-owned permanent receipt and validated original creation time.' }, { name: 'signal', description: 'Cancellation before durable admission; accepted writes drain.' }],
+        returns: 'Stable receipt; retries preserve operator edits and never recreate deleted records.',
+      },
       {
         signature: '@Remote(\'catalog\') catalog(signal: AbortSignal): Promise<WritingCatalog | null>',
         description: 'Read record categories and effective writing limits.',
@@ -1694,6 +2010,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'Sample shared life state and initialize its name without changing its identity or permissions.',
     description: 'Sample shared life state and initialize its name without changing its identity or permissions.',
     methods: [
+      {
+        signature: 'decisionModel(): MemoryModelsSettings[\'decision\']',
+        description: 'Read the current auxiliary decision route without constructing a full status response.',
+        parameters: [],
+        returns: 'Detached operator route.',
+      },
+      {
+        signature: 'async decide(session: Session, question: string, input: Record<string, unknown> & { participants: object }, criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings[\'decision\']): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }>',
+        description: 'Evaluate a binary question through the configured decision route with durable request/response audit.',
+        parameters: [{ name: 'session', description: 'Actual caller\'s inference log.' }, { name: 'question', description: 'Trusted binary question; generative routes receive explicit JSON output instructions.' }, { name: 'input', description: 'Complete bounded evidence with explicitly scoped participants.' }, { name: 'criteria', description: 'Trusted yes/no interpretations for binary endpoints.' }, { name: 'signal', description: 'Caller cancellation; the shared auxiliary deadline also applies.' }, { name: 'route', description: 'Optional channel-only decision route; shared settings remain unchanged.' }],
+        returns: 'Validated answer and genuine endpoint probability when supplied; failure authorizes no action.',
+      },
       {
         signature: '@Remote(\'initialize\') async initialize(name: string, signal: AbortSignal): Promise<void>',
         description: 'Check configured chat/reviewer/writer routes and the embedding service, then name this existing life once. Credentials use the existing provider settings or account sign-in; no secrets are accepted or stored here.',
@@ -1771,6 +2099,75 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Sample live tools, identity, counts and bounded memory/growth previews. Historical scopes are excluded from current availability. Errors reject; callers keep their previous sample visibly stale and offer retry.',
         parameters: [{ name: 'signal', description: 'Caller cancellation; already-started life writes retain their durability semantics.' }],
         returns: 'A bounded detached status sample with explicit omission counts.',
+      },
+    ],
+  },
+  {
+    key: 'genesisTasks',
+    summary: 'Operator inspection shares the live task owner\'s reads and never impersonates a Life Agent.',
+    description: 'Operator inspection shares the live task owner\'s reads and never impersonates a Life Agent.',
+    methods: [
+      {
+        signature: '@Remote(\'catalog\') async catalog(offset: number, signal: AbortSignal): Promise<ManagedTaskCatalog>',
+        description: 'Read managed tasks only in currently accessible, unarchived workspaces.',
+        parameters: [{ name: 'offset', description: 'Page position; the task owner\'s configured limits bound results.' }, { name: 'signal', description: 'Caller cancellation, combined with the service lifetime.' }],
+        returns: 'Actual sampled execution and delivery states without loading or dispatching Agents.',
+      },
+    ],
+  },
+  {
+    key: 'genesisTemporary',
+    summary: 'Operator controls never send a conversation message or change long-term memories.',
+    description: 'Operator controls never send a conversation message or change long-term memories.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<TemporaryStatus>',
+        description: 'Read current settings, expiry times and pending failures.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Bounded operator sample.',
+      },
+      {
+        signature: '@Remote(\'save\') save(settings: TemporarySettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save independent summary model and quiet interval.',
+        parameters: [{ name: 'settings', description: 'Complete nonsecret draft.' }, { name: 'revision', description: 'Displayed revision.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: '@Remote(\'forget\') forget(id: TemporaryMemoryId, signal: AbortSignal): Promise<void>',
+        description: 'Remove a current summary; next context admission carries its removal.',
+        parameters: [{ name: 'id', description: 'Summary identity.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After removal commits.',
+      },
+      {
+        signature: '@Remote(\'retry\') retry(sessionId: SessionId, signal: AbortSignal): Promise<void>',
+        description: 'Explicitly retry a failed batch without resetting committed progress.',
+        parameters: [{ name: 'sessionId', description: 'Failed source conversation.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After the admitted retry settles.',
+      },
+      {
+        signature: '@Remote(\'setKey\') setKey(value: string | undefined, signal: AbortSignal): Promise<void>',
+        description: 'Store or remove the fixed summary endpoint credential; it is never returned.',
+        parameters: [{ name: 'value', description: 'Secret or undefined to remove it.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After the credential provider confirms the write.',
+      },
+    ],
+  },
+  {
+    key: 'genesisToolkits',
+    summary: 'Catalogue editing never teaches tools or grants execution permission.',
+    description: 'Catalogue editing never teaches tools or grants execution permission.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<ToolkitStatus>',
+        description: 'Read the complete editable catalogue, including empty groups and unknown member rules.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Detached catalogue plus learned and currently registered names; neither implies authorization.',
+      },
+      {
+        signature: '@Remote(\'save\') save(entries: ToolkitDefinition[], revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Replace operator definitions with optimistic concurrency; existing conversation activations retain their IDs.',
+        parameters: [{ name: 'entries', description: 'Complete definitions, validated before any write; innate tools cannot be grouped.' }, { name: 'revision', description: 'Last displayed catalogue revision.' }, { name: 'signal', description: 'Caller cancellation; admitted writes drain even after cancellation.' }],
+        returns: 'Committed revision; stale or invalid drafts do not replace confirmed settings.',
       },
     ],
   },
@@ -4757,6 +5154,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'compaction/context-window',
+    mode: 'waterfall',
+    signature: '\'compaction/context-window\'(payload: { session: Session; modelWindow: number }, next: () => number): number',
+    summary: 'Reduce the capacity used by automatic pressure policy for one Session.',
+    description: 'Reduce the capacity used by automatic pressure policy for one Session. Providers cap the returned value at the model\'s actual capacity. Consumers delegate before applying their limit and retain positive token capacities.',
+    parameters: [{ name: 'payload', description: '.modelWindow - Actual model capacity in tokens.' }, { name: 'next', description: 'Delegate to the next capacity policy; defaults to modelWindow.' }],
+  },
+  {
     name: 'compaction/summary-error',
     mode: 'waterfall',
     signature: '\'compaction/summary-error\'(payload: { session: Session; sourceEventSeqs: readonly SessionSeq[]; error: unknown; signal?: AbortSignal }, next: () => boolean): boolean',
@@ -5761,6 +6166,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContinuableCreateSpec {\n    readonly seed?: readonly SessionEvent[];\n}',
   },
   {
+    name: 'ConversationMemoryScope',
+    declaration: 'export interface ConversationMemoryScope {\n    sessionId: SessionId;\n    versions: Array<{\n        id: MemoryId;\n        updatedAt: string;\n    }>;\n}',
+  },
+  {
     name: 'CordisDynamicPackageId',
     declaration: 'export type CordisDynamicPackageId = Branded<\'CordisDynamicPackageId\'>;',
   },
@@ -6341,6 +6750,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type IndexInjectionPlacement = \'head\' | \'body\';',
   },
   {
+    name: 'InitiativeSettings',
+    declaration: 'export type InitiativeSettings = z.infer<typeof initiativeSettingsSchema>;',
+  },
+  {
+    name: 'InitiativeStatus',
+    declaration: 'export interface InitiativeStatus {\n    available: boolean;\n    revision: number;\n    sampledAt: string;\n    settings: InitiativeSettings | null;\n    mode: \'unavailable\' | \'paused\' | \'checking\' | \'waiting-channel\' | \'ready\' | \'failed\';\n    nextCheckAt: string | null;\n    lastCheckAt: string | null;\n    failure: {\n        code: string;\n        message: string;\n    } | null;\n    lastMessage: InteractionRecord | null;\n    lastMessageTruncated: boolean;\n    channels: Array<{\n        id: SessionId;\n        idle: boolean;\n    }>;\n    counts: Record<InteractionRecord[\'status\'], number>;\n    records: Array<{\n        record: InteractionRecord;\n        triggerType: string;\n        choice: LifeDecision[\'candidates\'][number][\'disposition\'] | null;\n        messageTruncated: boolean;\n    }>;\n    omitted: number;\n    channelsOmitted: number;\n}',
+  },
+  {
     name: 'InspectOptions',
     declaration: 'export interface InspectOptions {\n    readonly registry?: Registry;\n}',
   },
@@ -6573,6 +6990,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
   },
   {
+    name: 'LifeConversation',
+    declaration: 'export type LifeConversation = z.infer<typeof conversationSchema>;',
+  },
+  {
     name: 'LifeDecision',
     declaration: 'export type LifeDecision = AgencyState[\'decisions\'][number];',
   },
@@ -6607,6 +7028,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LifeMotivation',
     declaration: 'export type LifeMotivation = AgencyState[\'motivations\'][number];',
+  },
+  {
+    name: 'LifePerson',
+    declaration: 'export type LifePerson = z.infer<typeof personSchema>;',
   },
   {
     name: 'LifeState',
@@ -6745,6 +7170,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LspRange {\n    readonly start: LspPosition;\n    readonly end: LspPosition;\n}',
   },
   {
+    name: 'ManagedTaskCatalog',
+    declaration: 'export interface ManagedTaskCatalog {\n    sampledAt: string;\n    items: Array<{\n        id: SessionId;\n        workspaceId: WorkspaceId;\n        workspaceTitle: string;\n        mode: string;\n        delivery: \'pending\' | \'delivered\' | \'withdrawn\';\n        state: string;\n        executionState: string;\n        turn: number;\n        attempts: number;\n        activeWork: number;\n        readable: boolean;\n        confirmed: boolean;\n    }>;\n    nextOffset: number | null;\n}',
+  },
+  {
     name: 'ManagementError',
     declaration: 'export interface ManagementError {\n    code: ReadOnlyReason | \'unknown-plugin\' | \'invalid-spec\' | \'already-installed\' | \'ambiguous-install\' | \'not-bundle\' | \'not-removable\' | \'stop-profile\' | \'bundle-in-use\' | \'stale-approval\' | \'incompatible-version\' | \'operation-error\';\n    diagnostic?: string;\n    incompatible?: IncompatiblePlugin[];\n}',
   },
@@ -6878,7 +7307,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MemoryModelsSettings',
-    declaration: 'export interface MemoryModelsSettings {\n    decision: ProviderRoute | (EndpointRoute & {\n        kind: \'jev\';\n        threshold: number;\n    });\n    writer: ProviderRoute | (EndpointRoute & {\n        kind: \'openai\';\n    });\n}',
+    declaration: 'export interface MemoryModelsSettings {\n    maxRetries?: number | undefined;\n    decision: ProviderRoute | (EndpointRoute & {\n        kind: \'jev\';\n        threshold: number;\n    });\n    writer: ProviderRoute | (EndpointRoute & {\n        kind: \'openai\';\n    });\n}',
   },
   {
     name: 'MemoryOrganizationId',
@@ -6890,7 +7319,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MemoryQuery',
-    declaration: 'export interface MemoryQuery {\n    text: string;\n    category?: LifeMemory[\'category\'];\n    after?: string;\n    before?: string;\n    limit: number;\n    chars: number;\n}',
+    declaration: 'export interface MemoryQuery {\n    sessionId?: SessionId;\n    text: string;\n    category?: LifeMemory[\'category\'];\n    after?: string;\n    before?: string;\n    limit: number;\n    chars: number;\n    contentOnly?: boolean;\n}',
   },
   {
     name: 'MemoryRelabel',
@@ -6989,6 +7418,54 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface MessageSourceMap {\n    user: {\n        kind: \'user\';\n    };\n    model: ModelMessageSource;\n    tool: ToolMessageSource;\n    \'system-prompt\': SystemPromptMessageSource;\n}',
   },
   {
+    name: 'MinecraftBlockObservation',
+    declaration: 'export type MinecraftBlockObservation = {\n    name: string;\n    position: {\n        x: number;\n        y: number;\n        z: number;\n    };\n    stateId: number;\n    properties: Record<string, string | number | boolean>;\n    distance: number;\n    visible: boolean;\n    withinReach: boolean;\n};',
+  },
+  {
+    name: 'MinecraftChat',
+    declaration: 'export interface MinecraftChat {\n    sequence: number;\n    channel: \'public\' | \'whisper\';\n    player: string;\n    playerId?: MinecraftPlayerId;\n    message: string;\n}',
+  },
+  {
+    name: 'MinecraftCollectionProgress',
+    declaration: 'export type MinecraftCollectionProgress = {\n    item: string;\n    requested: number;\n    before: number;\n    current: number;\n    gained: number;\n    minedBlocks: number;\n};',
+  },
+  {
+    name: 'MinecraftConnection',
+    declaration: 'export interface MinecraftConnection {\n    host: string;\n    port: number;\n    username: string;\n    version: string;\n}',
+  },
+  {
+    name: 'MinecraftObservation',
+    declaration: 'export interface MinecraftObservation {\n    id: MinecraftObservationId;\n    time: string;\n    position: {\n        x: number;\n        y: number;\n        z: number;\n    };\n    health: number;\n    food: number;\n    dimension: string;\n    action: string;\n    failure: string | null;\n    inventory: Array<{\n        name: string;\n        count: number;\n    }>;\n    entities: Array<{\n        id: number;\n        uuid?: MinecraftPlayerId;\n        name: string;\n        distance: number;\n    }>;\n    chat: MinecraftChat[];\n    blocks?: MinecraftBlockObservation[];\n    crosshair?: {\n        name: string;\n        position: {\n            x: number;\n            y: number;\n            z: number;\n        };\n    } | null;\n    supportedActions?: string[];\n    lastAction?: MinecraftSkillOutcome & {\n        action: string;\n    };\n}',
+  },
+  {
+    name: 'MinecraftObservationId',
+    declaration: 'export type MinecraftObservationId = Branded<\'MinecraftObservationId\'>;',
+  },
+  {
+    name: 'MinecraftPlayerId',
+    declaration: 'export type MinecraftPlayerId = Branded<\'MinecraftPlayerId\'>;',
+  },
+  {
+    name: 'MinecraftSettings',
+    declaration: 'export interface MinecraftSettings {\n    enabled: boolean;\n    reuseKnowledge: boolean;\n    jevEnabled: boolean;\n    jevUrl: string;\n    jevModel: string;\n    jevKeyRef: string;\n    intervalMs: number;\n    timeoutMs: number;\n    threshold: number;\n    notificationIntervalMs: number;\n    vision: boolean;\n    lowHealth: number;\n    skillTimeoutMs: number;\n}',
+  },
+  {
+    name: 'MinecraftSkillOutcome',
+    declaration: 'export interface MinecraftSkillOutcome {\n    outcome: \'completed\' | \'failed\' | \'interrupted\' | \'timed-out\';\n    failure: string | null;\n    target?: {\n        name: string;\n        position: {\n            x: number;\n            y: number;\n            z: number;\n        };\n    };\n    collection?: MinecraftCollectionProgress;\n}',
+  },
+  {
+    name: 'MinecraftStatus',
+    declaration: 'export interface MinecraftStatus {\n    sessionId: SessionId | null;\n    task: MinecraftTaskStatus | null;\n    revision: number;\n    settings: MinecraftSettings;\n    connection: \'disconnected\' | \'connecting\' | \'connected\';\n    monitor: \'disabled\' | \'running\' | \'failed\';\n    failure: string | null;\n    observation: MinecraftObservation | null;\n    image: string | null;\n    lastNotice: string | null;\n}',
+  },
+  {
+    name: 'MinecraftTaskId',
+    declaration: 'export type MinecraftTaskId = Branded<\'MinecraftTaskId\'>;',
+  },
+  {
+    name: 'MinecraftTaskStatus',
+    declaration: 'export interface MinecraftTaskStatus {\n    id: MinecraftTaskId;\n    goal: string;\n    phase: \'running\' | \'completed\' | \'cancelled\' | \'timed-out\' | \'blocked\' | \'failed\';\n    step: number;\n    totalSteps: number;\n    completedActions: number;\n    deadline: string;\n    action: string | null;\n    reason: string | null;\n    budget?: {\n        requestedTimeoutMs: number;\n        timeoutMs: number;\n        timeoutLimitMs: number;\n        stepLimit: number;\n        repeatLimit: number;\n        planCharsLimit: number;\n    };\n    waitingDecisions?: number;\n    lastResult?: {\n        isError: boolean;\n        value?: JsonValue;\n    };\n    inventoryGoal?: {\n        item: string;\n        required: number;\n        current: number;\n    };\n}',
+  },
+  {
     name: 'ModDefinition',
     declaration: 'export interface ModDefinition {\n    readonly name: string;\n    readonly version?: string;\n    readonly root?: string;\n    readonly options?: PluginOptions;\n    readonly register: ModRegister;\n}',
   },
@@ -7074,7 +7551,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ObservedInteraction',
-    declaration: 'export interface ObservedInteraction {\n    sessionId: SessionId;\n    eventId: string;\n    timestamp: string;\n    kind: \'user-message\' | \'assistant-message\' | \'tool-result\';\n    tool?: string;\n    success?: boolean;\n}',
+    declaration: 'export interface ObservedInteraction {\n    participant?: PersonSource | undefined;\n    sessionId: SessionId;\n    eventId: string;\n    timestamp: string;\n    kind: \'user-message\' | \'assistant-message\' | \'tool-result\';\n    tool?: string;\n    success?: boolean;\n}',
   },
   {
     name: 'OfficeExtension',
@@ -7169,12 +7646,40 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PendingModule {\n    url: string;\n    reason: \'host-module\' | \'unmanaged-plugin\' | \'module-comparison\';\n}',
   },
   {
+    name: 'PeopleCatalog',
+    declaration: 'export interface PeopleCatalog {\n    items: PersonSummary[];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
     name: 'PermissionCatalog',
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n    defaultOptions: PresetOption[];\n    defaultPreset: string;\n}',
   },
   {
     name: 'PersonalityStatus',
     declaration: 'export interface PersonalityStatus {\n    entries: LifeMemory[];\n    omitted: number;\n}',
+  },
+  {
+    name: 'PersonDetail',
+    declaration: 'export interface PersonDetail {\n    person: PersonSummary;\n    events: PersonEvidence[];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
+    name: 'PersonEvidence',
+    declaration: 'export interface PersonEvidence {\n    id: LifeEventId;\n    timestamp: string;\n    kind: \'appraisal\' | \'migration\';\n    reason: string;\n    summary: string;\n    sources: Array<{\n        id: LifeEventId;\n        sessionId: SessionId | null;\n        eventId: string | null;\n    }>;\n}',
+  },
+  {
+    name: 'PersonId',
+    declaration: 'export type PersonId = Branded<\'GenesisPersonId\'>;',
+  },
+  {
+    name: 'PersonSource',
+    declaration: 'export type PersonSource = z.infer<typeof personSourceSchema>;',
+  },
+  {
+    name: 'PersonSummary',
+    declaration: 'export interface PersonSummary {\n    id: PersonId;\n    name: string;\n    accountId: string;\n    updatedAt: string;\n    operator: boolean;\n    relationship: LifePerson[\'relationship\'];\n    evidenceCount: number;\n}',
+  },
+  {
+    name: 'PlanChange',
+    declaration: 'export type PlanChange = z.infer<typeof planChangeSchema>;',
   },
   {
     name: 'PlatformSession',
@@ -7435,6 +7940,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PtcRunSpec',
     declaration: 'export interface PtcRunSpec extends PtcRunRequest {\n    cwd: string;\n    timeoutMs: number | null;\n}',
+  },
+  {
+    name: 'QqConnection',
+    declaration: 'export interface QqConnection {\n    enabled: boolean;\n    wsUrl: string;\n    port: number;\n    botQq: string;\n    operatorQq: string;\n}',
+  },
+  {
+    name: 'QqDecisionReceipt',
+    declaration: 'export interface QqDecisionReceipt {\n    sessionId: SessionId;\n    messageId: string;\n    target: string;\n    timestamp: string;\n    outcome: \'reply\' | \'skip\' | \'failed\';\n    decision: {\n        probability: number;\n        threshold: number;\n    } | null;\n}',
+  },
+  {
+    name: 'QqDecisionSettings',
+    declaration: 'export type QqDecisionSettings = {\n    kind: \'inherit\';\n} | {\n    kind: \'provider\';\n    provider: string;\n    model: string;\n} | {\n    kind: \'jev\';\n    url: string;\n    model: string;\n    threshold: number;\n    useKey: boolean;\n};',
+  },
+  {
+    name: 'QqDelivery',
+    declaration: 'export interface QqDelivery {\n    sessionId: SessionId;\n    timestamp: string;\n    seq: number;\n    status: \'confirmed\' | \'uncertain\';\n    parts: number;\n    acknowledged: number;\n}',
+  },
+  {
+    name: 'QqSettings',
+    declaration: 'export interface QqSettings {\n    enabled: boolean;\n    allowGroups: string[];\n    allowUsers: string[];\n    acceptPrivateFromAnyone: boolean;\n    groupAutoReply: boolean;\n    replyOnlyWhenMentioned: boolean;\n    extraPrompt: string;\n    privateContextTokens: number;\n    groupContextTokens: number;\n    operatorContextTokens: number;\n}',
+  },
+  {
+    name: 'QqStatus',
+    declaration: 'export interface QqStatus {\n    revision: number;\n    connectionRevision: number;\n    connection: QqConnection;\n    settings: QqSettings;\n    botQq: string;\n    operatorQq: string;\n    endpoint: string;\n    tokenConfigured: boolean;\n    mode: \'unconfigured\' | \'connected\' | \'listening\' | \'disconnected\' | \'paused\' | \'failed\';\n    failure: \'transport\' | \'operation\' | \'settings\' | \'archived\' | \'decision\' | null;\n    pending: number;\n    liveSessions: number;\n    decision?: {\n        revision: number;\n        settings: QqDecisionSettings;\n        keyConfigured: boolean;\n        recent: QqDecisionReceipt[];\n    };\n    deliveries: QqDelivery[];\n    omitted: number;\n}',
   },
   {
     name: 'QueueAction',
@@ -8881,6 +9410,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TeamWaitResult {\n    readonly timedOut: boolean;\n}',
   },
   {
+    name: 'TemporaryMemory',
+    declaration: 'export type TemporaryMemory = z.infer<typeof temporaryMemorySchema>;',
+  },
+  {
+    name: 'TemporaryMemoryId',
+    declaration: 'export type TemporaryMemoryId = Branded<\'GenesisTemporaryMemoryId\'>;',
+  },
+  {
+    name: 'TemporarySettings',
+    declaration: 'export type TemporarySettings = z.infer<typeof temporarySettingsSchema>;',
+  },
+  {
+    name: 'TemporaryStatus',
+    declaration: 'export interface TemporaryStatus {\n    revision: number;\n    failure: string | null;\n    settings: TemporarySettings;\n    count: number;\n    memories: TemporaryMemory[];\n    omitted: number;\n    failures: Array<{\n        sessionId: SessionId;\n        reason: string;\n        message?: string;\n    }>;\n}',
+  },
+  {
     name: 'TerminalBackend',
     declaration: 'export interface TerminalBackend {\n    readonly type: string;\n    spawn(spec: TerminalBackendSpawnSpec): Promise<TerminalBackendSession>;\n}',
   },
@@ -9099,6 +9644,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ToolInfo',
     declaration: 'export interface ToolInfo {\n    name: string;\n    description: string;\n}',
+  },
+  {
+    name: 'ToolkitDefinition',
+    declaration: 'export interface ToolkitDefinition {\n    id: ToolkitId;\n    name: string;\n    description: string;\n    tools: string[];\n    qqAccess?: \'disabled\' | \'anyone\' | \'operator\' | undefined;\n}',
+  },
+  {
+    name: 'ToolkitId',
+    declaration: 'export type ToolkitId = Branded<\'GenesisToolkitId\'>;',
+  },
+  {
+    name: 'ToolkitStatus',
+    declaration: 'export interface ToolkitStatus {\n    revision: number;\n    entries: ToolkitDefinition[];\n    learned: string[];\n    available: string[];\n}',
   },
   {
     name: 'ToolMessageSource',
@@ -9713,6 +10270,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type WritingId = Branded<\'GenesisWritingId\'>;',
   },
   {
+    name: 'WritingImportId',
+    declaration: 'export type WritingImportId = Branded<\'GenesisWritingImportId\'>;',
+  },
+  {
     name: 'WritingMatch',
     declaration: 'export interface WritingMatch extends Omit<WritingEntry, \'source\' | \'content\'> {\n    content: string;\n    truncated: boolean;\n    matchedFields: Array<\'title\' | \'content\'>;\n}',
   },
@@ -9723,6 +10284,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WritingRead',
     declaration: 'export interface WritingRead extends Omit<WritingEntry, \'content\'> {\n    content: string;\n    offset: number;\n    nextOffset: number | null;\n}',
+  },
+  {
+    name: 'WritingReceipt',
+    declaration: 'export interface WritingReceipt {\n    id: WritingId;\n    status: \'saved\' | \'already-deleted\';\n    createdAt?: string;\n    fileName?: string;\n}',
   },
   {
     name: 'WritingSearch',

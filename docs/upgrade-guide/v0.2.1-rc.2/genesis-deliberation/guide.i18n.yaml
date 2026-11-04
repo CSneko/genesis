@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-deliberation/guide.md
 /:
-  en: a2edf7f0f05b0d7b
-  zh: 729b8acba569efa2
-/genesis-deliberation-state:
-  en: 1318b7ec12000f83
-  zh: 40419fe191160b75
-/genesis-deliberation-state/change:
-  en: f2825ae28cab64cd
-  zh: efddccdbc256dc5b
-/genesis-deliberation-state/migration:
-  en: 2e6d2827d371e1c8
-  zh: 7349a0d8c42a5ea1
+  en: 61b1ea1358b1484c
+  zh: 5af4a167a6b0d280
+/genesis-life-plans-use-main-model-tools:
+  en: 4c0a3312f5332d52
+  zh: c8ed54a5f6de261a
+/genesis-life-plans-use-main-model-tools/change:
+  en: d5da4bd2c9c64f03
+  zh: 52be85f15c25e443
+/genesis-life-plans-use-main-model-tools/migration:
+  en: 0f397bc1ffe6f8dd
+  zh: 6cdd5d59f0af74a9

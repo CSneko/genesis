@@ -13,7 +13,7 @@ import css from './StatusPanel.module.css'
  * @param props - Shared on-demand resource, locale and authenticated memory operations.
  * @returns Two wrapping groups; failed reads retain the last sample and failed saves retain the editor draft.
  */
-export function PersonalityPanel({ useResource, save, remove, convert, refresh, t }: PropsRuntime<'settings.section'> &
+export function PersonalityPanel({ useResource, save, saveSummary, summarize, remove, convert, refresh, t }: PropsRuntime<'genesis.page'> &
   PropsLocale<'genesis'> & InjectFace<MemoryActions>) {
   const id = useId()
   const resource = useResource<'genesis-personality'>('dsh-resource://genesis-personality/current')
@@ -39,7 +39,7 @@ export function PersonalityPanel({ useResource, save, remove, convert, refresh, 
           </Button>
         </div>
         {entries.length === 0 ? <p>{t('personalityEmpty')}</p> : <ul className={css.records}>
-          {entries.map(memory => <MemoryEntry key={memory.id} memory={memory} remove={remove} convert={convert} t={t}
+          {entries.map(memory => <MemoryEntry key={memory.id} memory={memory} remove={remove} convert={convert} saveSummary={saveSummary} summarize={summarize} t={t}
             edit={() => { setEditing({ category, memory }) }} removed={refresh} converted={refresh} />)}
         </ul>}
       </div>

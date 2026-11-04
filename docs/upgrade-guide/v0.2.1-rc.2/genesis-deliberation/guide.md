@@ -1,19 +1,19 @@
 ---
 kind: upgrade-guide
-description: "Enabling Genesis deliberation adds persistent agency state that older strict readers reject and gates Life task tools on a recorded choice."
+description: "Genesis plan management moves to explicit main-model tools and new plans use readable IDs instead of UUIDs."
 ---
 
-# Genesis deliberation state
+# Genesis life plans use main-model tools
 
 English | [中文](guide.zh.md)
 
 ## Change
 
-`deliberation` adds optional version-1 `agency` state to the Genesis life projection and appends sourced motivation, goal and decision events. The workspace Life overlay enables it alongside existing memory, emotion and interest. Each ordinary Life request now uses the independent writer before admission; only acceptance admits task tools. Existing states without agency remain readable and keep their life ID and birth. Older strict Genesis readers reject the new field. No Harness Session format version changes.
+Optional `deliberation` adds persistent agency state and innate `genesis_plan`. The main conversation model creates and updates motivations and cross-Session plans through explicit tool calls. New plan IDs must be descriptive model-chosen names, such as `review-capability-growth`; existing UUID IDs retain their identity and references. Auxiliary models cannot create, update or abandon these commitments. All legacy `deliberation.requestMode` values use goal context without independent request acceptance checks. The trusted `LifeDeliberationEngine.deliberate` entry now returns `Promise<void>` and queues a logged `genesis-planning` opportunity for the main model, rather than returning an auxiliary choice. Independent proactive conversation retains its read-only speaking/waiting judgment. Existing identity and history remain intact; older strict agency readers can reject readable IDs. No Harness Session format version changes.
 
 ## Migration
 
 1. Stop the old process and preserve verified copies of both life storage domains and the independent backup. Keep the same `DSH_HOME`, storage routes and lease path.
-2. Rebuild Genesis and start the Life profile overlay, or explicitly configure `deliberation: {}` with the required `memory` writer route. See [deliberation](../../../genesis/motivation.md) for the supported `dsh` composition.
-3. Verify identity continuity, empty initial agency inventories and `agency.initialized` in Life Events. Complete an interaction and inspect the logged `genesis-deliberation` choice and observed outcome. A writer/configuration failure stops admission; fix the model route before retrying.
-4. Removing `deliberation` stops its runtime behavior but preserves state. To downgrade, restore the verified pre-agency storage and matching backup together. Never delete an unreadable life to create a replacement identity.
+2. Rebuild Genesis and retain `deliberation: {}`. Planning does not require the memory writer; memory, emotion and proactive conversation keep their existing model requirements. Remove obsolete `requestMode` overrides, or use `context-only`. They cannot restore external request judgments.
+3. Ask the main model to consider a lasting plan. Verify a logged `genesis_plan` call, a readable ID, a concrete next action and continuity after restart. The main model may also choose not to create a plan. Update trusted adapters to await `deliberate` without expecting a returned choice; verify the `genesis-planning` notice and inspect reservations before retrying uncertain dispatch.
+4. Keep existing UUID plans under their original IDs when updating them. Do not downgrade a life containing readable IDs to an older strict reader; restore a verified compatible storage and backup pair if a downgrade is necessary. Never delete an unreadable life to create a replacement identity. See [life plans](../../../genesis/motivation.md) for the supported `dsh` composition and fields.

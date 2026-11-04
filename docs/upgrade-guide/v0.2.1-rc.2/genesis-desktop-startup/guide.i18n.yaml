@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-desktop-startup/guide.md
+/:
+  en: 9ca9fb5631abacde
+  zh: 932e5d002c130751
+/genesis-desktop-startup-and-browser-preview-cadence:
+  en: 33bdbf50e3187759
+  zh: 633882cf40d300e1
+/genesis-desktop-startup-and-browser-preview-cadence/change:
+  en: 614773a79388bee9
+  zh: 0a26e36652d0c20a
+/genesis-desktop-startup-and-browser-preview-cadence/migration:
+  en: a63053bbf8870e74
+  zh: 41b433c6119dfef8

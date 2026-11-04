@@ -134,6 +134,40 @@ describe('reconnect supervisor', () => {
     ctx = await mountRegistry()
   })
 
+  it.each(['success', 'error-result', 'rejection'] as const)('runs a shutdown tool before transport closure and contains %s', async (outcome) => {
+    const { errors } = captureLogs(ctx)
+    mockListTools.mockResolvedValue(listing('remote', 'finish'))
+    mockCallTool.mockImplementation(async () => {
+      expect(mockClose).not.toHaveBeenCalled()
+      if (outcome === 'rejection') throw new Error('fixture shutdown failure')
+      return { content: [], isError: outcome === 'error-result' }
+    })
+    const config = { ...stdioConfig(), shutdownTool: 'finish' }
+    const handle = startConnection(ctx, config, resolveReconnectPolicy(undefined, 'reconnect'))
+    try {
+      expect((await handle.ready).error).toBeUndefined()
+      await handle.dispose()
+      expect(mockCallTool).toHaveBeenCalledWith({ name: 'finish', arguments: {} }, { timeout: 60_000 })
+      expect(mockClose).toHaveBeenCalledTimes(1)
+      expect(errors.some(line => line.includes('saved state before restarting'))).toBe(outcome !== 'success')
+    } finally {
+      await handle.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects an unadvertised shutdown tool during connection discovery', async () => {
+    const config = { ...stdioConfig({ enabled: false }), shutdownTool: 'missing' }
+    const handle = startConnection(ctx, config, resolveReconnectPolicy(config.reconnect, 'reconnect'))
+    try {
+      expect((await handle.ready).error?.message).toContain('shutdownTool is not advertised')
+      expect(mockCallTool).not.toHaveBeenCalled()
+    } finally {
+      await handle.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('keeps instructions withdrawn when disposal interrupts initial discovery', async () => {
     const listingGate: PromiseWithResolvers<ReturnType<typeof listing>> = Promise.withResolvers()
     const instructionSpy = vi.spyOn(MockClient.prototype, 'getInstructions').mockReturnValue('Instructions after discovery.')

@@ -1,0 +1,6 @@
+# Registers QQ settings without opening a connection until the operator configures it.
+- insert:
+    - id: genesis-qq
+      name: '@deepseek-ai/dsh-experimental-genesis-qq'
+      config:
+        cwd: !!js dshHomePath('qq-workspace')

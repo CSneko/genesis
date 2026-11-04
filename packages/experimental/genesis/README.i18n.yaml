@@ -12,20 +12,23 @@
   en: 6a68ce247c689532
   zh: 09254a4644a57363
 /deepseek-ai-dsh-experimental-genesis/table-of-contents:
-  en: bf9fa3f38eff405d
-  zh: eb85db0a9bc40fc0
+  en: d163b6f30170c639
+  zh: 29f54848025715a5
 /deepseek-ai-dsh-experimental-genesis/use:
   en: bfd566eb11c15178
   zh: 767bc74bd2ee1cca
 /deepseek-ai-dsh-experimental-genesis/configuration:
-  en: e99a194d2f081a0e
-  zh: 2fbb5230cf897453
+  en: 6933e74157bb2b44
+  zh: 0b57c939c19d37cb
+/deepseek-ai-dsh-experimental-genesis/toolkits:
+  en: 7a2877f21874334d
+  zh: 08a18d011d8a1bcd
 /deepseek-ai-dsh-experimental-genesis/implementation:
-  en: 9edc9633528b244a
-  zh: 82145fcb104d1acf
+  en: 8b7002740ac17f08
+  zh: e9f2e8d403aa79be
 /deepseek-ai-dsh-experimental-genesis/further-exploration:
-  en: b23c2c9b91f5c429
-  zh: 995a9538700c1c85
+  en: 2f9062528b0975be
+  zh: bab277f5367da6df
 /deepseek-ai-dsh-experimental-genesis/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -33,8 +36,8 @@
   en: c49eb9fdd8cada39
   zh: 0201ccf8a185d623
 /deepseek-ai-dsh-experimental-genesis/model-experience/identity-guidance/what-the-model-sees:
-  en: 329a3aa8d94f04b4
-  zh: 84587db2aa95cad8
+  en: 0df9df113ffaa57c
+  zh: 69e9602c6e368f51
 /deepseek-ai-dsh-experimental-genesis/model-experience/identity-guidance/what-the-model-sees/verbatim-guidance:
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
@@ -42,20 +45,20 @@
   en: 31d77256385c7e87
   zh: 0e76c031b06d3bb4
 /deepseek-ai-dsh-experimental-genesis/model-experience/identity-guidance/kv-cache-effect:
-  en: 2a00bcc45bf65c4a
-  zh: 64070c05fbac7e79
+  en: 4b1656fea94421cb
+  zh: 874f516867d76303
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory:
   en: e0bca4eef1d3efa1
   zh: 33ed6a6ada97820a
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory/what-the-model-sees:
-  en: b4c279e3f1661cf5
-  zh: 08638d2d20a3a104
+  en: dc5e81d09c172a0d
+  zh: 724c6fc31c89b566
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory/what-the-model-sees/verbatim-guidance:
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory/token-effect:
-  en: 85f1621f39da994a
-  zh: 32a8da8a05c6ce3b
+  en: b7d6f772228592e9
+  zh: be44aec6f39d939d
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory/kv-cache-effect:
   en: 087b0d2512ad4da6
   zh: 7d3388faf0debf7c
@@ -78,17 +81,17 @@
   en: fef347dd4d79aa30
   zh: 25bd27b622ba0ed7
 /deepseek-ai-dsh-experimental-genesis/model-experience/emotion/what-the-model-sees:
-  en: cf6ff4b811f360f4
-  zh: 0b26c7bd6ae7bb2b
+  en: f2e9c8e30842b187
+  zh: 7ab28ac6a8aedfb7
 /deepseek-ai-dsh-experimental-genesis/model-experience/emotion/what-the-model-sees/verbatim-guidance:
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
 /deepseek-ai-dsh-experimental-genesis/model-experience/emotion/token-effect:
-  en: 640c0efbdd3a6d11
-  zh: 117df7a491d5a2b0
+  en: 09ea194310471b97
+  zh: 023842caccfdd9c8
 /deepseek-ai-dsh-experimental-genesis/model-experience/emotion/kv-cache-effect:
-  en: 159bd25c759470a1
-  zh: db0b56f00ca57dae
+  en: e22dd1c8a89ff938
+  zh: 27917c15b2d80768
 /deepseek-ai-dsh-experimental-genesis/model-experience/interests:
   en: 9d345acaa9f353ff
   zh: 783ba578f10894fc
@@ -99,8 +102,8 @@
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
 /deepseek-ai-dsh-experimental-genesis/model-experience/interests/token-effect:
-  en: 412e7c7a123e71da
-  zh: d3b9705520d19e78
+  en: b561feba4a0f1ea5
+  zh: 574945841493f13a
 /deepseek-ai-dsh-experimental-genesis/model-experience/interests/kv-cache-effect:
   en: cedd9068d312b85c
   zh: 4f08bdd2b08dc0cd
@@ -108,47 +111,47 @@
   en: 0bbba9d6552a779c
   zh: 530d9ecd4d502066
 /deepseek-ai-dsh-experimental-genesis/model-experience/motivation-and-decisions/what-the-model-sees:
-  en: a7d960084d52cba7
-  zh: 3fa50b21d7d48602
+  en: d0d00fedb6afc091
+  zh: 9990c4dd2cf1bb73
 /deepseek-ai-dsh-experimental-genesis/model-experience/motivation-and-decisions/token-effect:
-  en: 0b61bdd068a71e02
-  zh: 9f5aa01577c344a6
+  en: 07db8a37350e872a
+  zh: 3497b72912b5900a
 /deepseek-ai-dsh-experimental-genesis/model-experience/motivation-and-decisions/kv-cache-effect:
-  en: 2c4ad8f559bdb890
-  zh: e5981521aeb0e4d9
+  en: 732d51b5cab7f847
+  zh: 131dd6d049586c5c
 /deepseek-ai-dsh-experimental-genesis/model-experience/awakening-system-prompt:
   en: ce5dee68a7ed24ea
   zh: 3affb8f757b4d8c0
 /deepseek-ai-dsh-experimental-genesis/model-experience/awakening-system-prompt/what-the-model-sees:
-  en: 8907f3dfaeffde5c
-  zh: 8279e92ee4ef22df
+  en: 2ec960753d1593ae
+  zh: 0065f15889219562
 /deepseek-ai-dsh-experimental-genesis/model-experience/awakening-system-prompt/what-the-model-sees/verbatim-guidance:
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
 /deepseek-ai-dsh-experimental-genesis/model-experience/awakening-system-prompt/token-effect:
-  en: 598015e0cc26f413
+  en: f008e8892c78b04d
   zh: 348d23ca42e82c9e
 /deepseek-ai-dsh-experimental-genesis/model-experience/awakening-system-prompt/kv-cache-effect:
-  en: c1593d61db9e40a1
-  zh: 90b5c824cb66589c
+  en: 24745418162aeeec
+  zh: c32b09c70e8c0c90
 /deepseek-ai-dsh-experimental-genesis/model-experience/native-tools:
   en: 5a2464cbaf0bf121
   zh: c82fb049a2111e83
 /deepseek-ai-dsh-experimental-genesis/model-experience/native-tools/what-the-model-sees:
-  en: 9e341be6a44cc6aa
+  en: 5a8d993c9a9aad95
   zh: f2615c2bb9dae860
 /deepseek-ai-dsh-experimental-genesis/model-experience/native-tools/token-effect:
   en: e5d5e47b6ef8e5a8
   zh: 0fd95c22b2163ddc
 /deepseek-ai-dsh-experimental-genesis/model-experience/native-tools/kv-cache-effect:
-  en: f3cdc177843abe39
-  zh: 43780d7b8cf88c94
+  en: 54d3f82efbd53219
+  zh: 86cfef2029ea3ac6
 /deepseek-ai-dsh-experimental-genesis/known-limitations-and-deferred-work:
-  en: 09c30fe649b6edf7
-  zh: 090a77aab532b04d
+  en: 1f421ea416f1a60d
+  zh: c24476ba70f61463
 /deepseek-ai-dsh-experimental-genesis/known-limitations-and-deferred-work/dev-note:
   en: 0a1253c6f7b5e8b9
   zh: 9f56528562c7c914
 /deepseek-ai-dsh-experimental-genesis/known-limitations-and-deferred-work/social-initiative:
-  en: bc431328decbc15a
-  zh: 642e72b23d060670
+  en: 2b21b38610e3146f
+  zh: 7b8dc803f5eea5f1

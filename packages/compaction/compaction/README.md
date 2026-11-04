@@ -50,6 +50,8 @@ With these two rows the feature is on: the conversation condenses automatically 
 
 Extend the provided base class and implement three operations: one that decides and performs condensation for an automatic trigger, one that condenses on demand, and one that condenses an explicit range of the conversation. Load your class as a plugin and it becomes the condensation service for the composition. The exact signatures, the failure rules, and the checkpoint marker every backend must produce are in the implementation section below and in the [compaction subsystem reference](../../../docs/subsystems/compaction.md).
 
+Backends that support per-Session pressure windows consult `compaction/context-window` with the real model capacity, clamp the result to that capacity and keep provider metadata unchanged. A channel policy calls `next()` before applying its positive token limit.
+
 ### Recognizing condensed history
 
 Messages a backend wrote as summaries carry a stable marker, so any consumer can recognize condensed history after persistence or cloning without knowing which backend produced it. The marker is exported from the package root and from a Cordis-free subpath that client and wire programs can import.

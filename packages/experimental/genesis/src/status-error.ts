@@ -28,11 +28,11 @@ export function statusFailure(error: unknown): RemoteFailure {
     message = error.message
   } else if (error instanceof z.ZodError) {
     reason = 'validation'
-    const fields = new Set(['decision', 'writer', 'url', 'model', 'provider', 'kind', 'keyRef', 'dimensions', 'threshold', 'data', 'embedding', 'index', 'models', 'name', 'id',
+    const fields = new Set(['decision', 'writer', 'maxRetries', 'url', 'model', 'provider', 'kind', 'keyRef', 'dimensions', 'threshold', 'data', 'embedding', 'index', 'models', 'name', 'id',
       'answers', 'remember', 'emotion', 'noul', 'type', 'choices', 'finish_reason', 'message', 'content', 'update',
       'delta', 'moodDelta', 'reason', 'happiness', 'sadness', 'anger', 'fear', 'valence', 'arousal', 'needs', 'needsDelta', 'targets',
       'tenderness', 'gratitude', 'longing', 'curiosity', 'frustration', 'disappointment',
-      'appraisal', 'novelty', 'expectationMatch', 'controllability', 'relationshipMeaning', 'responsibility', 'summary',
+      'appraisal', 'novelty', 'expectationMatch', 'controllability', 'relationshipMeaning', 'responsibility', 'summary', 'shortSummary',
       'relationshipDelta', 'affection', 'trust', 'attachment', 'familiarity', 'feltSecurity', 'label',
       'relationshipEnabled', 'maxRelationshipDelta', 'moodSupportTurns', 'importantEventThreshold', 'repetitionDiscount', 'maxNeedsDelta', 'needsHalfLifeMs', 'interactionHalfLifeMs', 'socialDesire', 'socialSatisfaction', 'relationshipQuality', 'recentInteraction', 'solitudePreference', 'exploration', 'autonomy', 'creativity', 'loneliness',
       'changes', 'action', 'sourceSeqs', 'memory', 'category', 'importance', 'confidence', 'attribution',

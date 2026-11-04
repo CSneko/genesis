@@ -23,9 +23,9 @@ export type EmotionSample = NonNullable<LifeStatus['emotion']>
 /**
  * Show independent current/mood intensities, last review and bounded attributed transitions.
  * @param props - Framework resource seat, locale and authenticated actions.
- * @returns A wrapping settings page that retains its last sample and open drafts on query failure.
+ * @returns A wrapping Genesis emotion page that retains its last sample and open drafts on query failure.
  */
-export function EmotionPanel({ useResource, saveSettings, adjust, refresh, t }: PropsRuntime<'settings.section'> &
+export function EmotionPanel({ useResource, saveSettings, adjust, refresh, t }: PropsRuntime<'genesis.page'> &
   PropsLocale<'genesis'> & InjectFace<EmotionActions>) {
   const id = useId()
   const resource = useResource<'genesis'>('dsh-resource://genesis/status')

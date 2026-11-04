@@ -17,14 +17,14 @@ export interface RecordsActions {
   saveType: RecordRemote['saveType']
   refresh(this: void): void
 }
-type ViewProps = Pick<PropsRuntime<'settings.section'>, 'useResource'> & PropsLocale<'genesis'> & InjectFace<RecordsActions>
+type ViewProps = Pick<PropsRuntime<'genesis.page'>, 'useResource'> & PropsLocale<'genesis'> & InjectFace<RecordsActions>
 
 /**
  * Browse writings and manage categories independently of long-term memory.
  * @param props - Resource access, localized copy and authenticated record mutations.
- * @returns Independent settings page; disabled recording remains explicit.
+ * @returns Independent Genesis writings page; disabled recording remains explicit.
  */
-export function RecordsPanel({ useResource, edit, remove, saveType, refresh, t }: PropsRuntime<'settings.section'> & PropsLocale<'genesis'> & InjectFace<RecordsActions>) {
+export function RecordsPanel({ useResource, edit, remove, saveType, refresh, t }: PropsRuntime<'genesis.page'> & PropsLocale<'genesis'> & InjectFace<RecordsActions>) {
   const id = useId()
   const resource = useResource<'genesis-records'>('dsh-resource://genesis-records/catalog')
   return <section className={css.panel} aria-labelledby={`${id}-title`}>

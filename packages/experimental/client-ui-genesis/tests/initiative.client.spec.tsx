@@ -47,6 +47,17 @@ it('shows localized pending reasons and actual samples without presenting a miss
   expect(screen.queryByText(zh.initiativeSentAt)).toBeNull()
 })
 
+it('separates delivery records from the persisted proactive policy editor', () => {
+  const { props } = fixture()
+  const page = render(<InitiativePanel {...props} view="activity" />)
+  expect(screen.getByRole('heading', { name: en.outboxTitle })).toBeTruthy()
+  expect(screen.queryByRole('switch', { name: en.initiativeEnabled })).toBeNull()
+  expect(screen.getByText('A recorded finding is worth sharing.')).toBeTruthy()
+  page.rerender(<InitiativePanel {...props} view="settings" />)
+  expect(screen.getByRole('switch', { name: en.initiativeEnabled })).toBeTruthy()
+  expect(screen.queryByRole('heading', { name: en.initiativeHistory })).toBeNull()
+})
+
 it('saves pause, channel and interval through the generated action with milliseconds and settings revision', async () => {
   const { props, sample, saveSettings, refresh } = fixture()
   render(<InitiativePanel {...props} />)

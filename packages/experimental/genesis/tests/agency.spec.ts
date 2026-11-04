@@ -2,6 +2,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -27,7 +28,7 @@ async function fixture() {
 function proposal(source: LifeEventId): DeliberationPlan {
   return { motivations: [{ content: 'Understand my recorded capability changes', reason: 'The startup is an opportunity to review growth.',
     strength: 0.9, status: 'active', interestIds: [], memoryIds: [], sourceEventIds: [source] }],
-  goals: [{ content: 'Review one capability change', reason: 'Ground my next choice in actual growth.', origin: 'autonomous',
+  goals: [{ id: brandString('review-capability-growth'), content: 'Review one capability change', reason: 'Ground my next choice in actual growth.', origin: 'autonomous',
     motivationIds: [], memoryIds: [], sourceEventIds: [source], priority: 0.6, status: 'active', nextAction: 'Read the recorded growth history.' }],
   candidates: [{ disposition: 'accept', action: 'Read one recorded change.', reason: 'A bounded review is useful.', factors,
     goalIds: [], motivationIds: [] }, { disposition: 'wait', action: 'Wait for more evidence.', reason: 'No urgent external action is needed.',
@@ -49,6 +50,8 @@ it('persists sourced motivations and autonomous life goals, bounds strength, rej
   expect(state.agency!.motivations[0]!.strength).toBe(opened.config.deliberation!.maxStrengthDelta)
   expect(state.agency!.goals[0]!.origin).toBe('autonomous')
   expect(choice.goalIds).toEqual([state.agency!.goals[0]!.id])
+  const legacy = JSON.stringify(state).replaceAll(state.agency!.goals[0]!.id, randomUUID())
+  expect(stateSchema.safeParse(JSON.parse(legacy)).success).toBe(true)
   expect(await opened.core.commitDeliberation(input)).toEqual(choice)
   expect((await opened.core.snapshot()).agency).toEqual(state.agency)
   expect(await opened.core.reserveDecisionDispatch(choice.id)).toBe(true)
@@ -144,6 +147,7 @@ it('keeps multiple life goals and abandons one without replacing another goal or
   const first = (await opened.core.snapshot()).agency!.goals[0]!
   const second = await commitInput(opened, 'two')
   second.plan.motivations = []
+  second.plan.goals[0]!.id = brandString('compare-capability-changes')
   second.plan.goals[0]!.content = 'Compare two recorded capability changes'
   second.plan.goals[0]!.motivationIds = first.motivationIds
   const choice = await opened.core.commitDeliberation(second)

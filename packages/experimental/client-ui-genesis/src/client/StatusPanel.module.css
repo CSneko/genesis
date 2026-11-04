@@ -51,3 +51,6 @@
 
 .modelFields { min-width: 0; margin: 0; padding: 16px; display: grid; gap: 12px; border: 1px solid var(--dsw-alias-line-tertiary); border-radius: 8px; }
 .modelFields legend { font-weight: 500; }
+.minecraftImage { display: block; width: 100%; max-width: 640px; height: auto; border-radius: 8px; }
+.minecraftField { display: grid; gap: 8px; min-width: 0; }
+.minecraftField > * { min-width: 0; max-width: 100%; }

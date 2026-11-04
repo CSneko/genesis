@@ -1,12 +1,13 @@
 /** Split storage migration, interrupted publication and independent backup recovery. */
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readBackup } from '../src/backup.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { manifestSchema } from '../src/storage-layout.ts'
+import { manifestSchema, indexPageSchema, recordHash } from '../src/storage-layout.ts'
+import { manifestReferences } from '../src/storage-state.ts'
 import { openCore } from './harness.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
@@ -76,7 +77,7 @@ it('writes only changed records and deletes superseded text, vectors and version
   await fixture.core.bind(SessionId('unrelated-session'), 'fixture')
   expect(put).not.toHaveBeenCalled()
   expect((await stat(file)).mtimeMs).toBe(before.mtimeMs)
-  expect(manifest.records.some(ref => ref.table === 'memory_history')).toBe(true)
+  expect(manifest.records.some(ref => ref.table === 'memory_revisions')).toBe(true)
   await expect(readFile(join(root, 'genesis_records', vectorRef.table, `${vectorRef.key}.json`))).rejects.toMatchObject({ code: 'ENOENT' })
   await expect(readFile(join(root, 'life.lock.backup.json.d', vectorRef.table, `${vectorRef.key}.json`))).rejects.toMatchObject({ code: 'ENOENT' })
   await fixture.core.deleteMemory(memory.id)
@@ -149,3 +150,78 @@ it.each(['missing', 'malformed', 'future-version', 'changed-content'] as const)(
     expect((await readBackup(join(root, 'life.lock.backup.json'))).identity.name).toBeNull()
   },
 )
+
+it('pages a growing history beyond former global budgets and restores its full ordered evidence', async () => {
+  const root = await directory()
+  const first = await openCore(root, 'json', { maxRecords: 20, maxStateChars: 10000, storage: { pageSize: 4, maxRecordChars: 20000 } })
+  cleanup.push(() => first.close())
+  for (let index = 0; index < 80; index++) await first.core.observe({ sessionId: SessionId('paged-life'), eventId: String(index),
+    timestamp: '2026-11-04T00:00:00.000Z', kind: 'user-message' })
+  const before = await first.core.snapshot()
+  expect(before.events.length).toBeGreaterThan(20)
+  expect(JSON.stringify(before).length).toBeGreaterThan(10000)
+  const manifest = manifestSchema.parse(first.domain.table('states').get('life'))
+  expect(manifest.format).toBe('genesis-tree-v2')
+  expect(manifest.records.length).toBeLessThanOrEqual(4)
+  const refs = await manifestReferences(manifest, (table, key) => first.records.table(table).get(key))
+  expect(refs.filter(ref => ref.table === 'indexes').length).toBeGreaterThan(1)
+  for (const ref of refs.filter(ref => ref.table === 'indexes')) {
+    expect(indexPageSchema.parse(first.records.table(ref.table).get(ref.key)).records.length).toBeLessThanOrEqual(4)
+  }
+  expect((await stat(join(root, 'genesis.json'))).size).toBeLessThan(1000)
+  await first.close()
+  const second = await openCore(root, 'json', { storage: { pageSize: 4, maxRecordChars: 20000 } })
+  cleanup.push(() => second.close())
+  const restored = await second.core.snapshot()
+  expect(restored.identity).toEqual(before.identity)
+  expect(restored.events.slice(0, before.events.length)).toEqual(before.events)
+  const source = restored.events.find(event => event.relatedEventId === '0')!
+  expect(await second.core.observe({ sessionId: SessionId('paged-life'), eventId: '0', timestamp: source.timestamp, kind: 'user-message' })).toEqual(source)
+  expect((await readBackup(join(root, 'life.lock.backup.json'))).identity).toEqual(before.identity)
+})
+
+it('migrates a flat split-v1 manifest and grouped memory versions without losing earlier interpretations', async () => {
+  const root = await directory()
+  const first = await setup(root)
+  const source = (await first.core.snapshot()).events[0]!
+  const memory = await first.core.remember({ content: 'old wording', category: 'semantic', importance: 0.5, confidence: 0.5, sourceEventIds: [source.id] })
+  await first.core.updateMemory(memory.id, { content: 'new wording', category: 'semantic', importance: 0.5, confidence: 0.5, sourceEventIds: [source.id] })
+  await first.close()
+  const saved = await readBackup(join(root, 'life.lock.backup.json'))
+  const disk = JSON.parse(await readFile(join(root, 'genesis.json'), 'utf8')) as { tables: { states: { life: unknown } } }
+  const refs = await manifestReferences(manifestSchema.parse(disk.tables.states.life), async (table, key) => {
+    const component = JSON.parse(await readFile(join(root, 'genesis_records', table, `${key}.json`), 'utf8')) as { record: object }
+    return component.record
+  })
+  const flat = refs.filter(ref => ref.table !== 'indexes' && ref.table !== 'memory_revisions')
+  for (const item of saved.memories) if (item.history?.length) {
+    const value = { id: item.id, history: item.history }; const key = recordHash(value)
+    await mkdir(join(root, 'genesis_records', 'memory_history'), { recursive: true })
+    await writeFile(join(root, 'genesis_records', 'memory_history', `${key}.json`), JSON.stringify({ version: 1, record: value }))
+    flat.push({ table: 'memory_history', key })
+  }
+  disk.tables.states.life = { format: 'genesis-split-v1', records: flat }
+  await writeFile(join(root, 'genesis.json'), JSON.stringify(disk))
+  const next = await setup(root)
+  expect((await next.core.snapshot()).identity).toEqual(saved.identity)
+  expect((await next.core.snapshot()).memories).toEqual(saved.memories)
+  expect(manifestSchema.parse(next.domain.table('states').get('life')).format).toBe('genesis-tree-v2')
+})
+
+it.each(['missing', 'changed'] as const)('refuses a %s index page without replacing the prior backup', async (damage) => {
+  const root = await directory()
+  const first = await openCore(root, 'json', { storage: { pageSize: 2, maxRecordChars: 20000 } })
+  cleanup.push(() => first.close())
+  await first.close()
+  const primary = await readFile(join(root, 'genesis.json'), 'utf8')
+  const disk = JSON.parse(primary) as { tables: { states: { life: unknown } } }
+  const ref = manifestSchema.parse(disk.tables.states.life).records.find(row => row.table === 'indexes')!
+  const path = join(root, 'genesis_records', ref.table, `${ref.key}.json`)
+  const backup = await readFile(join(root, 'life.lock.backup.json'), 'utf8')
+  if (damage === 'missing') await rm(path)
+  else await writeFile(path, JSON.stringify({ version: 1, record: { format: 'genesis-index-v1', records: [] } }))
+  await expect(openCore(root)).rejects.toThrow()
+  expect(await readFile(join(root, 'genesis.json'), 'utf8')).toBe(primary)
+  expect(await readFile(join(root, 'life.lock.backup.json'), 'utf8')).toBe(backup)
+  expect((await readBackup(join(root, 'life.lock.backup.json'))).identity).toBeDefined()
+})

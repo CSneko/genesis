@@ -114,3 +114,5 @@ patchedDependencies:
   app-builder-lib@26.17.0: patches/app-builder-lib@26.17.0.patch
   exceljs@4.4.0: patches/exceljs@4.4.0.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
+
+  dsh-qq-onebot-bridge@0.8.2: patches/dsh-qq-onebot-bridge-0.8.2.patch

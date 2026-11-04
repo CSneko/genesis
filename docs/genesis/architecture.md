@@ -14,7 +14,7 @@ The core serializes read-modify-write operations and commits one complete state 
 
 ## Harness integration
 
-`agent/created` binds a participating Life Session to the existing life. `system-prompt/assemble` and `agent/pre-step` refresh selected context and actual scoped tool declarations. The Harness logs the contributed system and runtime context normally. Native tool results follow the existing durable tool pipeline.
+`agent/created` binds a participating Life Session to the existing life. `system-prompt/assemble` supplies stable guidance and scoped tool visibility. `agent/pre-step` refreshes actual tool declarations and admits changed life modules as source-tagged `genesis-state` snapshots through the normal logged input pipeline. Retained projected messages determine which modules need updates; overflow retry recovery restores missing modules before retrying. Native tool results follow the existing durable tool pipeline.
 
 `session/event` observes real user messages and tool results as metadata facts, identified by Session ID and sequence. It never republishes a Session event. Only the latest live user evidence and pending tool-call names are held in adapter memory; no deprecated synchronous historical Session readers are used.
 

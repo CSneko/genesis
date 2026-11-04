@@ -1,14 +1,18 @@
-/** Small life-wide proactive conversation worker using the existing deliberation and Agent channel. @module */
+/** Proactive conversation outbox using Super-Agent's reservation/receipt policy and the existing Agent channel. @module */
+import { isHumanSource } from './people-model.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
-import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { MessageId, freezeMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { LifeCore } from './core.ts'
 import type { LifeDeliberationEngine } from './deliberation.ts'
 import type { SocialInitiativeConfig } from './config.ts'
 import type { LifeEventId, LifeState } from './model.ts'
 import { resolveInitiative, type InteractionRecord } from './social-state.ts'
 import { statusFailure } from './status-error.ts'
+import { GenesisError } from './error.ts'
+import { initiativeProjection, type InitiativeReceipt } from './social-projection.ts'
 
 /** One serialized, cancelable owner; pending delivery never implies successful delivery. */
 export class SocialInitiative {
@@ -26,7 +30,8 @@ export class SocialInitiative {
   constructor(private readonly ctx: Context, private readonly core: LifeCore, private readonly decisions: LifeDeliberationEngine,
     private readonly policy: SocialInitiativeConfig, private readonly applies: (agent: Agent) => boolean) {}
 
-  /** @returns After initialization, pending-receipt recovery and timer setup; startup creates no new opportunity. */
+  /** Initialize pending deliveries and schedule checks from the saved policy.
+   * @returns After initialization, pending-receipt recovery and timer setup; startup creates no new opportunity. */
   async start(): Promise<void> {
     await this.core.initializeInitiative()
     this.unsubscribe = this.core.onCommitted((events) => {
@@ -39,7 +44,8 @@ export class SocialInitiative {
     await this.refreshTimer()
   }
 
-  /** @returns Current runtime evidence; configuration and receipts remain core-owned. */
+  /** Read the current delivery schedule and failure state.
+   * @returns Current runtime evidence; configuration and receipts remain core-owned. */
   status(): { working: boolean; nextCheckAt: string | null; failure: { code: string; message: string } | null } {
     return { working: this.working, nextCheckAt: this.nextCheckAt, failure: this.failure === null ? null : { ...this.failure } }
   }
@@ -152,7 +158,7 @@ export class SocialInitiative {
   }
 
   private channel(record: InteractionRecord, state: LifeState): Agent | undefined {
-    const agents = this.ctx.agents.list().filter(agent => this.applies(agent) && agent.status === 'idle'
+    const agents = this.ctx.agents.list().filter(agent => this.applies(agent) && !this.core.isQqSession(agent.id) && agent.status === 'idle'
       && agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0)
     const policy = resolveInitiative(this.policy, state.initiative)
     const target = record.sessionId ?? (policy.sessionId === undefined ? undefined : SessionId(policy.sessionId))
@@ -212,10 +218,12 @@ export class SocialInitiative {
             record = { ...record, status: 'dispatching', dispatchedAt: new Date().toISOString(), note: 'Awaiting an actual assistant message in the conversation.' }
             await this.core.saveInteraction(record)
             // Reserve before enqueueing. A crash here is reconciled, never blindly resent.
-            agent.followup(createUserMessage({ source: { kind: 'genesis-initiative', interactionId: record.id,
-              form: 'notice', summary: 'Genesis chose to initiate a conversation' }, content: [{ type: 'text',
-              text: `You chose to initiate a conversation. Your recorded decision is ${JSON.stringify(
-                (await this.core.snapshot()).agency?.decisions.find(item => item.id === record.decisionId))}. Speak directly to the operator in your own voice about your chosen intent. This is your proactive assistant message, not a user request. Use no task tools. Do not invent discoveries, offline experiences or a need for the operator to respond; absence is not rejection.` }] }))
+            agent.followup(freezeMessage({ id: MessageId(`genesis-initiative:${record.id}`), role: 'user',
+              source: { kind: 'genesis-initiative', interactionId: record.id,
+                form: 'notice', summary: 'Genesis chose to initiate a conversation' }, content: [{ type: 'text',
+                text: `You chose to initiate a conversation. Your recorded decision is ${JSON.stringify(
+                  (await this.core.snapshot()).agency?.decisions.find(item => item.id === record.decisionId))}. Speak directly to the operator in your own voice about your chosen intent. This is your proactive assistant message, not a user request. Use no task tools. Do not invent discoveries, offline experiences or a need for the operator to respond; absence is not rejection.` }] }))
+            await this.confirmSession(agent.session)
             return record
           }
         }
@@ -239,7 +247,7 @@ export class SocialInitiative {
       const state = await this.core.snapshot()
       const record = state.initiative?.records.find(item => item.id === interactionId)
       if (record?.status !== 'dispatching' || record.sessionId !== agent.session.id || !this.applies(agent)) continue
-      const limit = messages.some(item => item.source.kind === 'user')
+      const limit = messages.some(item => isHumanSource(item.source))
         ? { note: 'Real user input takes priority.', expired: false } : this.limited(state, record)
       if (limit !== undefined) await this.core.saveInteraction({ ...record, status: limit.expired ? 'skipped' : 'pending', note: limit.note })
       else result.push(message)
@@ -248,8 +256,8 @@ export class SocialInitiative {
   }
 
   /**
-   * Settle deliveries from the replayable receipt and retry only confirmed pending opportunities.
-   * @returns After currently available channels have been reconciled and pending work considered.
+   * Settle live or stored assistant receipts without waking cold Agents; only pending opportunities may dispatch.
+   * @returns After receipt reconciliation and pending consideration; storage failures remain visible without resending.
    */
   resume(): Promise<void> {
     return this.serial(() => this.resumePending())
@@ -260,10 +268,65 @@ export class SocialInitiative {
     for (const agent of agents) await this.reconcile(agent.session, agent)
     const records = (await this.core.snapshot()).initiative?.records ?? []
     for (const record of records) {
-      if (record.status === 'dispatching' && !agents.some(agent => agent.session.id === record.sessionId)) {
-        await this.core.saveInteraction({ ...record, status: 'uncertain', note: 'The original conversation is unavailable after restart; inspect its receipt before any retry.' })
+      if (['dispatching', 'uncertain'].includes(record.status) && !agents.some(agent => agent.session.id === record.sessionId)) {
+        await this.reconcileCold(record)
       } else if (record.status === 'pending') await this.process(record, this.lifetime.signal)
     }
+  }
+
+  private async confirmSession(session: Session): Promise<void> {
+    if (this.ctx.get('sessionPersistence') === undefined) return
+    try {
+      if (!await this.ctx.sessions.flush(session)) throw new GenesisError('storage', 'Session writer did not acknowledge proactive delivery.')
+    } catch (error) {
+      throw new GenesisError('storage', 'Proactive delivery is not confirmed durable. Inspect the original Session; automatic resend is disabled.', { cause: error })
+    }
+  }
+
+  private async settleReceipt(record: InteractionRecord, sessionId: SessionId, projected: InitiativeReceipt): Promise<boolean> {
+    if (projected.id !== record.id || projected.receipt === null) return false
+    const receipt = projected.receipt
+    if (record.decisionId !== undefined) {
+      const source = await this.core.observe({ sessionId, eventId: String(receipt.seq), timestamp: receipt.timestamp, kind: 'assistant-message' })
+      await this.core.settleDecision(record.decisionId, receipt.interrupted ? 'interrupted' : 'responded', [source.id])
+    }
+    await this.core.saveInteraction({ ...record, status: receipt.interrupted ? 'uncertain' : 'sent',
+      message: receipt.text, messageSeq: receipt.seq, ...(receipt.interrupted ? {} : { sentAt: receipt.timestamp }),
+      note: receipt.interrupted ? 'An interrupted assistant prefix is visible; do not automatically resend.' : 'Confirmed assistant message committed to the Harness conversation.' })
+    this.failure = null
+    return true
+  }
+
+  private async reconcileCold(record: InteractionRecord): Promise<void> {
+    const persistence = this.ctx.get('sessionPersistence')
+    if (persistence !== undefined && record.sessionId !== undefined) {
+      try {
+        if (await persistence.stat(record.sessionId, { signal: this.lifetime.signal }) !== undefined) {
+          let matched: InitiativeReceipt | undefined
+          {
+            await using handle = await persistence.open(record.sessionId, 'read', { signal: this.lifetime.signal })
+            const { events } = await handle.read(0, undefined, { signal: this.lifetime.signal })
+            let projected = initiativeProjection.init(handle.header, handle.inheritedEventCount)
+            for (const event of events) {
+              projected = initiativeProjection.apply(projected, event)
+              if (projected.id === record.id) matched = projected
+            }
+          }
+          if (matched !== undefined && await this.settleReceipt(record, record.sessionId, matched)) return
+        }
+      } catch (error) {
+        if (this.lifetime.signal.aborted) throw error
+        const diagnostic = statusFailure(new GenesisError('storage',
+          'Stored proactive receipt could not be verified. Inspect the original Session; automatic resend is disabled.', { cause: error }))
+        this.failure = { code: diagnostic.code, message: diagnostic.message }
+        await this.core.saveInteraction({ ...record, status: 'uncertain',
+          note: 'The stored proactive receipt could not be verified. Restore or inspect the original Session; automatic resend is disabled.' })
+        this.ctx.logger.warn(`Genesis proactive receipt could not be verified: ${diagnostic.message}`)
+        return
+      }
+    }
+    await this.core.saveInteraction({ ...record, status: 'uncertain',
+      note: 'The original conversation has no confirmed assistant receipt; inspect it before any retry.' })
   }
 
   /**
@@ -278,15 +341,8 @@ export class SocialInitiative {
       if (!['dispatching', 'uncertain'].includes(record.status) || record.sessionId !== session.id) continue
       const projected = this.ctx.sessionProjections.stateOf(session, 'genesisInitiative')
       if (projected?.id === record.id && projected.receipt !== null) {
-        const receipt = projected.receipt
-        await this.core.saveInteraction({ ...record, status: receipt.interrupted ? 'uncertain' : 'sent',
-          message: receipt.text, messageSeq: receipt.seq, ...(receipt.interrupted ? {} : { sentAt: receipt.timestamp }),
-          note: receipt.interrupted ? 'An interrupted assistant prefix is visible; do not automatically resend.' : 'Confirmed assistant message committed to the Harness conversation.' })
-        this.failure = null
-        if (record.decisionId !== undefined) {
-          const source = await this.core.observe({ sessionId: session.id, eventId: String(receipt.seq), timestamp: receipt.timestamp, kind: 'assistant-message' })
-          await this.core.settleDecision(record.decisionId, receipt.interrupted ? 'interrupted' : 'responded', [source.id])
-        }
+        await this.confirmSession(session)
+        await this.settleReceipt(record, session.id, projected)
       } else if (record.status === 'dispatching' && ((projected?.id === record.id && projected.ended) || (agent !== undefined
         && ![...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(message => message.source.kind === 'genesis-initiative'
           && message.source.interactionId === record.id) && agent.status === 'idle'))) {

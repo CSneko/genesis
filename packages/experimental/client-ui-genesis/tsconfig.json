@@ -55,6 +55,18 @@
     },
     {
       "path": "../../util/crypto"
+    },
+    {
+      "path": "../genesis-minecraft"
+    },
+    {
+      "path": "../../client/ui-sidebar"
+    },
+    {
+      "path": "../../client/ui-layout"
+    },
+    {
+      "path": "../genesis-qq"
     }
   ]
 }

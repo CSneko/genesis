@@ -1,0 +1,12 @@
+# Explicit override: GENESIS_COMPUTER_USE=0 disables desktop tools; =1 opts in on other Wayland desktops.
+- insert:
+    - id: genesis-computer-use
+      name: '@deepseek-ai/dsh-computer-use'
+      disabled: !!js process.env.GENESIS_COMPUTER_USE === '0' || (process.env.GENESIS_COMPUTER_USE !== '1' && !(process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland' && (process.env.XDG_CURRENT_DESKTOP ?? '').toLowerCase().split(':').includes('gnome')))
+    - id: genesis-computer-portal
+      name: '@deepseek-ai/dsh-experimental-computer-use-portal'
+      config:
+        autoConnect: true
+        restoreTokenPath: !!js dshHomePath('computer/portal-token.json')
+        requireApplicationConsent: false
+      disabled: !!js process.env.GENESIS_COMPUTER_USE === '0' || (process.env.GENESIS_COMPUTER_USE !== '1' && !(process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland' && (process.env.XDG_CURRENT_DESKTOP ?? '').toLowerCase().split(':').includes('gnome')))

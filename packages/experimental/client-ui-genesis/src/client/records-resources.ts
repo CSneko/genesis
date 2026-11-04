@@ -68,9 +68,8 @@ export function mountRecords(ctx: Context, notice: SnapshotStore<MemoryNoticeSta
       throw error
     } finally { resource.refresh() }
   }
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'genesis-records', order: 20, locale: 'genesis',
-    label: () => ctx.locale.bind('genesis')('recordsTitle'),
+  ctx.slots.inject('genesis.page', () => ctx.slots.register({
+    name: 'genesis.page', key: 'records', locale: 'genesis',
     inject: (): RecordsActions => ({
       refresh: () => { resource.refresh() },
       edit: (...args) => mutation(ctx.remote.genesisRecords.edit(...args)),

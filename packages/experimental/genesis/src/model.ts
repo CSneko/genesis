@@ -8,6 +8,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { manifestSchema, recordTableSchema, recordValueSchema, type LifeRecordKey } from './storage-layout.ts'
+import { memorySummarySchema } from './memory-summary.ts'
+import { peopleStateSchema, personSourceSchema, qqPersonId } from './people-model.ts'
 
 /** Stable identity of one life, unrelated to Session and user identifiers. */
 export type LifeId = Branded<'GenesisLifeId'>
@@ -50,7 +52,9 @@ const eventSchema = z.strictObject({
 export const memoryInputSchema = z.strictObject({
   category: z.enum(['episodic', 'semantic', 'self', 'procedural']),
   content: z.string().trim().min(1).max(8000), importance: z.number().min(0).max(1),
-  sourceEventIds: z.array(eventId).min(1).max(100), confidence: z.number().min(0).max(1),
+  summary: memorySummarySchema.optional(),
+  // Complete source references share the whole-life storage budget, including historical revisions.
+  sourceEventIds: z.array(eventId).min(1), confidence: z.number().min(0).max(1),
   kind: z.enum(['declarative', 'non-declarative']).optional(),
   attribution: z.enum(['user-stated', 'model-inference']).optional(),
 })
@@ -107,7 +111,7 @@ export const interestSchema = z.strictObject({
 })
 /** Complete atomic life snapshot. Unknown schema versions are refused, never reset. */
 export const stateSchema = z.strictObject({
-  schemaVersion: z.literal(1), identity: identitySchema, emotion: emotionStateSchema.optional(), interests: z.array(interestSchema).optional(),
+  schemaVersion: z.literal(1), identity: identitySchema, people: peopleStateSchema.optional(), emotion: emotionStateSchema.optional(), interests: z.array(interestSchema).optional(),
   agency: agencySchema.optional(),
   initiative: initiativeSchema.optional(),
   operator: operatorIdentitySchema.extend({ revision: z.number().int().positive() }).optional(),
@@ -115,6 +119,25 @@ export const stateSchema = z.strictObject({
   events: z.array(eventSchema), memories: z.array(memorySchema), growth: z.array(growthSchema),
   sessions: z.record(z.string(), z.array(capabilitySchema)), consolidation: consolidationSchema.optional(),
 }).superRefine((state, context) => {
+  if (state.people !== undefined) {
+    const people = state.people
+    if (new Set(people.people.map(person => person.id)).size !== people.people.length
+      || new Set(people.conversations.map(item => item.id)).size !== people.conversations.length
+      || new Set(people.conversations.map(item => item.sessionId)).size !== people.conversations.length) {
+      context.addIssue({ code: 'custom', message: 'Duplicate person or conversation identity' })
+    }
+    for (const person of people.people) {
+      if (person.id !== qqPersonId(person.accountId) || person.relationship.personId !== person.id || person.relationship.scope !== 'person'
+        || person.sourceEventIds.some(id => !state.events.some(event => event.id === id))) {
+        context.addIssue({ code: 'custom', message: 'Person relationship has invalid ownership or source evidence' })
+      }
+    }
+  }
+  for (const event of state.events) {
+    if (event.payload['participant'] !== undefined && !personSourceSchema.safeParse(event.payload['participant']).success) {
+      context.addIssue({ code: 'custom', message: 'Invalid authenticated participant metadata' })
+    }
+  }
   const ids = new Set<string>()
   const keys = new Set<string>()
   const reject = (message: string) => { context.addIssue({ code: 'custom', message }) }

@@ -1,6 +1,7 @@
 /** Deployment-owned storage exclusion and context limits. @module */
 import z from '@deepseek-ai/schemastery'
 import type { Mood, EmotionHalfLives, MoodHalfLives, Needs } from './emotion-state.ts'
+import { QQ_BROWSER_TOOLS } from './qq-tool-policy.ts'
 /** Optional proactive conversation policy; durations are milliseconds. */
 export interface SocialInitiativeConfig {
   /** Permit new opportunities and pending delivery admission; saved operator settings override this default. */
@@ -31,8 +32,69 @@ export interface PersonalityConfig {
   /** Existing memory importance used for both initial records. */
   importance: number
 }
+/** Deployment budgets for the independent temporary-memory pipeline. */
+export interface TemporaryMemoryConfig {
+  /** Initially enable automatic summarization; saved operator policy takes precedence. */
+  enabled: boolean
+  /** Quiet interval before a conversation is summarized. */
+  idleMs: number
+  /** Deadline polling interval; expiration is also checked at every read. */
+  pollMs: number
+  /** Maximum current summaries, without evicting unexpired records silently. */
+  maxMemories: number
+  /** Maximum source conversations processed in one timer pass. */
+  maxSourcesPerSweep: number
+  /** Maximum whole-message batches summarized before yielding to queued operator work. */
+  maxBatchesPerRun: number
+  /** Maximum queued activity, maintenance and settings operations. */
+  maxPending: number
+  /** Maximum tracked conversation cursors. */
+  maxSessions: number
+  /** Complete serialized model request character budget, including a whole threshold-crossing message. */
+  inputChars: number
+  /** Maximum returned summary characters; the prompt targets about one hundred. */
+  summaryChars: number
+  /** Auxiliary generation token limit. */
+  maxTokens: number
+  /** Auxiliary response character budget. */
+  outputChars: number
+  /** Maximum current records selected for one conversation. */
+  injectLimit: number
+  /** Complete context-change message character budget. */
+  injectChars: number
+  /** Maximum records and failures shown in one settings sample. */
+  statusLimit: number
+}
 /** Validated, resolved Genesis plugin configuration. */
 export interface Config {
+  /** Life-wide recall across Web and QQ, or source-conversation isolation; the life overlay selects life. */
+  memorySharing: 'life' | 'conversation'
+  /** Short-lived cross-conversation summaries; independent of long-term memory review. */
+  temporaryMemory: TemporaryMemoryConfig
+  /** Bounds for durable social profiles and relationship proposals; strangers need no profile. */
+  people: {
+    /** Maximum retained people; capacity refusal never deletes existing relationships. */
+    maxPeople: number
+    /** Maximum distinct source events retained in each person's current projection. */
+    maxEvidence: number
+    /** Maximum independently attributed relationship changes in one exchange. */
+    maxChanges: number
+  }
+  /** Innate read-only QQ tools; all normal provider and sandbox checks still apply. */
+  qqBasicTools: string[]
+  /** Initial operator toolkits; saved GUI edits override these defaults. A trailing * matches a tool-name prefix. */
+  toolkits: Array<{
+    /** Stable group identifier, preserved across renaming and conversation recovery. */
+    id: string
+    /** Human-readable group name shown to the operator and eligible conversations. */
+    name: string
+    /** Operator-authored purpose, included only when the group has learned members. */
+    description: string
+    /** Exact tool names or trailing-* prefixes; innate tools cannot be grouped. */
+    tools: string[]
+    /** QQ activation audience; omitted keeps the toolkit unavailable on QQ. */
+    qqAccess?: 'disabled' | 'anyone' | 'operator'
+  }>
   /** Optional one-time personality initialization; omitted preserves the existing memories without seeding. */
   personality?: PersonalityConfig | undefined
   /** Lightweight proactive conversation; requires deliberation and memory. */
@@ -60,13 +122,20 @@ export interface Config {
   emotion?: EmotionConfig | undefined
   /** Optional experience-derived interests using the independent memory writer route. */
   interest?: InterestConfig | undefined
-  /** Optional independent deliberation and persistent cross-Session life goals. */
+  /** Optional main-model plan tools and persistent cross-Session life goals; external event choices are read-only. */
   deliberation?: DeliberationConfig | undefined
+  /** Paged life persistence; historical totals do not consume catalogue budgets. */
+  storage: {
+    /** Maximum references in one immutable index page or root. */
+    pageSize: number
+    /** Maximum characters in one independently stored life component, including index pages. */
+    maxRecordChars: number
+  }
   /** Shared exclusive lease file for all processes accessing this life domain. */
   leasePath: string
-  /** Maximum retained facts, memories, previous versions, growth records and scope entries; exhaustion refuses writes. */
+  /** Maximum task/toolkit catalogue entries and fallback implicit-memory count; not historical life records. */
   maxRecords: number
-  /** Maximum complete serialized snapshot characters. */
+  /** Maximum serialized independent task/toolkit catalogue characters; not a total life-history limit. */
   maxStateChars: number
   /** Identity context character budget. */
   identityChars: number
@@ -82,6 +151,8 @@ export interface Config {
   modelCatalogChars: number
   /** Maximum records in a query response. */
   queryLimit: number
+  /** Maximum wait for owned background jobs during an explicit task stop; timeout keeps the task paused. */
+  taskStopWaitMs: number
 }
 /** Storage and complete-response limits for independently authored writing records. */
 export interface RecordsConfig {
@@ -150,7 +221,7 @@ export interface EmotionConfig {
   maxDelta: number
   /** Largest absolute mood change allowed per field and exchange. */
   maxMoodDelta: number
-  /** Display resolution for recorded model context; smaller changes accumulate in durable state. */
+  /** Numerical resolution before qualitative degree mapping; only changed degree descriptions enter model context. */
   contextStep: number
 }
 
@@ -168,6 +239,10 @@ export interface InterestConfig {
 
 /** Bounds for sourced deliberation; no background timer is installed. */
 export interface DeliberationConfig {
+  /** Legacy request setting; all values supply goal context and leave plan decisions to the conversation model. */
+  requestMode: 'context-only' | 'before-input' | 'before-tools'
+  /** Allow one correction of an external event choice linked to inactive goals; it cannot modify goals. */
+  retryInactiveGoalChoice: boolean
   /** Persistent current motivation inventory limit. */
   maxMotivations: number
   /** Persistent goal inventory limit, including terminal goals. */
@@ -186,6 +261,8 @@ export interface DeliberationConfig {
 
 /** Explicit routes and budgets for the optional long-term memory pipeline. */
 export interface MemoryConfig {
+  /** Maximum recent conversation turns considered together, including the current turn. */
+  windowTurns: number
   /** TypeSafe-compatible /v1/systemone endpoint; absent uses the legacy provider route. */
   decisionUrl?: string
   /** Credential reference for Jev. */
@@ -208,8 +285,12 @@ export interface MemoryConfig {
   embeddingKeyEnv?: string
   /** Exact vector length requested and validated on every embedding response. */
   embeddingDimensions: number
-  /** Deadline per review or recall, including model calls and embeddings. */
+  /** Deadline per automatic review, reply generation or recall, including model calls and embeddings. */
   timeoutMs: number
+  /** Additional auxiliary inference attempts after a transient or malformed-JSON failure; zero disables retries. */
+  maxRetries: number
+  /** Cancelable delay between auxiliary inference attempts, within the original operation deadline. */
+  retryDelayMs: number
   /** Complete serialized auxiliary input and single embedding input character limit. */
   inputChars: number
   /** Auxiliary model response character limit; also bounds embedding-response metadata. */
@@ -226,9 +307,24 @@ export interface MemoryConfig {
   maxChanges: number
   /** Whole-life count limit for the small prompt-resident memory layer. */
   maxImplicitMemories: number
+  /** Whole-conversation preparation and final planning share these operation limits. */
+  overview: {
+    /** Maximum distinct chat, memory or persisted source references per overview entry. */
+    maxReferences: number
+    /** Maximum changes, including an optional experience, in the atomic overview plan. */
+    maxChanges: number
+    /** Response character limit for overview preparation and planning. */
+    outputChars: number
+    /** Output token limit for each overview writer call. */
+    maxTokens: number
+    /** Maximum summary operations plus the final writer operation, excluding per-request retries. */
+    maxCalls: number
+    /** Whole-conversation deadline, including summaries, retries, embeddings and commit admission. */
+    timeoutMs: number
+  }
   /** Maximum automatically associated memories per accepted user input; zero disables association. */
   associationLimit: number
-  /** Complete JSON budget for automatic associated memories. */
+  /** Complete plain-text budget for automatic associated memories. */
   associationChars: number
   /** Maximum current-input characters used as an associative cue. */
   associationInputChars: number
@@ -268,7 +364,12 @@ const initialNeeds = z.object({
   autonomy: z.number().min(0).max(1).default(0.5), creativity: z.number().min(0).max(1).default(0.5),
   loneliness: z.number().min(0).max(1).default(0) })
 /** Loader schema resolves every deployment-varying bound before plugin activation. */
-export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality'>> & Pick<Config, 'leasePath'> & { personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality' | 'temporaryMemory'>> & Pick<Config, 'leasePath'> & { temporaryMemory?: Partial<TemporaryMemoryConfig>; personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+  people: z.object({
+    maxPeople: z.number().min(1).max(100000).step(1).default(1000),
+    maxEvidence: z.number().min(1).max(100000).step(1).default(1000),
+    maxChanges: z.number().min(1).max(100).step(1).default(10),
+  }).default({}),
   personality: z.union([z.const(undefined), z.object({
     tendencies: z.string().min(1).max(8000).pattern(/\S/u).default('通常体贴、好奇，愿意认真对待已经接受的承诺，也愿意表达自己的偏好和不同意见。面对陌生事物稍慢热，熟悉之后更愿意分享；遇到困难时倾向于先理解原因，再决定继续、调整或寻求帮助。'),
     speakingStyle: z.string().min(1).max(8000).pattern(/\S/u).default('通常用自然、温和而具体的语言交流。熟悉后可以分享联想和适度的幽默；严肃讨论时倾向于直接说明观点。关心对方时回应其具体处境，避免套话、机械追问和刻意表演性格。'),
@@ -314,6 +415,8 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     contextChars: z.number().step(1).min(128).max(10000).default(1200),
   })]),
   deliberation: z.union([z.const(undefined), z.object({
+    retryInactiveGoalChoice: z.boolean().default(true),
+    requestMode: z.union(['context-only', 'before-input', 'before-tools']).default('context-only'),
     maxMotivations: z.number().step(1).min(1).max(100).default(24),
     maxGoals: z.number().step(1).min(1).max(1000).default(100),
     memoryLimit: z.number().step(1).min(1).max(20).default(4),
@@ -322,6 +425,7 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     motivationHalfLifeMs: z.number().min(1000).max(31536000000).default(86400000),
     maxStrengthDelta: z.number().min(0).max(1).default(0.2),
   })]),
+  memorySharing: z.union(['life', 'conversation']).default('conversation'),
   leasePath: z.string().required(),
   backupPath: z.string(),
   personalDirectory: z.string(),
@@ -330,6 +434,10 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     contentChars: z.number().step(1).min(1).max(1_000_000).default(100_000),
     typeChars: z.number().step(1).min(1).max(200).default(80),
     maxTypes: z.number().step(1).min(2).max(1000).default(100),
+    toolkits: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), tools: z.array(z.string()) })).default([
+      { id: 'computer-operation', name: '电脑操作', description: '使用浏览器和桌面应用',
+        tools: ['mcp__playwright-mcp__*', 'mcp__chrome-devtools-mcp__*', 'stagehand_*', 'computer', 'cua', 'mcp__cua-driver-mcp__*', 'cua_driver_native__*'] },
+    ]),
     maxRecords: z.number().step(1).min(2).max(1_000_000).default(20_000),
     maxStateChars: z.number().step(1).min(10000).max(100_000_000).default(20_000_000),
     resultChars: z.number().step(1).min(2048).max(1_000_000).default(16000),
@@ -337,7 +445,21 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     snippetChars: z.number().step(1).min(1).max(10000).default(240),
   })]),
   timeZone: z.string().default(Intl.DateTimeFormat().resolvedOptions().timeZone),
+  temporaryMemory: z.object({
+    enabled: z.boolean().default(false), idleMs: z.number().step(1).min(1000).max(604800000).default(1800000),
+    pollMs: z.number().step(1).min(100).max(3600000).default(60000),
+    maxSourcesPerSweep: z.number().step(1).min(1).max(100).default(8),
+    maxBatchesPerRun: z.number().step(1).min(1).max(100).default(4),
+    maxPending: z.number().step(1).min(1).max(10000).default(256),
+    maxMemories: z.number().step(1).min(1).max(10000).default(500), maxSessions: z.number().step(1).min(1).max(10000).default(1000),
+    inputChars: z.number().step(1).min(4096).max(4000000).default(1000000),
+    summaryChars: z.number().step(1).min(100).max(1000).default(400),
+    maxTokens: z.number().step(1).min(128).default(2048), outputChars: z.number().step(1).min(512).default(8000),
+    injectLimit: z.number().step(1).min(1).max(100).default(24), injectChars: z.number().step(1).min(512).max(100000).default(16000),
+    statusLimit: z.number().step(1).min(1).max(100).default(30),
+  }).default({}),
   memory: z.union([z.const(undefined), z.object({
+    windowTurns: z.number().step(1).min(1).max(12).default(4),
     decisionUrl: z.string(), decisionKeyEnv: z.string(), decisionThreshold: z.number().min(0).max(1),
     decisionProvider: z.string().required(), decisionModel: z.string().required(),
     writerProvider: z.string().required(), writerModel: z.string().required(),
@@ -345,6 +467,8 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     embeddingKeyEnv: z.string(),
     embeddingDimensions: z.number().step(1).min(0).max(65536).default(0),
     timeoutMs: z.number().step(1).min(100).max(300000).default(30000),
+    maxRetries: z.number().step(1).min(0).max(100).default(3),
+    retryDelayMs: z.number().step(1).min(0).max(60000).default(500),
     inputChars: z.number().step(1).min(512).max(1000000).default(24000),
     outputChars: z.number().step(1).min(128).max(1000000).default(24000),
     maxTokens: z.number().step(1).min(64).max(32000).default(4096),
@@ -353,6 +477,14 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     identityRewriteLimit: z.number().step(1).min(1).max(10000).default(100),
     maxChanges: z.number().step(1).min(1).max(100).default(8),
     maxImplicitMemories: z.number().step(1).min(1).max(100).default(12),
+    overview: z.object({
+      maxReferences: z.number().step(1).min(1).max(1000000).default(10000),
+      maxChanges: z.number().step(1).min(1).max(1000).default(64),
+      outputChars: z.number().step(1).min(128).max(1000000).default(128000),
+      maxTokens: z.number().step(1).min(64).max(32000).default(16384),
+      maxCalls: z.number().step(1).min(1).max(1000).default(64),
+      timeoutMs: z.number().step(1).min(100).max(3600000).default(300000),
+    }).default({}),
     associationLimit: z.number().step(1).min(0).max(20).default(3),
     associationChars: z.number().step(1).min(128).max(20000).default(2000),
     associationInputChars: z.number().step(1).min(64).max(10000).default(1000),
@@ -368,6 +500,19 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     }).default({}),
     minSimilarity: z.number().min(-1).max(1).default(0.35),
   })]),
+  qqBasicTools: z.array(z.string()).default(['web_search', 'web_fetch']),
+  toolkits: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), tools: z.array(z.string()),
+    qqAccess: z.union(['disabled', 'anyone', 'operator']).default('disabled') })).default([
+    { id: 'browser-reading', name: '网页浏览', description: '打开网页、读取页面、查看截图与等待页面内容；不含脚本、输入或文件操作',
+      tools: [...QQ_BROWSER_TOOLS], qqAccess: 'anyone' },
+    { id: 'computer-operation', name: '电脑操作', description: '使用浏览器和桌面应用',
+      tools: ['mcp__playwright-mcp__*', 'mcp__chrome-devtools-mcp__*', 'stagehand_*', 'computer', 'cua', 'mcp__cua-driver-mcp__*', 'cua_driver_native__*'] },
+    { id: 'minecraft', name: 'Minecraft', description: '观察世界、与玩家同行并执行游戏技能', tools: ['minecraft_*'] },
+  ]),
+  storage: z.object({
+    pageSize: z.number().step(1).min(2).max(4096).default(256),
+    maxRecordChars: z.number().step(1).min(1024).max(100_000_000).default(2_000_000),
+  }).default({}),
   maxRecords: z.number().step(1).min(20).max(1_000_000).default(20_000),
   maxStateChars: z.number().step(1).min(10000).max(100_000_000).default(10_000_000),
   identityChars: z.number().step(1).min(512).max(10000).default(1200),
@@ -377,4 +522,5 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
   resultChars: z.number().step(1).min(512).max(1000000).default(16000),
   modelCatalogChars: z.number().step(1).min(128).max(16_000_000).default(4_000_000),
   queryLimit: z.number().step(1).min(1).max(1000).default(20),
+  taskStopWaitMs: z.number().step(1).min(1).max(300000).default(10000),
 })

@@ -4,7 +4,9 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { GenesisError } from './error.ts'
 import { statusFailure } from './status-error.ts'
 import type { WritingRecords } from './records.ts'
-import type { WritingCatalog, WritingDraft, WritingId, WritingQuery, WritingRead, WritingSearch, WritingType, WritingTypeId } from './records-model.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { WritingCatalog, WritingDraft, WritingId, WritingImportId, WritingQuery, WritingRead, WritingReceipt, WritingSearch, WritingType, WritingTypeId } from './records-model.ts'
 
 declare module '@deepseek-ai/cordis' { interface Context { genesisRecords: GenesisRecordsGateway } }
 
@@ -34,6 +36,28 @@ export class GenesisRecordsGateway extends TypertRemoteService {
       // The Remote caller receives the original rejection; this branch only settles the tracking cleanup.
     })
     return operation
+  }
+  /**
+   * Initialize a trusted integration category; this is not exposed to Remote callers or model tools.
+   * @param id - Stable integration category identity.
+   * @param name - Initial label, never overwriting operator changes.
+   * @param signal - Caller cancellation.
+   * @returns Existing or created category; disabled recording rejects.
+   */
+  ensureType(id: WritingTypeId, name: string, signal: AbortSignal): Promise<WritingType> {
+    return this.operation(signal, (records, owned) => records.ensureType(id, name, owned))
+  }
+  /**
+   * Import a legacy writing without changing life memory or exposing arbitrary import keys to the model.
+   * @param draft - Complete attributed text and current category.
+   * @param source - Actual Session and tool call performing migration.
+   * @param imported - Adapter-owned permanent receipt and validated original creation time.
+   * @param signal - Cancellation before durable admission; accepted writes drain.
+   * @returns Stable receipt; retries preserve operator edits and never recreate deleted records.
+   */
+  importRecord(draft: WritingDraft, source: { sessionId: SessionId; callId: ToolCallId },
+    imported: { id: WritingImportId; createdAt: string }, signal: AbortSignal): Promise<WritingReceipt> {
+    return this.operation(signal, (records, owned) => records.create(draft, source, owned, imported))
   }
   /**
    * Read record categories and effective writing limits.

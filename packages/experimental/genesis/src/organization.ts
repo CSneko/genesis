@@ -23,7 +23,7 @@ export const ORGANIZATION_TIME_PROMPT = '结合每条记忆草稿的完整句子
 function organizationDraftSchema(sourceCount: number, maxResults: number) {
   return z.strictObject({ memories: z.array(z.strictObject({
     evidenceIds: z.array(z.string().min(1).max(100)).min(1).max(sourceCount), category: memoryInputSchema.shape.category,
-    content: memoryInputSchema.shape.content, importance: memoryInputSchema.shape.importance,
+    content: memoryInputSchema.shape.content, summary: memoryInputSchema.shape.summary, importance: memoryInputSchema.shape.importance,
     confidence: memoryInputSchema.shape.confidence,
   })).min(1).max(maxResults) })
 }
@@ -121,7 +121,8 @@ export function organizationPlan(raw: unknown, memories: LifeMemory[], targetCou
       && !(time.startsWith('{{time:') && normalized.includes(time.replace('{{time:', '{{date:'))))
     const content = missing.length === 0 ? normalized : `${normalized}\n相关事件时间：${missing.join('、')}。`
     return { evidenceIds: [...new Set(sources.map(source => source.id))], input: memoryInputSchema.parse({
-      category: item.category, content, importance: item.importance, confidence: item.confidence,
+      category: item.category, content, ...(item.summary === undefined ? {} : { summary: item.summary }),
+      importance: item.importance, confidence: item.confidence,
       kind: 'declarative', attribution: 'model-inference', sourceEventIds: [...new Set(sources.flatMap(source => source.sourceEventIds))],
     }) }
   })

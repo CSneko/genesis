@@ -11,6 +11,7 @@ import type {} from '../src/client/mount.ts'
 afterEach(cleanup)
 const dictionary: Readonly<Record<string, string>> = en
 const initial: NonNullable<LifeStatus['models']> = {
+  maxRetries: 3,
   decision: { kind: 'jev', url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', threshold: 0.5, keyRef: 'GENESIS_DECISION_API_KEY' },
   writer: { kind: 'openai', url: 'https://writer.example/v1/chat/completions', model: 'writer', keyRef: 'GENESIS_WRITER_API_KEY' },
   revision: 1, keys: { decision: { configured: false, writable: true }, writer: { configured: true, writable: true } },
@@ -22,14 +23,17 @@ it('retains rejected memory model edits and saves decision and writer credential
   const testModel = vi.fn().mockResolvedValue({ ok: true, value: undefined })
   render(<MemoryModels initial={initial} writable t={(key, params) => (dictionary[key] ?? key).replace('{reason}', typeof params?.reason === 'string' ? params.reason : '')} refresh={() => {}}
     saveModels={saveModels} credential={credential} testModel={testModel} />)
+  expect(screen.getByLabelText(en.auxiliaryMaxRetries)).toHaveProperty('value', '3')
+  fireEvent.change(screen.getByLabelText(en.auxiliaryMaxRetries), { target: { value: '0' } })
   fireEvent.change(screen.getByLabelText(en.decisionThreshold), { target: { value: '0.7' } })
   fireEvent.change(screen.getByLabelText(en.decisionKey, { selector: 'input' }), { target: { value: 'private-key' } })
   fireEvent.click(screen.getByRole('button', { name: en.saveModels }))
   await screen.findByText(/Configuration revision changed; reload before saving/u)
   expect(screen.getByLabelText(en.decisionThreshold)).toHaveProperty('value', '0.7')
+  expect(screen.getByLabelText(en.auxiliaryMaxRetries)).toHaveProperty('value', '0')
   fireEvent.click(screen.getByRole('button', { name: en.saveModels }))
   await screen.findByText(en.modelsSaved)
-  expect(saveModels).toHaveBeenLastCalledWith({ decision: { ...initial.decision, threshold: 0.7 }, writer: initial.writer },
+  expect(saveModels).toHaveBeenLastCalledWith({ maxRetries: 0, decision: { ...initial.decision, threshold: 0.7 }, writer: initial.writer },
     1, expect.any(AbortSignal))
   expect(JSON.stringify(saveModels.mock.calls)).not.toContain('private-key')
   fireEvent.click(within(screen.getByRole('form', { name: en.decisionKey })).getByRole('button', { name: en.saveKey }))

@@ -58,7 +58,8 @@ kind: "package-reference"
 | `serverName` | 必填 | 服务器工具名称的 namespace；`[A-Za-z0-9_-]{1,32}`，在一个注册作用域内唯一 |
 | `command` / `args` / `env` / `cwd` | — | stdio：可执行文件、参数、合并到清洗过的环境之上的额外环境变量、工作目录 |
 | `url` / `headers` | — | streamable-http：端点 URL 与额外请求标头 |
-| `toolCallTimeoutMs` | `60,000` | 每次 `tools/call` 或资源请求的超时 |
+| `toolCallTimeoutMs` | `60,000` | 每次 `tools/call`、资源请求或关闭工具的超时 |
+| `shutdownTool` | 省略 | 关闭已建立的连接前，以空参数调用的上游工具 |
 | `maxInstructionBytes` | `32,768` | 包括服务器归属信息在内的服务器指令 UTF-8 字节上限；超出时连接失败 |
 | `failOnStartupError` | `false` | 初始连接或工具同步失败时拒绝插件激活 |
 | `reconnect.enabled` | `true` | 连接丢失后自动重新连接 |
@@ -69,6 +70,8 @@ kind: "package-reference"
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-mcp-client)是每个受支持字段的穷尽式真源。
 
 启动后，服务器的工具会以 `mcp__<serverName>__<tool>` 形式出现——试着用一条提示词调用其中一个。如果初始连接失败，harness 仍会启动，但该服务器的工具不会出现，并会记录一条错误。设置 `failOnStartupError: true` 会拒绝插件激活；[app-boot 的启动策略](../../boot/app-boot/README.zh.md)仍允许可选 MCP 配置项失败，而不中止 harness。
+
+`shutdownTool` 用于操作者配置的清理操作，例如关闭持久浏览器。服务器须在发现阶段公布该工具。正常释放已建立的连接时，它在模型轮次之外、终止传输之前执行一次，不从 Session 历史重放；连接已断开或尚未初始化时不调用。超时、拒绝或错误结果会在日志中说明服务器保存的数据可能不完整，之后仍会清理传输。崩溃或强制终止进程不能保证执行此清理。
 
 ### 工具命名与共存
 

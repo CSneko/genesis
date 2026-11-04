@@ -311,9 +311,13 @@ export class BasicCompactionEngine extends CompactionEngine {
         + 'configure contextWindow on that adapter model',
       )
     }
+    const modelWindow = info.context.contextWindow
+    const contextWindow = Math.min(modelWindow, this.ctx.waterfall('compaction/context-window', {
+      session: agent.session, modelWindow,
+    }, () => modelWindow))
     const spec = resolveCompactSpec(
       policy,
-      info.context.contextWindow,
+      contextWindow,
       reservedCompletionTokens(agent, info.defaultMaxTokens),
     )
     if (measurement.totalTokens < spec.thresholdTokens) return null

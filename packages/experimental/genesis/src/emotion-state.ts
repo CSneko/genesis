@@ -1,6 +1,7 @@
 /** Three-layer affect state, bounded proposals and elapsed-time recovery. @module */
 import { z } from 'zod'
 import type { EmotionConfig } from './config.ts'
+import { personIdSchema } from './people-model.ts'
 import { relationshipSchema, appraisalSchema, relationshipDeltaSchema } from './relationship-state.ts'
 import { evolveAffect } from './affect-dynamics.ts'
 
@@ -79,6 +80,9 @@ export const emotionUpdateSchema = z.strictObject({
     recentInteraction: signed, solitudePreference: signed, exploration: signed, autonomy: signed, creativity: signed }),
   targets: z.partialRecord(z.enum(['happiness', 'sadness', 'anger', 'fear', 'tenderness', 'gratitude', 'longing', 'frustration', 'disappointment']),
     z.string().trim().min(1).max(200)).optional(),
+  relationships: z.array(z.strictObject({ personId: personIdSchema, delta: relationshipDeltaSchema,
+    sourceSeqs: z.array(z.number().int().nonnegative()).min(1).max(100),
+    appraisal: appraisalSchema, reason: z.string().trim().min(1).max(1000) })).optional(),
   appraisal: appraisalSchema, relationshipDelta: relationshipDeltaSchema.optional(),
   reason: z.string().trim().min(1).max(1000), sourceSeqs: z.array(z.number().int().nonnegative()).min(1).max(100),
 })
@@ -140,31 +144,37 @@ export function initialEmotion(config: EmotionConfig, now: string): EmotionState
 }
 
 /**
- * Quantize affect and expose advisory priorities through logged context.
+ * Describe affect in stable degree bands, ranking only by those displayed bands.
  * @param state - Recovered current state.
- * @param step - Display resolution; full precision remains in storage.
- * @returns Direct percentage statements, strongest feeling and action inclination first; no permissions are granted.
+ * @param step - Numerical resolution before degree mapping; storage retains full precision.
+ * @returns Qualitative feelings, mood, needs and relationship estimates; no permissions are granted.
  */
 export function emotionContext(state: EmotionState, step: number): string {
-  const quantize = (value: number) => Math.max(-1, Math.min(1, Math.round(value / step) * step))
-  const percent = (value: number) => `${Number((quantize(value) * 100).toFixed(1))}%`
+  const quantize = (value: number) => Math.max(0, Math.min(1, Math.round(Math.abs(value) / step) * step))
+  const level = (value: number) => {
+    const magnitude = quantize(value)
+    return magnitude < 0.1 ? 0 : magnitude < 0.35 ? 1 : magnitude < 0.65 ? 2 : magnitude < 0.85 ? 3 : 4
+  }
+  const degree = (value: number) => ['negligible', 'mild', 'moderate', 'strong', 'very strong'][level(value)]!
+  const valence = level(state.mood.valence) === 0 ? 'neutral'
+    : `${degree(state.mood.valence)} ${state.mood.valence < 0 ? 'negative' : 'positive'}`
   const ranked = (vector: Record<string, number>) => Object.entries(vector)
-    .sort((a, b) => quantize(b[1]) - quantize(a[1]))
-  const describe = (entries: Array<[string, number]>) => entries.map(([name, value]) => `${name} ${percent(value)}`).join('; ')
+    .sort((a, b) => level(b[1]) - level(a[1]))
+  const describe = (entries: Array<[string, number]>) => entries.map(([name, value]) => `${name} ${degree(value)}`).join('; ')
   const feelings = ranked(state.current)
   const priorities = ranked({ connection: lonelinessTarget(state.needs), exploration: state.needs.exploration,
     autonomy: state.needs.autonomy, creativity: state.needs.creativity,
     caution: Math.max(state.current.fear, state.current.frustration * (1 - state.mood.arousal)) })
   const salient = [...feelings, ['mood valence', state.mood.valence] as [string, number],
     ['loneliness', state.needs.loneliness] as [string, number]]
-    .sort((a, b) => Math.abs(quantize(b[1])) - Math.abs(quantize(a[1])))
+    .sort((a, b) => level(b[1]) - level(a[1]))
   const foreground = [...salient.slice(0, 1), ...priorities.slice(0, 1).map(([name, value]): [string, number] => [`inclination toward ${name}`, value])]
-    .filter(([, value]) => quantize(value) !== 0).sort((a, b) => Math.abs(quantize(b[1])) - Math.abs(quantize(a[1])))
+    .filter(([, value]) => level(value) !== 0).sort((a, b) => level(b[1]) - level(a[1]))
   const lines = [
-    `Most salient now: ${foreground.length ? describe(foreground) : 'no pronounced feeling or action inclination'}.`,
+    `Most salient now: ${foreground.length ? foreground.map(([name, value]) => `${name} ${name === 'mood valence' ? valence : degree(value)}`).join('; ') : 'no pronounced feeling or action inclination'}.`,
     `Immediate feelings, strongest first: ${describe(feelings)}.`,
     `Action inclinations, strongest first: ${describe(priorities)}.`,
-    `Longer-term mood: valence ${percent(state.mood.valence)} (negative to positive); arousal ${percent(state.mood.arousal)}.`,
+    `Longer-term mood: valence ${valence}; arousal ${degree(state.mood.arousal)}.`,
     `Needs and fulfillment: ${describe(ranked({ 'desire for contact': state.needs.socialDesire,
       'social satisfaction': state.needs.socialSatisfaction, 'relationship quality': state.needs.relationshipQuality,
       'recent contact': state.needs.recentInteraction, 'preference for solitude': state.needs.solitudePreference,
@@ -173,8 +183,12 @@ export function emotionContext(state: EmotionState, step: number): string {
   ]
   if (state.relationship !== null) {
     const relationship = state.relationship
-    lines.push(`Relationship estimates toward ${JSON.stringify(relationship.label)} (operator): ${ranked(relationship.values)
-      .map(([name, value]) => `${name} ${percent(value)} (confidence ${percent(relationship.confidence[name as keyof typeof relationship.confidence])}; ${relationship.origins[name as keyof typeof relationship.origins]})`).join('; ')}.`)
+    lines.push(`Relationship estimates toward ${JSON.stringify(relationship.label)} (operator): ${ranked(Object.fromEntries(Object.entries(relationship.values)
+      .map(([name, value]) => [name, level(relationship.confidence[name as keyof typeof relationship.confidence]) === 0 ? 0 : value])))
+      .map(([name, value]) => {
+        const confidence = relationship.confidence[name as keyof typeof relationship.confidence]
+        return `${name} ${level(confidence) === 0 ? 'unknown' : degree(value)} (confidence ${level(confidence) === 0 ? 'unknown' : degree(confidence)}; ${relationship.origins[name as keyof typeof relationship.origins]})`
+      }).join('; ')}.`)
   }
   return lines.join('\n')
 }

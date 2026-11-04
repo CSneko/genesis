@@ -9,17 +9,29 @@
   en: b24c8ade766ad4b6
   zh: 1ac0f17bb05de9db
 /genesis-phase-1/contents:
-  en: 5ba7b02e72d690e8
-  zh: 7b1aed0c7b3188a5
+  en: d606f358635e301c
+  zh: 0153033d3fe455eb
 /genesis-phase-1/run-from-this-workspace:
-  en: 3b5c98ee3a70a51c
-  zh: fe8f96d2aff75ab0
+  en: 87787d9686d50d41
+  zh: e3fb877fbcbd6dd3
+/genesis-phase-1/run-from-this-workspace/bilibili-experiences:
+  en: b72ccf51e7b8c9bc
+  zh: a243e0f879117b07
+/genesis-phase-1/run-from-this-workspace/browser-control:
+  en: f35d762e06eee541
+  zh: e78977e54ab86ac6
+/genesis-phase-1/run-from-this-workspace/desktop-control-on-gnome-wayland:
+  en: b807ee075c5401e0
+  zh: af373215cf40f4b8
+/genesis-phase-1/run-from-this-workspace/explicit-compositions:
+  en: 35bc49c56fce3836
+  zh: 2516c96aa1d8a46e
 /genesis-phase-1/inspect-and-remember:
   en: 9de0ef8aa5da1954
-  zh: dae6f5b605736c5c
+  zh: 3b0a0eb01143de56
 /genesis-phase-1/limits:
-  en: d62e7cc2bd2efa9d
-  zh: 578bf92b5b6417f4
+  en: 5d3eb22de6bf89c1
+  zh: ef203eaa2ae51986
 /genesis-phase-1/dev-note:
   en: b75c8458928b72b9
   zh: 45e76642489dcc3c

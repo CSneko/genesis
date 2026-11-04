@@ -10,6 +10,8 @@ import type { LifeId } from './model.ts'
 export type WritingId = Branded<'GenesisWritingId'>
 /** Stable category identity, independent of its editable display name. */
 export type WritingTypeId = Branded<'GenesisWritingTypeId'>
+/** Adapter-namespaced identity of an imported writing, independent of migration Session or call. */
+export type WritingImportId = Branded<'GenesisWritingImportId'>
 
 /** Record lookup parsed at tool and Remote inputs. */
 export const writingIdSchema = z.string().regex(/^[a-f0-9]{64}$/).transform(brandString<WritingId>)
@@ -17,11 +19,13 @@ export const writingIdSchema = z.string().regex(/^[a-f0-9]{64}$/).transform(bran
 export const writingTypeIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/).transform(brandString<WritingTypeId>)
 const timestamp = z.iso.datetime()
 const relativePath = z.string().regex(/^[a-z][a-z0-9-]{0,63}\/\d{4}\/\d{2}\/\d{8}T\d{9}Z_[a-f0-9]{64}\.md$/)
-const typeSchema = z.strictObject({ id: writingTypeIdSchema, name: z.string().min(1), enabled: z.boolean(), revision: z.number().int().positive() })
+const typeSchema = z.strictObject({ id: writingTypeIdSchema, name: z.string().min(1), enabled: z.boolean(),
+  revision: z.number().int().positive() })
 const entrySchema = z.strictObject({
   id: writingIdSchema, title: z.string().min(1), content: z.string().min(1), typeId: writingTypeIdSchema,
   createdAt: timestamp, updatedAt: timestamp, revision: z.number().int().positive(), fileName: relativePath,
-  source: z.strictObject({ sessionId: z.string().min(1).transform(brandString<SessionId>), callId: z.string().min(1).transform(brandString<ToolCallId>) }),
+  source: z.strictObject({ sessionId: z.string().min(1).transform(brandString<SessionId>),
+    callId: z.string().min(1).transform(brandString<ToolCallId>) }),
   updatedBy: z.enum(['agent', 'operator']),
 })
 const stateSchema = z.strictObject({
@@ -43,6 +47,8 @@ export type WritingEntry = z.infer<typeof entrySchema>
 export type WritingType = z.infer<typeof typeSchema>
 /** Authored fields accepted from the model or operator editor. */
 export interface WritingDraft { title: string; content: string; typeId: WritingTypeId }
+/** Stable creation or migration receipt; deleted records retain only their identity and status. */
+export interface WritingReceipt { id: WritingId; status: 'saved' | 'already-deleted'; createdAt?: string; fileName?: string }
 /** Search filters; empty text browses, and time filters use inclusive ISO timestamps. */
 export interface WritingQuery { text?: string; typeId?: WritingTypeId; after?: string; before?: string; offset?: number }
 /** One bounded search match; content may be an excerpt, with full text available by id. */

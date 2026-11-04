@@ -27,6 +27,7 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
+    "LICENSE.superagent",
     "lib/index.js",
     "cordis.patch.yml",
     "cordis.memory.patch.yml",
@@ -43,7 +44,9 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@deepseek-ai/node-addon-system": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
+    "koffi": "3.1.1",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
@@ -65,7 +68,9 @@
     "@deepseek-ai/dsh-agent-default-model": "workspace:*",
     "@deepseek-ai/dsh-session-persistence": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
-    "@deepseek-ai/dsh-user-approval": "workspace:*"
+    "@deepseek-ai/dsh-user-approval": "workspace:*",
+    "@deepseek-ai/dsh-jobs": "workspace:*",
+    "@deepseek-ai/dsh-subagent": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -95,7 +100,10 @@
     "@deepseek-ai/dsh-session-persistence": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-session-query-sqlite": "workspace:*",
-    "@deepseek-ai/dsh-user-approval": "workspace:*"
+    "@deepseek-ai/dsh-user-approval": "workspace:*",
+    "@deepseek-ai/dsh-jobs": "workspace:*",
+    "@deepseek-ai/dsh-subagent": "workspace:*",
+    "@deepseek-ai/dsh-jobs-local": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
@@ -127,6 +135,12 @@
       "optional": true
     },
     "@deepseek-ai/dsh-user-approval": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-jobs": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subagent": {
       "optional": true
     }
   }

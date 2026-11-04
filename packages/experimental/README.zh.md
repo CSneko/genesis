@@ -37,7 +37,11 @@ kind: "package-group"
 | 包 | 职责 | ctx 键 |
 |---|---|---|
 | [`genesis`](genesis/README.zh.md) | 持久生命身份、带来源记忆与系统成长 | `ctx.genesis`、`ctx.genesisStatus` |
+| [`genesis-bili-humanism`](genesis-bili-humanism/README.zh.md) | B 站读取与统一观影札记 | — |
+| [`genesis-minecraft`](genesis-minecraft/README.zh.md) | Minecraft Java 版游玩与 Jev 环境监测 | — |
+| [`genesis-qq`](genesis-qq/README.zh.md) | QQ 文本对话与独立来源的人物关系 | — |
 | [`client-ui-genesis`](client-ui-genesis/README.zh.md) | Web 设置中的 Genesis 只读状态 | — |
+| [`client-ui-browser-preview`](client-ui-browser-preview/README.zh.md) | AI 浏览器标签页、页面控制和最近操作 | — |
 | [`tool-session-query`](tool-session-query/README.zh.md) | 按工作区授权的模型会话搜索、追踪与事件读取 | — |
 | [`session-search`](session-search/README.zh.md) | 可选实验性全局会话搜索工具 | — |
 | [`ralph-bundle`](ralph-bundle/README.zh.md) | 带隔离 workflow 引擎的可选重复委派 | — |
@@ -73,6 +77,7 @@ kind: "package-group"
 | [macOS CUA](cua-macos/README.zh.md) | Swift 原生执行与平台组件准备。 | `ctx.computerUse` |
 | [`computer-use-cua-driver-mcp`](computer-use-cua-driver-mcp/README.zh.md) | 通过 MCP 使用已安装的 Cua Driver | `ctx.computerUse` |
 | [`computer-use-cua-driver-native`](computer-use-cua-driver-native/README.zh.md) | 嵌入 Cua Driver 原生 npm 运行时 | `ctx.computerUse` |
+| [`computer-use-portal`](computer-use-portal/README.zh.md) | 经授权的 GNOME Wayland 应用控件、截图与输入 | `ctx.computerUse` |
 | [`browser-use-playwright-mcp`](browser-use-playwright-mcp/README.zh.md) | 通过 MCP 提供 Playwright 浏览器工具 | `ctx.browserUse` |
 | [`browser-use-chrome-devtools-mcp`](browser-use-chrome-devtools-mcp/README.zh.md) | 通过 MCP 提供 Chrome DevTools 检查与浏览器控制 | `ctx.browserUse` |
 | [`browser-use-stagehand-native`](browser-use-stagehand-native/README.zh.md) | Stagehand 浏览器操作与显式配置的原生模型 | `ctx.browserUse` |

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-client-ui-genesis",
-  "description": "Genesis identity, memory and growth status in Web settings",
+  "description": "Genesis daily-use workspace and model, tool and connection settings",
   "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
@@ -36,7 +36,8 @@
         "@deepseek-ai/dsh-client-resources",
         "@deepseek-ai/dsh-client-ui-workspace",
         "@deepseek-ai/dsh-api-session-controller",
-        "@deepseek-ai/dsh-client-ui-chat"
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-sidebar"
       ],
       "platform": "web"
     },
@@ -72,7 +73,10 @@
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
     "@deepseek-ai/dsh-client-ui-chat": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
-    "@deepseek-ai/dsh-util-crypto": "workspace:*"
+    "@deepseek-ai/dsh-util-crypto": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-minecraft": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-sidebar": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-qq": "workspace:*"
   },
   "files": [
     "lib/index.js",

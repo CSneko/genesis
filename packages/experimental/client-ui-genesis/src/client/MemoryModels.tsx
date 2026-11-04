@@ -21,7 +21,8 @@ type Props = PropsLocale<'genesis'> & Pick<KnowledgeActions, 'saveModels' | 'tes
  */
 export function MemoryModels({ initial, writable, saveModels, testModel, credential, refresh, t }: Props) {
   const id = useId()
-  const copy = (): MemoryModelsSettings => ({ decision: { ...initial.decision }, writer: { ...initial.writer } })
+  const copy = (): MemoryModelsSettings => ({ maxRetries: initial.maxRetries,
+    decision: { ...initial.decision }, writer: { ...initial.writer } })
   const [draft, setDraft] = useState(copy)
   const [revision, setRevision] = useState(initial.revision)
   const [secrets, setSecrets] = useState({ decision: '', writer: '' })
@@ -66,6 +67,14 @@ export function MemoryModels({ initial, writable, saveModels, testModel, credent
         return saved
       }, 'modelsSaved')
     }}>
+      <label htmlFor={`${id}-retries`}>{t('auxiliaryMaxRetries')}</label>
+      <Input id={`${id}-retries`} type="number" min={0} max={100} step={1} required
+        disabled={pending || !writable} value={draft.maxRetries ?? ''}
+        onChange={(event) => {
+          setDraft(current => ({ ...current, maxRetries: event.target.value === '' ? undefined : Number(event.target.value) }))
+          setOutcome(undefined); setFailure(undefined)
+        }} />
+      <p className={css.secondary}>{t('auxiliaryMaxRetriesHint')}</p>
       {(['decision', 'writer'] as const).map((role) => {
         const route = draft[role]
         const prefix = `${id}-${role}`

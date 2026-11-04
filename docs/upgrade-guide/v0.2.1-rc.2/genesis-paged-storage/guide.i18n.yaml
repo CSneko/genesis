@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-paged-storage/guide.md
+/:
+  en: 0b220d47882025e2
+  zh: 7df757dc0be6afa0
+/genesis-paged-life-storage:
+  en: 0c737407f3ccdc47
+  zh: 30ff02913bf08b86
+/genesis-paged-life-storage/change:
+  en: 1774d45bfcd10b90
+  zh: 740c5bee89198ff4
+/genesis-paged-life-storage/migration:
+  en: 662c4944158eacba
+  zh: d3ffaab554e89c2e

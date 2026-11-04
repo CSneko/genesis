@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for temporary-memory.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/genesis/temporary-memory.md
+/:
+  en: 7ab288293393bbb0
+  zh: ab62b9e7510fd22d
+/genesis-temporary-memory:
+  en: ca73085d7928b4e3
+  zh: b7e6ddefe50feac0
+/genesis-temporary-memory/summary:
+  en: 4678464047bd9b14
+  zh: 6d2977b57871de6a
+/genesis-temporary-memory/configure:
+  en: f0f8b3b7d0a2fd1d
+  zh: 60ffc5fc1efe38fe
+/genesis-temporary-memory/triggers-and-batches:
+  en: 9bfa1747028a7e9a
+  zh: 62aab49cf6fa7522
+/genesis-temporary-memory/importance-sharing-and-forgetting:
+  en: b0da1743034617e0
+  zh: 3606251375d58282
+/genesis-temporary-memory/recovery-and-deletion:
+  en: 109384d0795e4465
+  zh: 5f0634c32c93714f

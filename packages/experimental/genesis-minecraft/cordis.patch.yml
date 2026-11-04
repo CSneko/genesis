@@ -1,0 +1,7 @@
+# Registers settings and learnable tools; no server connection starts at boot.
+- insert:
+    - id: genesis-minecraft
+      name: '@deepseek-ai/dsh-experimental-genesis-minecraft'
+      config:
+        chromiumPath: !!js >-
+          process.env.GENESIS_MINECRAFT_CHROMIUM ?? (process.platform === 'linux' ? '/usr/bin/google-chrome' : '')
