@@ -60,9 +60,11 @@ kind: "package-reference"
 
 `register(route)` 添加具名的 `exact`／`prefix` HTTP route，`registerUpgrade(route)` 为精确 pathname 添加 upgrade route，两者返回的 disposer 都会移除注册。同一张表内的重复路径会抛错——route 模式是组合层约定，冲突即配置错误。HTTP 匹配先在整张表中匹配精确 route，再匹配最长前缀，最后交给回退；upgrade 只做精确匹配，未命中连接直接关闭。
 
-具名 route 可以用 `resource(request, peer?)` 代替 `handler`：一个把 Fetch `Request` 映射为 `Response` 的函数。经 HTTP 时只有 `GET` 与 `HEAD` 能到达它——其他方法得到带 `Allow: GET, HEAD` 的 405，请求 body 从不读取——请求不带 Peer，携带客户端的 header，URL 是把请求目标按一个占位 origin 解析得到的，客户端的 authority 只保留在 `host` 头里。响应按背压写回，gzip 的处理与 handler 的响应相同；`HEAD` 不发送 body，客户端断开会中止 `request.signal` 并取消 body。`readResource(request, peer)` 返回同一 URL 经 HTTP 会得到的响应，由 resource 按 `peer` 计算（`HEAD` 读取不返回 body）：它遵循 HTTP 的匹配顺序；路径属于 handler、或落到未认领或 handler 形式的回退时返回 404；`GET`、`HEAD` 以外的方法返回 405；不检查 cookie、Host 或 Origin，因此调用方须先准入读者。
+具名 route 可以用 `resource(request, peer?, connection?)` 代替 `handler`：一个把 Fetch `Request` 映射为 `Response` 的函数。经 HTTP 时只有 `GET` 与 `HEAD` 能到达它——其他方法得到带 `Allow: GET, HEAD` 的 405，请求 body 从不读取——请求不带 Peer，携带客户端的 header，URL 是把请求目标按一个占位 origin 解析得到的，客户端的 authority 只保留在 `host` 头里。响应按背压写回，gzip 的处理与 handler 的响应相同；`HEAD` 不发送 body，客户端断开会中止 `request.signal` 并取消 body。`readResource(request, peer)` 返回同一 URL 经 HTTP 会得到的响应，由 resource 按 `peer` 计算（`HEAD` 读取不返回 body）：它遵循 HTTP 的匹配顺序；路径属于 handler、或落到未认领或 handler 形式的回退时返回 404；`GET`、`HEAD` 以外的方法返回 405；不检查 cookie、Host 或 Origin，因此调用方须先准入读者。
 
 ### 回退席位
+
+HTTP 资源通过可选的 `connection` 参数接收真实对端与本地地址；进程内读取不传该参数。这些值来自套接字，不来自转发请求头。
 
 `registerFallback(handler)` 或 `registerFallback({ resource })` 认领所有未被具名 route 命中的请求的唯一一个应答方。第二次注册会抛错；没有注册回退时服务器回答 404。在随附的 Web 组合中，[SPA dist 服务器](../frontend-static/README.zh.md)拥有该席位，并对其渲染的每个 index 响应调用 `renderIndex`。
 

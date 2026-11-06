@@ -23,6 +23,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import type { WebResourceConnection } from '@deepseek-ai/dsh-host-webserver'
 
 /** Stable Cordis plugin name. */
 export const name = 'frontend-static'
@@ -136,11 +137,12 @@ export function apply(ctx: Context, config: Config): void {
   // Connection's browser authentication writes the token exchange's 303 or
   // the 401 through a writeHead/end response; capture it as a Fetch response.
   // The answer stays a 401 unless Connection writes another one.
-  const authorizeIndex = (request: Request): Response | undefined => {
+  const authorizeIndex = (request: Request, connection: WebResourceConnection | undefined): Response | undefined => {
     let status = 401
     let headers = new Headers()
     let body: string | undefined
-    const admitted = ctx.connection.authorizeIndex(request, {
+    const admitted = ctx.connection.authorizeIndex({ url: request.url, method: request.method, headers: request.headers,
+      ...connection === undefined ? {} : { socket: connection } }, {
       writeHead(nextStatus, nextHeaders) {
         status = nextStatus
         headers = new Headers(nextHeaders)
@@ -150,13 +152,13 @@ export function apply(ctx: Context, config: Config): void {
     return admitted ? undefined : new Response(body, { status, headers })
   }
   ctx.effect(() => ctx.webServer.registerFallback({
-    resource: (request, peer) => serveStatic(
+    resource: (request, peer, connection) => serveStatic(
       request,
       distRoot,
       distIndex,
       // A read with a Peer was admitted by its caller; an HTTP request carries
       // none and passes Connection's browser authentication instead.
-      () => peer === undefined ? authorizeIndex(request) : undefined,
+      () => peer === undefined ? authorizeIndex(request, connection) : undefined,
       // The browser authentication admits the owner's shared browser Peer. The
       // base goes in after all index transforms, so it precedes every resource
       // reference they insert.

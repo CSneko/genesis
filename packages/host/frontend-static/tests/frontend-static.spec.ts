@@ -6,7 +6,7 @@
  * GET/HEAD, and seat release on fiber disposal (HMR safety).
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -30,7 +30,7 @@ afterEach(async () => {
 })
 
 /** Write a dist fixture and the authenticated Web rows, then boot them through the real Loader. */
-async function loadComposition(): Promise<Context> {
+async function loadComposition(keyLogin = false): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-frontend-static-'))
   const dist = join(root, 'dist')
   await mkdir(dist)
@@ -53,6 +53,7 @@ async function loadComposition(): Promise<Context> {
     "    host: '127.0.0.1'",
     '    port: 0',
     "- name: '@deepseek-ai/dsh-client-connection'",
+    ...(keyLogin ? ['  config:', `    keyLogin: { keyFile: '${join(root, 'web-login.key')}' }`] : []),
     '- id: frontend',
     "  name: '@deepseek-ai/dsh-host-frontend-static'",
     '  config:',
@@ -84,6 +85,24 @@ async function loadComposition(): Promise<Context> {
   await context.loader.await()
   return context
 }
+
+it('preserves physical socket addresses through Fetch resources for key login and authenticated index reads', async () => {
+  const ctx = await loadComposition(true)
+  const origin = `http://127.0.0.1:${ctx.webServer.port}`
+  const page = await fetch(origin)
+  const form = await page.text()
+  const csrf = /name="csrf" value="([A-Za-z0-9_-]+)"/u.exec(form)?.[1]
+  expect(csrf).toBeDefined()
+  const key = (await readFile(join(root!, 'web-login.key'), 'utf8')).trim()
+  const accepted = await fetch(`${origin}/auth/login`, { method: 'POST', redirect: 'manual',
+    headers: { origin, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ key, csrf: csrf! }) })
+  expect(accepted.status).toBe(303)
+  const cookie = accepted.headers.get('set-cookie')!.split(';', 1)[0]!
+  const application = await fetch(origin, { headers: { cookie, 'x-forwarded-for': '192.0.2.20' } })
+  expect(application.status).toBe(200)
+  expect(await application.text()).toContain('shell</body>')
+})
 
 /** GET (by default) one path against the running server; returns status, content-type, and the body. */
 async function request(

@@ -27,10 +27,21 @@ interface WebRoute {
 ```ts type-equiv
 /**
  * Answers one GET or HEAD request with a Fetch response. An HTTP request
- * arrives without a Peer and carries the client's headers; an in-process
+ * arrives without a Peer and carries the client's headers and physical socket
+ * facts in `connection`; an in-process
  * {@link WebServer.readResource} read passes the Peer its caller admitted.
  */
-type WebResource = (request: Request, peer?: PeerScope) => Promise<Response>
+type WebResource = (request: Request, peer?: PeerScope, connection?: WebResourceConnection) => Promise<Response>
+```
+
+```ts type-equiv
+/** Physical HTTP socket facts; absent for in-process reads and never derived from headers. */
+interface WebResourceConnection {
+  /** Actual client address, including mapped IPv4 when supplied by Node. */
+  readonly remoteAddress?: string | undefined
+  /** Actual local listener address serving this request. */
+  readonly localAddress?: string | undefined
+}
 ```
 
 ```ts type-equiv

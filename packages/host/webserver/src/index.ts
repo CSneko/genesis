@@ -59,10 +59,19 @@ export interface WebRoute {
 
 /**
  * Answers one GET or HEAD request with a Fetch response. An HTTP request
- * arrives without a Peer and carries the client's headers; an in-process
+ * arrives without a Peer and carries the client's headers and physical socket
+ * facts in `connection`; an in-process
  * {@link WebServer.readResource} read passes the Peer its caller admitted.
  */
-export type WebResource = (request: Request, peer?: PeerScope) => Promise<Response>
+export type WebResource = (request: Request, peer?: PeerScope, connection?: WebResourceConnection) => Promise<Response>
+
+/** Physical HTTP socket facts; absent for in-process reads and never derived from headers. */
+export interface WebResourceConnection {
+  /** Actual client address, including mapped IPv4 when supplied by Node. */
+  readonly remoteAddress?: string | undefined
+  /** Actual local listener address serving this request. */
+  readonly localAddress?: string | undefined
+}
 
 /** One named route answered by a resource instead of a handler. */
 export interface WebResourceRoute {
@@ -698,7 +707,10 @@ export class WebServer extends Service {
     }
     res.on('close', onClose)
     try {
-      const response = await resource(new Request(target, { method: req.method, headers, signal: abort.signal }))
+      const response = await resource(new Request(target, { method: req.method, headers, signal: abort.signal }), undefined, {
+        remoteAddress: req.socket?.remoteAddress,
+        localAddress: req.socket?.localAddress,
+      })
       await writeResponse(res, response, req.method === 'HEAD', abort.signal)
       if (!abort.signal.aborted) {
         ended = true
