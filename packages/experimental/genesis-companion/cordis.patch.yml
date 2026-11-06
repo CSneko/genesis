@@ -1,0 +1,11 @@
+# Register partner settings without connecting or starting internal interaction by default.
+- insert:
+    - id: genesis-companion-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: genesis-companion-internal
+        plugins: []
+    - id: genesis-companion
+      name: '@deepseek-ai/dsh-experimental-genesis-companion'
+      config:
+        cwd: !!js dshHomePath('companion-workspace')

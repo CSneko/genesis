@@ -101,10 +101,11 @@ export interface ConnectionConfig {
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**
-   * Authorities this deployment serves beyond loopback: exact `host:port`, or
-   * port-less `host` matching any port. The fence accepts loopback and the
-   * listener's own bind IP independently; other remote authorities require
-   * an entry here. A non-canonical or non-bare authority fails plugin load.
+   * Authorities this deployment serves beyond loopback: exact `host:port`,
+   * port-less `host` matching any port, or `*` accepting every authority. The
+   * fence accepts loopback and the listener's own bind IP independently; other
+   * remote authorities require an entry here. A non-canonical or non-bare
+   * authority fails plugin load.
    */
   trustedHosts?: string[]
   /** Absolute browser and API cookie lifetime in days. Default: 30. */

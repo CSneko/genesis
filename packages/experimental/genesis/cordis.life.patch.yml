@@ -16,6 +16,8 @@
     maxStateChars: 50000000
     personalDirectory: !!js dshHomePath('personal')
     records: {}
+    spontaneity: {}
+    sleep: {}
     personality: {}
     emotion: {}
     interest: {}

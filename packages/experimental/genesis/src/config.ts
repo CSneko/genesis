@@ -1,5 +1,6 @@
 /** Deployment-owned storage exclusion and context limits. @module */
 import z from '@deepseek-ai/schemastery'
+import type { SleepSettings } from './sleep-model.ts'
 import type { Mood, EmotionHalfLives, MoodHalfLives, Needs } from './emotion-state.ts'
 import { QQ_BROWSER_TOOLS } from './qq-tool-policy.ts'
 /** Optional proactive conversation policy; durations are milliseconds. */
@@ -22,6 +23,60 @@ export interface SocialInitiativeConfig {
   maxPending: number
   /** Pending opportunities expire rather than sending stale messages. */
   maxPendingAgeMs: number
+}
+/** Bounded, idle-only internal thought and exploration opportunities. */
+export interface SpontaneityConfig {
+  /** Enable opportunities after completed real Life exchanges. */
+  enabled: boolean
+  /** Required quiet interval; new user input interrupts exploration. */
+  idleMs: number
+  /** Whole opportunity deadline, including model calls and reviews. */
+  maxDurationMs: number
+  /** Reserved output tokens per opportunity, including auxiliary inference and retries. */
+  maxOutputTokens: number
+  /** Maximum output tokens reserved for one conversation-model request. */
+  requestTokens: number
+  /** Maximum conversation-model requests per opportunity, including retries. */
+  maxRequests: number
+  /** Maximum admitted tool calls, including thought and recall tools. */
+  maxToolCalls: number
+  /** Maximum opportunities in a rolling twenty-four hours; empty and failed runs count. */
+  maxPer24Hours: number
+  /** Importance assigned to factual exploration receipts in episodic memory. */
+  experienceImportance: number
+  /** Maximum thoughts, audit receipts and opportunities retained together. */
+  maxRecords: number
+  /** Maximum complete serialized thought storage characters. */
+  maxStateChars: number
+  /** Maximum serialized thought selection supplied to a model request or tool. */
+  contextChars: number
+  /** Exact additional inline tools; learning, toolkits and execution authorization still apply. */
+  tools: string[]
+}
+/** Sleep defaults and bounded maintenance under the life writer lease. */
+export interface SleepConfig extends SleepSettings {
+  /** Maximum time between schedule checks. */
+  pollMs: number
+  /** Total retained cycle and control receipts. */
+  maxRecords: number
+  /** Complete serialized sleep state budget. */
+  maxStateChars: number
+  /** Complete sleep status response character budget. */
+  statusChars: number
+  /** Maximum operator text admitted to wake classification. */
+  wakeInputChars: number
+  /** Maximum classified wake requests per scheduled interval. */
+  maxWakeChecks: number
+  /** Maximum memories summarized per batch. */
+  memoryBatchSize: number
+  /** Maximum maintenance model calls before operator intervention. */
+  maxMemoryRounds: number
+  /** Maximum complete generated memory summary characters. */
+  summaryChars: number
+  /** Maximum age of a transition greeting opportunity. */
+  greetingGraceMs: number
+  /** Minimum sourced affection for optional transition greetings. */
+  greetingAffection: number
 }
 /** Initial prose settings stored once as ordinary non-declarative memories. */
 export interface PersonalityConfig {
@@ -99,6 +154,10 @@ export interface Config {
   personality?: PersonalityConfig | undefined
   /** Lightweight proactive conversation; requires deliberation and memory. */
   socialInitiative?: SocialInitiativeConfig | undefined
+  /** Optional internal cognition; requires awakening, deliberation, memory and Session persistence. */
+  spontaneity?: SpontaneityConfig | undefined
+  /** Optional shared sleep policy for Life, QQ and autonomous activity. */
+  sleep?: SleepConfig | undefined
   /** Calendar zone for memory anchors and relative recall; defaults to the host's IANA zone. */
   timeZone: string
   /** Enables naming, newborn conversations and persistent tool learning on the configured chat route. */
@@ -328,6 +387,8 @@ export interface MemoryConfig {
   associationChars: number
   /** Maximum current-input characters used as an associative cue. */
   associationInputChars: number
+  /** Deadline for automatic association before a chat request; explicit recall keeps timeoutMs. */
+  associationTimeoutMs: number
   /** Maximum gap for offering a same-conversation experience for extension. */
   experienceWindowMs: number
   /** Quiet-memory maintenance limits; no chat replies or external actions are generated. */
@@ -364,7 +425,41 @@ const initialNeeds = z.object({
   autonomy: z.number().min(0).max(1).default(0.5), creativity: z.number().min(0).max(1).default(0.5),
   loneliness: z.number().min(0).max(1).default(0) })
 /** Loader schema resolves every deployment-varying bound before plugin activation. */
-export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality' | 'temporaryMemory'>> & Pick<Config, 'leasePath'> & { temporaryMemory?: Partial<TemporaryMemoryConfig>; personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality' | 'temporaryMemory' | 'spontaneity' | 'sleep'>> & Pick<Config, 'leasePath'> & { sleep?: Partial<SleepConfig>; spontaneity?: Partial<SpontaneityConfig>; temporaryMemory?: Partial<TemporaryMemoryConfig>; personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+  sleep: z.union([z.const(undefined), z.object({
+    enabled: z.boolean().default(true), jitterMs: z.number().step(1).min(0).max(300000).default(300000),
+    temporaryIdleMs: z.number().step(1).min(1000).max(86400000).default(600000),
+    holidayExempt: z.boolean().default(true), greetings: z.boolean().default(true),
+    exemptDates: z.array(z.string()).default([]),
+    schedule: z.array(z.object({ days: z.array(z.number().step(1).min(1).max(7)),
+      start: z.number().step(1).min(0).max(1439), end: z.number().step(1).min(1).max(1440) }))
+      .default([{ days: [1, 2, 3, 4, 5], start: 540, end: 720 }, { days: [1, 2, 3, 4, 5], start: 840, end: 1080 }]),
+    pollMs: z.number().step(1).min(100).max(60000).default(1000),
+    maxRecords: z.number().step(1).min(1).max(100000).default(10000),
+    maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
+    statusChars: z.number().step(1).min(1000).max(1000000).default(16000),
+    wakeInputChars: z.number().step(1).min(1).max(8000).default(1000),
+    maxWakeChecks: z.number().step(1).min(1).max(1000).default(20),
+    memoryBatchSize: z.number().step(1).min(2).max(100).default(20),
+    maxMemoryRounds: z.number().step(1).min(1).max(10000).default(100),
+    summaryChars: z.number().step(1).min(100).max(8000).default(2000),
+    greetingGraceMs: z.number().step(1).min(1000).max(3600000).default(300000),
+    greetingAffection: z.number().min(0).max(1).default(0.5),
+  })]),
+  spontaneity: z.union([z.const(undefined), z.object({
+    enabled: z.boolean().default(true), idleMs: z.number().step(1).min(0).max(86400000).default(60000),
+    maxDurationMs: z.number().step(1).min(1000).max(3600000).default(180000),
+    maxOutputTokens: z.number().step(1).min(1).max(1000000).default(32768),
+    requestTokens: z.number().step(1).min(1).max(100000).default(2048),
+    maxRequests: z.number().step(1).min(1).max(100).default(6),
+    maxToolCalls: z.number().step(1).min(1).max(1000).default(12),
+    maxPer24Hours: z.number().step(1).min(1).max(1000).default(6),
+    experienceImportance: z.number().min(0).max(1).default(0.3),
+    maxRecords: z.number().step(1).min(1).max(100000).default(10000),
+    maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
+    contextChars: z.number().step(1).min(500).max(100000).default(8000),
+    tools: z.array(z.string().min(1).max(200)).default(['read', 'write', 'edit', 'genesis_record', 'genesis_toolkit']),
+  })]),
   people: z.object({
     maxPeople: z.number().min(1).max(100000).step(1).default(1000),
     maxEvidence: z.number().min(1).max(100000).step(1).default(1000),
@@ -488,6 +583,7 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     associationLimit: z.number().step(1).min(0).max(20).default(3),
     associationChars: z.number().step(1).min(128).max(20000).default(2000),
     associationInputChars: z.number().step(1).min(64).max(10000).default(1000),
+    associationTimeoutMs: z.number().step(1).min(50).max(30000).default(1200),
     experienceWindowMs: z.number().step(1).min(0).max(86400000).default(1800000),
     consolidation: z.object({
       enabled: z.boolean().default(true),
@@ -500,7 +596,7 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     }).default({}),
     minSimilarity: z.number().min(-1).max(1).default(0.35),
   })]),
-  qqBasicTools: z.array(z.string()).default(['web_search', 'web_fetch']),
+  qqBasicTools: z.array(z.string()).default(['web_search', 'web_fetch', 'genesis_speech']),
   toolkits: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), tools: z.array(z.string()),
     qqAccess: z.union(['disabled', 'anyone', 'operator']).default('disabled') })).default([
     { id: 'browser-reading', name: '网页浏览', description: '打开网页、读取页面、查看截图与等待页面内容；不含脚本、输入或文件操作',

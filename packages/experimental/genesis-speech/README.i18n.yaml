@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-speech/README.md
+/:
+  en: 14c04790cb0e13d7
+  zh: d02383338e727cf1
+/deepseek-ai-dsh-experimental-genesis-speech:
+  en: 85df77e07f3f3f07
+  zh: 68e9eeff11f9bbb1
+/deepseek-ai-dsh-experimental-genesis-speech/summary:
+  en: 7d1c115ad31045a1
+  zh: 7bc45bb540baa2cb
+/deepseek-ai-dsh-experimental-genesis-speech/table-of-contents:
+  en: 670ca75249b6c238
+  zh: 367fbc94564b3afc
+/deepseek-ai-dsh-experimental-genesis-speech/use-this-package:
+  en: b4dbec28cfaf1fe6
+  zh: db0d7622d3f42d23
+/deepseek-ai-dsh-experimental-genesis-speech/understand-the-implementation:
+  en: 72ffef3f144d14ab
+  zh: 85c9247215244118
+/deepseek-ai-dsh-experimental-genesis-speech/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-genesis-speech/model-experience/learned-speech-tool:
+  en: a1d9db701e126e9d
+  zh: 3302dda2f255541d
+/deepseek-ai-dsh-experimental-genesis-speech/model-experience/learned-speech-tool/what-the-model-sees:
+  en: dd7307184596bda5
+  zh: 4193f5e772ca3317
+/deepseek-ai-dsh-experimental-genesis-speech/model-experience/learned-speech-tool/token-effect:
+  en: 25cbe921c83852b6
+  zh: a6b090f9caa7cc95
+/deepseek-ai-dsh-experimental-genesis-speech/model-experience/learned-speech-tool/kv-cache-effect:
+  en: e040ae02b70ad4ab
+  zh: 4fd01c853a0ec6fb
+/deepseek-ai-dsh-experimental-genesis-speech/known-limitations-and-deferred-work:
+  en: 3d80c0ab2a6e6cb7
+  zh: 0632ee75c1761e46
+/deepseek-ai-dsh-experimental-genesis-speech/known-limitations-and-deferred-work/dev-note:
+  en: b836f01bd0bceb4a
+  zh: 55fcd290a7fad8dc

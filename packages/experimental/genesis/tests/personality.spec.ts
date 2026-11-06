@@ -37,7 +37,7 @@ it('initializes sourced personality once and preserves edits and deletion across
     embeddingUrl: '', embeddingModel: '', embeddingKeyEnv: '', embeddingDimensions: 0,
     windowTurns: 1, timeoutMs: 30000, maxRetries: 0, retryDelayMs: 0, inputChars: 24000, outputChars: 24000, maxTokens: 4096, reasoningEffort: 'auto',
     organizationLimit: 20, identityRewriteLimit: 100, maxChanges: 8, overview: { maxCalls: 64, timeoutMs: 5000, maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384 }, maxImplicitMemories: 12,
-    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, experienceWindowMs: 1800000,
+    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, associationTimeoutMs: 1200, experienceWindowMs: 1800000,
     consolidation: { enabled: true, idleMs: 60000, cooldownMs: 300000, retryMs: 60000, maxFailures: 3,
       batchLimit: 20, minHabitSupport: 3 }, minSimilarity: 0.35,
   }

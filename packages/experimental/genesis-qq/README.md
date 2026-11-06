@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Add QQ group and private conversations to an initialized Genesis life. The source workspace includes its settings with QQ initially disconnected; upstream profiles require an explicit overlay. Explicit allowlists and authenticated OneBot connections control admission; relationships grant no host permissions. See [connection and relationship behavior](../../../docs/genesis/qq.md).
 
+With Genesis sleep enabled, private inputs wait in durable storage and replies pause. Verified operators can wake temporarily or send `g#保持清醒`; see [sleep and recovery](../../../docs/genesis/sleep.md).
+
 ## Table of Contents
 
 [Use](#use) · [Implementation](#implementation) · [Further Exploration](#further-exploration) · [Model Experience](#model-experience) · [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -37,6 +39,10 @@ An archived QQ Session stays paused until the operator restores it. Settings rep
 Default media origins allow HTTPS subdomains through `https://*.qq.com` and explicitly include `https://multimedia.nt.qq.com.cn`; deployment overrides of `mediaOrigins` must include every intended origin explicitly. See the QQ guide for download restrictions.
 
 The operator-only `genesis_message` tool searches platform-resolved targets, sends text, forwards recent original operator messages and checks delivery receipts. Configure separate `outboundGroups` and `outboundUsers`; both default to empty and do not inherit incoming permissions. Cold targets are opened without a model turn. Durable reservations prevent repeated identical tool calls from resending; unknown outcomes remain inspectable after restart. See [cross-conversation messaging](../../../docs/genesis/qq.md#cross-conversation-messages) for limits, configuration, attribution and deletion.
+
+Generated [speech](../genesis-speech/README.md) can be sent as a playable voice message: pass its current-conversation attachment ID to `genesis_qq_send` with `kind: "file", asVoice: true`. WAV validation runs before reservation or network sending; unknown acknowledgements retain the existing do-not-retry behavior.
+
+The same tool also discovers an enabled [AI partner conversation](../genesis-companion/README.md). Its internal sends use the partner provider and may start a bounded exchange, while QQ sends retain their existing cold-target behavior and allowlists. Partner receipts remain distinct from QQ acknowledgements.
 
 <a id="implementation"></a>
 ## Implementation

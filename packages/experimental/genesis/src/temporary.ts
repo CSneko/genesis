@@ -50,9 +50,11 @@ export class TemporaryMemoryEngine {
    * @param store - Independent atomic summaries and settings.
    * @param config - Validated deployment budgets.
    * @param models - Existing configurable importance route.
+   * @param lifeMode - Shared predicate admitting only Life-mode Agents.
    */
   constructor(private readonly ctx: Context, private readonly core: LifeCore, private readonly store: TemporaryStore,
-    private readonly config: Config, private readonly models: () => MemoryModelsSettings) {}
+    private readonly config: Config, private readonly models: () => MemoryModelsSettings,
+    private readonly lifeMode: (agent: Agent | undefined) => boolean) {}
 
   private enqueue<T>(run: () => Promise<T>): Promise<T> {
     if (this.lifetime.signal.aborted) return Promise.reject(this.lifetime.signal.reason)
@@ -88,10 +90,12 @@ export class TemporaryMemoryEngine {
    * @param event - Human/assistant/tool activity or completion.
    */
   observe(session: Session, event: SessionEvent): void {
+    if (!this.lifeMode(this.ctx.agents.get(session.id))) return
     const human = event.type === 'user/message' && isHumanSource(event.data.source)
     if (!human && event.type !== 'assistant/message' && event.type !== 'tool/call' && event.type !== 'turn/end') return
     if (!this.store.read().settings.enabled) return
     void this.enqueue(async () => {
+      if (!this.lifeMode(this.ctx.agents.get(session.id))) return
       let previous: SessionId | undefined
       await this.store.change((state) => {
         let cursor = state.sessions.find(item => item.sessionId === session.id)
@@ -117,6 +121,7 @@ export class TemporaryMemoryEngine {
     })
   }
   private async discover(): Promise<void> {
+    if (this.config.awakening === undefined) return
     const saved = this.store.read()
     const known = new Set(saved.sessions.map(item => item.sessionId))
     const life = await this.core.snapshot()
@@ -125,6 +130,8 @@ export class TemporaryMemoryEngine {
     for (const raw of Object.keys(life.sessions)) {
       const id = SessionId(raw)
       if (known.has(id)) continue
+      const agent = this.ctx.agents.get(id)
+      if (agent !== undefined && !this.lifeMode(agent)) continue
       if (this.ctx.agents.get(id) === undefined && (persistence === undefined || await persistence.stat(id, { signal: this.lifetime.signal }) === undefined)) continue
       missing.push(id)
     }
@@ -159,11 +166,12 @@ export class TemporaryMemoryEngine {
     })
   }
   private async process(id: SessionId): Promise<void> {
+    if (this.config.awakening === undefined) return
     const state = this.store.read()
     const cursor = state.sessions.find(item => item.sessionId === id)
     if (!state.settings.enabled || cursor === undefined || cursor.failure !== undefined) return
     let agent = this.ctx.agents.get(id)
-    if (agent !== undefined && agent.status !== 'idle') return
+    if (agent !== undefined && (!this.lifeMode(agent) || agent.status !== 'idle')) return
     let owned: AgentHandle | undefined
     let stage: TemporaryFailureStage = 'recovery'
     try {
@@ -190,7 +198,10 @@ export class TemporaryMemoryEngine {
         }
       }
       const source = agent
-      if (source.status !== 'idle') return
+      if (!this.lifeMode(source) || source.status !== 'idle') return
+      const selected = this.ctx.sessionProjections.stateOf(source.session, 'agentPreset')
+      if (this.config.awakening?.lifePreset !== undefined && selected !== undefined
+        && selected !== this.config.awakening.lifePreset) return
       await source.runMaintenance(async (signal) => {
         await this.summarize(source.session, AbortSignal.any([signal, this.lifetime.signal]), (value) => { stage = value })
       })
@@ -309,7 +320,7 @@ export class TemporaryMemoryEngine {
    * @param session - Actual QQ conversation whose Agent became idle.
    */
   kick(session: Session): void {
-    if (!this.store.read().settings.enabled || !this.core.isQqSession(session.id)) return
+    if (!this.lifeMode(this.ctx.agents.get(session.id)) || !this.store.read().settings.enabled || !this.core.isQqSession(session.id)) return
     void this.enqueue(async () => {
       if (!this.store.read().settings.enabled) return
       const cursor = this.store.read().sessions.find(item => item.sessionId === session.id)
@@ -388,12 +399,13 @@ export class TemporaryMemoryEngine {
     })
   }
   /**
-   * Search unexpired summaries without promoting interpretations to established facts.
+   * Search unexpired summaries for Life-mode callers without establishing facts.
    * @param query - Nonempty recall terms supplied to the existing recall tool.
    * @param sessionId - Actual invoking conversation; the configured sharing policy is enforced before selection.
    * @returns Bounded current summary text with explicit expiry, excluding IDs and audit data.
    */
   async search(query: string, sessionId: SessionId): Promise<string[]> {
+    if (!this.lifeMode(this.ctx.agents.get(sessionId))) return []
     const state = this.store.read()
     if (!state.settings.enabled) return []
     const life = await this.core.snapshot()
@@ -404,11 +416,12 @@ export class TemporaryMemoryEngine {
       .map(({ value: memory }) => `Temporary, unverified interpretation, expires ${new Date(memory.expiresAt).toISOString()}: ${memory.summary}`)
   }
   /**
-   * Produce a bounded, privacy-filtered change message for the next main-model request.
+   * Produce a bounded, privacy-filtered change message for a Life-mode request.
    * @param agent - Actual requesting Agent.
    * @returns Uncommitted changes and expiry removals, never a repeated full inventory.
    */
   async context(agent: Agent) {
+    if (!this.lifeMode(agent)) return
     const state = this.store.read()
     const life = await this.core.snapshot()
     const selected: TemporaryMemory[] = []

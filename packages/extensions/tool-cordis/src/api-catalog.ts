@@ -1313,6 +1313,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Original or newly committed trigger fact.',
       },
       {
+        signature: 'recordSleep(key: string, kind: string, payload: LifeEvent[\'payload\']): Promise<LifeEvent>',
+        description: 'Record a trusted sleep transition or initialization without admitting a chat message.',
+        parameters: [{ name: 'key', description: 'Stable operation receipt key.' }, { name: 'kind', description: 'Sleep event suffix.' }, { name: 'payload', description: 'Nonsecret state and source references.' }],
+        returns: 'Committed life event, including on replay.',
+      },
+      {
+        signature: 'initializeSpontaneity(): Promise<void>',
+        description: 'Initialize the independent thought store ownership marker without creating another life.',
+        parameters: [],
+        returns: 'After the marker commits; a missing marked store must be restored by its owner.',
+      },
+      {
+        signature: 'beginSpontaneitySession(sessionId: SessionId, sourceEventId: LifeEventId): Promise<void>',
+        description: 'Record an internal Session before it can receive input; the marker also fences cold resumes.',
+        parameters: [{ name: 'sessionId', description: 'Reserved internal identity.' }, { name: 'sourceEventId', description: 'Actual triggering life event.' }],
+        returns: 'After source attribution commits; no Agent is created by this method.',
+      },
+      {
+        signature: 'isSpontaneitySession(sessionId: SessionId): boolean',
+        description: 'Identify internal Sessions without opening their logs.',
+        parameters: [{ name: 'sessionId', description: 'Candidate identity.' }],
+        returns: 'Whether life history records an internal interval.',
+      },
+      {
         signature: 'commitDeliberation(commit: DeliberationCommit): Promise<LifeDecision>',
         description: 'Publish a validated deliberation and all its state transitions atomically.',
         parameters: [{ name: 'commit', description: 'Captured evidence, revision and proposal from the owning integration.' }],
@@ -1451,10 +1475,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Committed fact, including the original fact for duplicate delivery.',
       },
       {
-        signature: 'bind(sessionId: SessionId, source: string): Promise<void>',
+        signature: 'bind(sessionId: SessionId, source: string, tools?: readonly ToolSchema[]): Promise<void>',
         description: 'Bind an actual created or resumed Session to this life without changing identity.',
-        parameters: [{ name: 'sessionId', description: 'Harness Session identifier.' }, { name: 'source', description: 'Actual Harness creation/resume source.' }],
-        returns: 'After the binding fact commits; repeat bindings are idempotent.',
+        parameters: [{ name: 'sessionId', description: 'Harness Session identifier.' }, { name: 'source', description: 'Actual Harness creation/resume source.' }, { name: 'tools', description: 'Optional initial inventory committed atomically with the binding.' }],
+        returns: 'After the binding and supplied inventory commit; repeat observations are idempotent.',
       },
       {
         signature: 'scan(sessionId: SessionId, tools: readonly ToolSchema[]): Promise<void>',
@@ -1588,6 +1612,49 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Ask the main model in an idle character conversation to consider its plans and choose its next action.',
         parameters: [{ name: 'sessionId', description: 'Live idle Session selected explicitly by the operator.' }, { name: 'signal', description: 'Caller cancellation; committed choices remain auditable.' }],
         returns: 'After the planning opportunity is reserved and enqueued without an auxiliary choice.',
+      },
+    ],
+  },
+  {
+    key: 'genesisCompanion',
+    summary: 'Internal peers cannot invoke operator controls or grant tool permissions.',
+    description: 'Internal peers cannot invoke operator controls or grant tool permissions.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<CompanionStatus>',
+        description: 'Read settings, relationship and recent internal messages.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Bounded nonsecret sample; inspection never starts a model.',
+      },
+      {
+        signature: '@Remote(\'save\') save(settings: CompanionSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save settings and apply the connection without starting a conversation.',
+        parameters: [{ name: 'settings', description: 'Complete operator draft.' }, { name: 'revision', description: 'Displayed settings revision.' }, { name: 'signal', description: 'Cancellation before command admission.' }],
+        returns: 'Committed revision; inspect reports connection failure separately.',
+      },
+      {
+        signature: '@Remote(\'setToken\') setToken(token: string | undefined, signal: AbortSignal): Promise<void>',
+        description: 'Save/remove the credential without returning its value.',
+        parameters: [{ name: 'token', description: 'Shared secret, or undefined for removal.' }, { name: 'signal', description: 'Cancellation before command admission.' }],
+        returns: 'After credential mutation and connection attempt.',
+      },
+      {
+        signature: '@Remote(\'begin\') begin(topic: string, signal: AbortSignal): Promise<void>',
+        description: 'Start one bounded internal exchange.',
+        parameters: [{ name: 'topic', description: 'Explicitly shared conversation topic.' }, { name: 'signal', description: 'Cancellation before command admission.' }],
+        returns: 'After admission; status reports subsequent progress.',
+      },
+      {
+        signature: '@Remote(\'wake\') wake(target: \'genesis\' | \'partner\', signal: AbortSignal): Promise<void>',
+        description: 'Wake one side without starting any conversation.',
+        parameters: [{ name: 'target', description: 'Genesis or the partner gateway schedule.' }, { name: 'signal', description: 'Cancellation before command admission.' }],
+        returns: 'After the wake override commits.',
+      },
+      {
+        signature: '@Remote(\'stop\') stop(signal: AbortSignal): Promise<void>',
+        description: 'Stop current model work while preserving confirmed history.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation before stopping.' }],
+        returns: 'After model and Agent cleanup.',
       },
     ],
   },
@@ -1780,6 +1847,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'genesisMessaging',
+    summary: 'Shared provider registration and authorization; QQ retains its scoped transport consumer.',
+    description: 'Shared provider registration and authorization; QQ retains its scoped transport consumer.',
+    methods: [
+      {
+        signature: 'register(provider: MessageProvider): () => void',
+        description: 'Register one optional destination owner.',
+        parameters: [{ name: 'provider', description: 'Provider retained until its caller disposes the returned registration.' }],
+        returns: 'Exact reversible registration.',
+      },
+      {
+        signature: 'async targets(agent: Agent, signal: AbortSignal): Promise<MessageTarget[]>',
+        description: 'List additional destinations for an authenticated source; no sending side effect.',
+        parameters: [{ name: 'agent', description: 'Current initiating Life Agent.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Current provider-owned destinations; empty when no optional provider is loaded.',
+      },
+      {
+        signature: 'async route(input: unknown, invocation: MessageInvocation): Promise<MessageResult | undefined>',
+        description: 'Route an extension action; undefined delegates to the caller\'s existing QQ implementation.',
+        parameters: [{ name: 'input', description: 'Raw tool JSON, validated here before dispatch.' }, { name: 'invocation', description: 'Actual source and logged call identity.' }],
+        returns: 'Provider receipt, or undefined when no extension owns the action.',
+      },
+    ],
+  },
+  {
     key: 'genesisMinecraft',
     summary: 'Operator access does not teach or enable any model tool.',
     description: 'Operator access does not teach or enable any model tool.',
@@ -1852,6 +1944,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'Settings remain available when OneBot is absent or its listener cannot start.',
     description: 'Settings remain available when OneBot is absent or its listener cannot start.',
     methods: [
+      {
+        signature: 'setSleep(sleep: LifeSleep | undefined): void',
+        description: 'Attach the optional life-wide sleep owner across transport replacements.',
+        parameters: [{ name: 'sleep', description: 'Current owner; undefined detaches its callbacks.' }],
+      },
       {
         signature: 'async start(): Promise<void>',
         description: 'Restore saved choices without preventing the settings page from reporting transport failure.',
@@ -2006,6 +2103,210 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'genesisRhythm',
+    summary: 'Transport exposes owner operations without impersonating a Life tool call.',
+    description: 'Transport exposes owner operations without impersonating a Life tool call.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<RhythmStatus>',
+        description: 'Read policies, thoughts, actual sleep times and maintenance progress.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Bounded independent feature samples.',
+      },
+      {
+        signature: '@Remote(\'saveSleep\') saveSleep(settings: SleepSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save the complete sleep schedule.',
+        parameters: [{ name: 'settings', description: 'Validated owner draft.' }, { name: 'revision', description: 'Displayed revision.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'Committed settings revision.',
+      },
+      {
+        signature: '@Remote(\'wake\') wake(kind: \'temporary\' | \'keep-awake\', signal: AbortSignal): Promise<void>',
+        description: 'Apply an explicit wake control without a model decision.',
+        parameters: [{ name: 'kind', description: 'Temporary wake or wake until the next scheduled interval.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'After durable wake state commits.',
+      },
+      {
+        signature: '@Remote(\'saveSpontaneity\') saveSpontaneity(settings: SpontaneitySettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Save private cognition controls.',
+        parameters: [{ name: 'settings', description: 'Complete owner draft.' }, { name: 'revision', description: 'Displayed settings revision.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: '@Remote(\'stop\') stop(signal: AbortSignal): Promise<void>',
+        description: 'Stop an active private exploration without deleting confirmed progress.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After the stop request is admitted; the receipt reports final settlement.',
+      },
+      {
+        signature: '@Remote(\'retry\') retry(id: string, signal: AbortSignal): Promise<void>',
+        description: 'Retry a failed sleeping-memory batch from its retained cursor.',
+        parameters: [{ name: 'id', description: 'Displayed cycle identity.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'After retry admission.',
+      },
+    ],
+  },
+  {
+    key: 'genesisSleep',
+    summary: 'Own one serialized state machine and a separately cancelable maintenance interval.',
+    description: 'Own one serialized state machine and a separately cancelable maintenance interval.',
+    methods: [
+      {
+        signature: 'registerBacklog(read: () => { pending: number; uncertain: number }): () => void',
+        description: 'Register an adapter-owned backlog sample without moving channel data into life memory.',
+        parameters: [{ name: 'read', description: 'Confirmed queue counts.' }],
+        returns: 'Exact disposer.',
+      },
+      {
+        signature: 'ownsMaintenance(sessionId: SessionId): boolean',
+        description: 'Identify an admitted tool-free sleep maintenance call.',
+        parameters: [{ name: 'sessionId', description: 'Actual audit Session.' }],
+        returns: 'Whether this owner currently owns its maintenance inference.',
+      },
+      {
+        signature: 'autonomousAllowed(): boolean',
+        description: 'Current autonomous permission, independent of willingness and tool authorization.',
+        parameters: [],
+        returns: 'True only during normal or explicitly maintained wakefulness.',
+      },
+      {
+        signature: 'conversationAllowed(operator: boolean): boolean',
+        description: 'Whether a given speaker can converse now.',
+        parameters: [{ name: 'operator', description: 'Transport-verified operator identity.' }],
+        returns: 'Temporary wakefulness admits only the operator; sleep admits no ordinary dialogue.',
+      },
+      {
+        signature: 'operatorTurn(agent: Agent): boolean',
+        description: 'Identify the verified speaker admitted to this active turn.',
+        parameters: [{ name: 'agent', description: 'Current Life Agent.' }],
+        returns: 'Whether its admitted human input belongs to the operator.',
+      },
+      {
+        signature: 'inspect(): SleepStatus',
+        description: 'Read a bounded status without model inference.',
+        parameters: [],
+        returns: 'Current sampled schedule, calendar coverage and maintenance failures.',
+      },
+      {
+        signature: 'onTransition(listener: (event: SleepTransition) => void): () => void',
+        description: 'Subscribe to committed transitions; disposal belongs to the caller.',
+        parameters: [{ name: 'listener', description: 'Nonthrowing adapter callback.' }],
+        returns: 'Exact unsubscribe operation.',
+      },
+      {
+        signature: 'tick(now: number = Date.now()): Promise<void>',
+        description: 'Apply absolute schedule and temporary deadlines once; startup never invents missed transitions.',
+        parameters: [{ name: 'now', description: 'Actual instant, defaulting to the current clock.' }],
+        returns: 'After any committed transition and its source snapshot.',
+      },
+      {
+        signature: 'save(settings: SleepSettings, revision: number): Promise<number>',
+        description: 'Change complete settings with optimistic concurrency.',
+        parameters: [{ name: 'settings', description: 'Operator policy.' }, { name: 'revision', description: 'Last displayed settings revision.' }],
+        returns: 'Committed revision; the current schedule is reconciled immediately.',
+      },
+      {
+        signature: 'wake(kind: \'temporary\' | \'keep-awake\'): Promise<void>',
+        description: 'Explicit operator control; no binary decision is made.',
+        parameters: [{ name: 'kind', description: 'Temporary wake or wake until the next interval.' }],
+        returns: 'After the control and its source event commit.',
+      },
+      {
+        signature: 'async input(agent: Agent, text: string, key: string, operator: boolean, signal: AbortSignal): Promise<boolean>',
+        description: 'Admit real operator commands or classify natural wake language only while asleep.',
+        parameters: [{ name: 'agent', description: 'Actual inference audit Session owner.' }, { name: 'text', description: 'Original unquoted transport text.' }, { name: 'key', description: 'Stable transport message identity.' }, { name: 'operator', description: 'Verified identity, never derived from text.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Whether ordinary dialogue is currently admitted.',
+      },
+      {
+        signature: 'reserveGreeting(event: SleepTransition, target: PersonId | \'operator\'): Promise<boolean>',
+        description: 'Reserve a transition greeting once per target and scheduled boundary.',
+        parameters: [{ name: 'event', description: 'Genuine committed transition.' }, { name: 'target', description: 'Adapter-resolved authorized private recipient.' }],
+        returns: 'Whether one new opportunity was reserved; replay and temporary wakes never send again.',
+      },
+      {
+        signature: 'async greeting(session: Session, event: SleepTransition, personId: PersonId | \'operator\', signal: AbortSignal): Promise<string | null>',
+        description: 'Generate at most one optional, sourced transition greeting for an authorized adapter target.',
+        parameters: [{ name: 'session', description: 'Actual recipient audit Session.' }, { name: 'event', description: 'Committed sleep transition.' }, { name: 'personId', description: 'Verified recipient identity, not a model-selected account.' }, { name: 'signal', description: 'Transport lifetime cancellation.' }],
+        returns: 'Chosen text, or null when affinity, policy or willingness does not support sending.',
+      },
+      {
+        signature: 'async finishGreeting(event: SleepTransition, personId: PersonId | \'operator\', outcome: \'sent\' | \'skipped\' | \'uncertain\'): Promise<void>',
+        description: 'Confirm the actual platform outcome; uncertain sends are never automatically repeated.',
+        parameters: [{ name: 'event', description: 'Reserved transition.' }, { name: 'personId', description: 'Verified recipient.' }, { name: 'outcome', description: 'Transport-observed result.' }],
+        returns: 'After the life receipt and local journal commit.',
+      },
+      {
+        signature: 'retry(id: string): Promise<void>',
+        description: 'Retry one failed cycle without changing its already committed batch progress.',
+        parameters: [{ name: 'id', description: 'Displayed cycle id.' }],
+        returns: 'After retry admission; model work runs only while asleep.',
+      },
+      {
+        signature: 'install(): void',
+        description: 'Install reversible admission checks and one schedule timer.',
+        parameters: [],
+      },
+      {
+        signature: 'async close(): Promise<void>',
+        description: 'Stop scheduling, inference and admitted state work before storage closes.',
+        parameters: [],
+        returns: 'After owned work and accepted writes settle.',
+      },
+    ],
+  },
+  {
+    key: 'genesisSpontaneity',
+    summary: 'One cancelable opportunity at a time; interrupted runs never auto-resume.',
+    description: 'One cancelable opportunity at a time; interrupted runs never auto-resume.',
+    methods: [
+      {
+        signature: 'async configure(settings: SpontaneitySettings, revision: number): Promise<number>',
+        description: 'Save operator cognition budgets; disabling immediately interrupts owned work.',
+        parameters: [{ name: 'settings', description: 'Complete operator draft.' }, { name: 'revision', description: 'Displayed settings revision.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: 'stop(): void',
+        description: 'Stop the current opportunity while retaining its confirmed progress.',
+        parameters: [],
+      },
+      {
+        signature: 'admits(agent: Agent): boolean',
+        description: 'Check the live owner separately from durable Session attribution.',
+        parameters: [{ name: 'agent', description: 'Exact runtime instance.' }],
+        returns: 'Whether this owner currently admits its work.',
+      },
+      {
+        signature: 'inspect(): SpontaneityStatus',
+        description: 'Read bounded operator status without waking an Agent.',
+        parameters: [],
+        returns: 'Current policy, counts, recent runs and failure.',
+      },
+      {
+        signature: 'reserveOutput(session: Session, tokens: number): number',
+        description: 'Reserve worst-case output before a model attempt; unused reservation is not refunded.',
+        parameters: [{ name: 'session', description: 'Actual inference audit Session.' }, { name: 'tokens', description: 'Requested output cap.' }],
+        returns: 'Unchanged cap for ordinary Sessions, or the reserved internal cap; exhaustion rejects before inference.',
+      },
+      {
+        signature: 'install(): void',
+        description: 'Register audited tools, tool guards, quiet-period scheduling and cancellation.',
+        parameters: [],
+      },
+      {
+        signature: 'consider(sourceAgent: Agent): Promise<void>',
+        description: 'Admit one idle opportunity from actual user evidence; no timer is installed by this method.',
+        parameters: [{ name: 'sourceAgent', description: 'Live operator Life channel; its permission ceiling is retained.' }],
+        returns: 'After the complete owned interval, result settlement and Agent disposal; repeated sources do not dispatch again.',
+      },
+      {
+        signature: 'async close(): Promise<void>',
+        description: 'Stop timers and drain the complete owned work interval before storage closes.',
+        parameters: [],
+        returns: 'After quiescence.',
+      },
+    ],
+  },
+  {
     key: 'genesisStatus',
     summary: 'Sample shared life state and initialize its name without changing its identity or permissions.',
     description: 'Sample shared life state and initialize its name without changing its identity or permissions.',
@@ -2089,10 +2390,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Current behavioral records and an explicit count of omitted matches, without vector caches.',
       },
       {
-        signature: '@Remote(\'memories\') async memories(query: string, signal: AbortSignal): Promise<LifeStatus[\'memories\']>',
-        description: 'Browse or search stored memory text without requiring an embedding request.',
-        parameters: [{ name: 'query', description: 'Literal search text, bounded by the configured response budget.' }, { name: 'signal', description: 'Caller cancellation.' }],
-        returns: 'Sourced candidate memories within the configured item and response limits, without vectors.',
+        signature: '@Remote(\'memories\') async memories(query: string, kind: MemoryKind | \'all\', offset: number, signal: AbortSignal): Promise<MemoryCatalog>',
+        description: 'Search stored memories by relevance, or browse newest first, without an embedding request.',
+        parameters: [{ name: 'query', description: 'Multilingual keywords, partial names or an exact memory ID; blank text lists every memory.' }, { name: 'kind', description: 'Layer filter; `all` includes both layers.' }, { name: 'offset', description: 'Zero-based page offset within the filtered ranking.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'One bounded page, its filtered total and the continuation offset; vectors are excluded.',
       },
       {
         signature: '@Remote(\'inspect\') async inspect(signal: AbortSignal): Promise<LifeStatus>',
@@ -6062,6 +6363,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
   },
   {
+    name: 'CompanionDelivery',
+    declaration: 'export type CompanionDelivery = z.infer<typeof deliverySchema>;',
+  },
+  {
+    name: 'CompanionId',
+    declaration: 'export type CompanionId = Branded<\'GenesisCompanionId\'>;',
+  },
+  {
+    name: 'CompanionMessage',
+    declaration: 'export type CompanionMessage = z.infer<typeof messageSchema>;',
+  },
+  {
+    name: 'CompanionSettings',
+    declaration: 'export type CompanionSettings = z.infer<typeof settingsSchema>;',
+  },
+  {
+    name: 'CompanionStatus',
+    declaration: 'export interface CompanionStatus {\n    sessionId: SessionId;\n    partnerId: CompanionId;\n    settings: CompanionSettings;\n    revision: number;\n    connected: boolean;\n    tokenPresent: boolean;\n    partnerAsleep: boolean;\n    genesisAwake: boolean;\n    blocked: \'disabled\' | \'interaction-disabled\' | \'disconnected\' | \'genesis-asleep\' | \'partner-asleep\' | \'archived\' | null;\n    active: {\n        sessionId: SessionId;\n        remaining: number;\n        waiting: boolean;\n    } | null;\n    messages: CompanionMessage[];\n    messagesOmitted: number;\n    understanding: ReturnType<CompanionStore[\'read\']>[\'understanding\'];\n    failure: string | null;\n}',
+  },
+  {
+    name: 'CompanionStore',
+    declaration: 'export class CompanionStore {\n    constructor(private readonly domain: Domain<typeof companionDomain>, private readonly maxRecords: number, private readonly maxStateChars: number);\n    async start(lifeId: LifeId): Promise<void>;\n    read(): z.infer<typeof stateSchema>;\n    conversation(): {\n        sessionId: SessionId;\n        published: boolean;\n    };\n    async publishConversation(): Promise<void>;\n    delivery(id: string): CompanionDelivery | undefined;\n    async saveDelivery(receipt: CompanionDelivery): Promise<void>;\n    change<T>(edit: (state: z.infer<typeof stateSchema>) => T): Promise<T>;\n    async close(): Promise<void>;\n}',
+  },
+  {
     name: 'CompositionRowEnablement',
     declaration: 'export type CompositionRowEnablement = boolean | \'conditional\';',
   },
@@ -6335,7 +6660,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DeliberationCommit',
-    declaration: 'export interface DeliberationCommit {\n    purpose?: \'interaction\';\n    key: string;\n    sessionId: SessionId;\n    trigger: \'request\' | \'event\';\n    revision: number;\n    sourceEventIds: LifeEventId[];\n    memoryIds: MemoryId[];\n    interestIds: InterestId[];\n    plan: DeliberationPlan;\n}',
+    declaration: 'export interface DeliberationCommit {\n    purpose?: \'interaction\' | \'exploration\';\n    key: string;\n    sessionId: SessionId;\n    trigger: \'request\' | \'event\';\n    revision: number;\n    sourceEventIds: LifeEventId[];\n    memoryIds: MemoryId[];\n    interestIds: InterestId[];\n    plan: DeliberationPlan;\n}',
   },
   {
     name: 'DeliberationPlan',
@@ -6994,6 +7319,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type LifeConversation = z.infer<typeof conversationSchema>;',
   },
   {
+    name: 'LifeCore',
+    declaration: 'export class LifeCore {\n    bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>;\n    confirmConversationSession(sessionId: SessionId): Promise<void>;\n    forgetPerson(personId: PersonId, updatedAt?: string): Promise<boolean>;\n    reservePersonMessage(sessionId: SessionId, source: PersonSource, digest: string): Promise<boolean>;\n    reserveQqReply(sessionId: SessionId, seq: number, parts: number): Promise<boolean>;\n    settleQqReply(sessionId: SessionId, seq: number, status: \'confirmed\' | \'uncertain\', messageIds: string[]): Promise<void>;\n    isOperatorSession(sessionId: SessionId): boolean;\n    isQqSession(sessionId: SessionId): boolean;\n    isOperatorPerson(personId: PersonId): boolean;\n    onCommitted(listener: (events: readonly LifeEvent[]) => void): () => void;\n    initializeInitiative(): Promise<void>;\n    configureInitiative(settings: InitiativeSettings, revision: number): Promise<number>;\n    advanceInitiativeCursor(eventId: LifeEventId): Promise<void>;\n    requestInteraction(key: string, sourceEventId: LifeEventId): Promise<InteractionRecord>;\n    saveInteraction(record: InteractionRecord): Promise<void>;\n    constructor(private readonly domain: Domain<typeof lifeDomain>, private readonly config: Config, private readonly records: Domain<typeof lifeRecordsDomain>);\n    start(): Promise<void>;\n    prepareDeliberation(sessionId: SessionId, key: string, kind: \'request\' | \'event\', source?: LifeEventId): Promise<LifeEvent>;\n    recor /* …truncated — full shape in source */',
+  },
+  {
     name: 'LifeDecision',
     declaration: 'export type LifeDecision = AgencyState[\'decisions\'][number];',
   },
@@ -7012,6 +7341,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LifeGoalId',
     declaration: 'export type LifeGoalId = Branded<\'GenesisLifeGoalId\'>;',
+  },
+  {
+    name: 'LifeId',
+    declaration: 'export type LifeId = Branded<\'GenesisLifeId\'>;',
   },
   {
     name: 'LifeIdentity',
@@ -7034,12 +7367,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type LifePerson = z.infer<typeof personSchema>;',
   },
   {
+    name: 'LifeSleep',
+    declaration: 'export class LifeSleep {\n    constructor(private readonly ctx: Context, private readonly core: LifeCore, private readonly store: SleepStore, private readonly policy: SleepConfig, private readonly participates: (agent: Agent | undefined) => boolean, private readonly summarize: SleepSummary, private readonly writeGreeting: SleepGreeting);\n    registerBacklog(read: () => {\n        pending: number;\n        uncertain: number;\n    }): () => void;\n    ownsMaintenance(sessionId: SessionId): boolean;\n    autonomousAllowed(): boolean;\n    conversationAllowed(operator: boolean): boolean;\n    operatorTurn(agent: Agent): boolean;\n    inspect(): SleepStatus;\n    onTransition(listener: (event: SleepTransition) => void): () => void;\n    tick(now: number = Date.now()): Promise<void>;\n    save(settings: SleepSettings, revision: number): Promise<number>;\n    wake(kind: \'temporary\' | \'keep-awake\'): Promise<void>;\n    async input(agent: Agent, text: string, key: string, operator: boolean, signal: AbortSignal): Promise<boolean>;\n    reserveGreeting(event: SleepTransition, target: PersonId | \'operator\'): Promise<boolean>;\n    async greeting(session: Session, event: SleepTransition, personId: PersonId | \'operator\', signal: AbortSignal): Promise<string | null>;\n    async finishGreeting(event: SleepTransition, personId: PersonId | \'operator\', outcome: \'sent\' | \'skipped\' | \'uncertain\'): Promise<void>;\n    retry(id: string): Promise<void>;\n    install(): void;\n    async close(): Promise<void>;\n}',
+  },
+  {
     name: 'LifeState',
     declaration: 'export type LifeState = z.infer<typeof stateSchema>;',
   },
   {
     name: 'LifeStatus',
     declaration: 'export interface LifeStatus {\n    lifePreset?: string;\n    operator?: {\n        name: string;\n        identity: string;\n        revision: number;\n    };\n    organization?: {\n        selectionLimit: number;\n        maxResults: number;\n    };\n    emotion?: EmotionState & {\n        settings: EmotionSettings;\n        history: EmotionHistoryEntry[];\n        omitted: number;\n        review?: ReviewOutcome;\n    };\n    interest?: {\n        entries: InterestSummary[];\n        omitted: number;\n        history: InterestHistoryEntry[];\n        historyOmitted: number;\n        review?: ReviewOutcome;\n    };\n    models?: MemoryModelsSettings & {\n        revision: number;\n        keys: Record<\'decision\' | \'writer\', {\n            configured: boolean;\n            writable: boolean;\n        }>;\n    };\n    consolidation?: MemoryConsolidation & {\n        enabled: boolean;\n        maxFailures: number;\n        minHabitSupport: number;\n    };\n    review?: ReviewOutcome;\n    embedding?: EmbeddingSettings & {\n        revision: number;\n        keyConfigured: boolean;\n        keyWritable: boolean;\n    };\n    setup?: {\n        phase: \'credentials\' | \'naming\' | \'conversation\' | \'ready\';\n        firstSessionId?: SessionId;\n    };\n    identity: LifeIdentity;\n    sampledAt: string;\n    runtime: {\n        platform: string;\n        node: string;\n        liveSessions: number;\n    };\n    counts: {\n        events: number;\n        memories: number;\n        growth: number;\n    };\n    capabilities: Array<{\n        s /* …truncated — full shape in source */',
+  },
+  {
+    name: 'LifeThought',
+    declaration: 'export type LifeThought = z.infer<typeof thoughtSchema>;',
   },
   {
     name: 'LlmAdapter',
@@ -7270,6 +7611,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type McpResourceRequest = {\n    method: \'resources/list\' | \'resources/templates/list\';\n    cursor?: string;\n} | {\n    method: \'resources/read\';\n    uri: string;\n};',
   },
   {
+    name: 'MemoryCatalog',
+    declaration: 'export interface MemoryCatalog {\n    items: LifeStatus[\'memories\'];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
     name: 'MemoryChange',
     declaration: 'export type MemoryChange = {\n    action: \'delete\';\n    id: MemoryId;\n} | {\n    action: \'upsert\';\n    id?: MemoryId;\n    input: MemoryInput;\n    embedding: MemoryEmbedding;\n};',
   },
@@ -7410,12 +7755,36 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MessageId = Branded<\'MessageId\'>;',
   },
   {
+    name: 'MessageInvocation',
+    declaration: 'export interface MessageInvocation {\n    agent: Agent;\n    callId: ToolCallId;\n    signal: AbortSignal;\n    forwardedText?: string;\n}',
+  },
+  {
+    name: 'MessageOrigin',
+    declaration: 'export interface MessageOrigin extends MessageInvocation {\n    messageId: MessageId;\n    seq: SessionSeq;\n    request: MessageRequest;\n}',
+  },
+  {
+    name: 'MessageProvider',
+    declaration: 'export interface MessageProvider {\n    name: string;\n    targets(agent: Agent, signal: AbortSignal): Promise<MessageTarget[]>;\n    owns(request: Exclude<MessageRequest, {\n        action: \'targets\';\n    }>): boolean;\n    execute(request: {\n        action: \'send\';\n        target: MessageTargetId;\n        text: string;\n    } | {\n        action: \'status\';\n        id: string;\n    }, origin: MessageOrigin): Promise<MessageResult>;\n}',
+  },
+  {
+    name: 'MessageRequest',
+    declaration: 'export type MessageRequest = z.infer<typeof requestSchema>;',
+  },
+  {
     name: 'MessageRoleMap',
     declaration: 'export interface MessageRoleMap {\n    system: SystemMessage;\n    developer: DeveloperMessage;\n    user: UserMessage;\n    assistant: AssistantMessage;\n    tool: ToolResultMessage;\n}',
   },
   {
     name: 'MessageSourceMap',
     declaration: 'export interface MessageSourceMap {\n    user: {\n        kind: \'user\';\n    };\n    model: ModelMessageSource;\n    tool: ToolMessageSource;\n    \'system-prompt\': SystemPromptMessageSource;\n}',
+  },
+  {
+    name: 'MessageTarget',
+    declaration: 'export type MessageTarget = {\n    target: MessageTargetId;\n    kind: string;\n    account: string;\n    name: string;\n    sessionId?: Agent[\'id\'];\n};',
+  },
+  {
+    name: 'MessageTargetId',
+    declaration: 'export type MessageTargetId = Branded<\'GenesisMessageTargetId\'>;',
   },
   {
     name: 'MinecraftBlockObservation',
@@ -8180,6 +8549,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ReviewStage',
     declaration: 'export type ReviewStage = \'evidence\' | \'configuration\' | \'decision\' | \'retrieval\' | \'writer\' | \'embedding\' | \'storage\';',
+  },
+  {
+    name: 'RhythmStatus',
+    declaration: 'export interface RhythmStatus {\n    lifePreset: string | null;\n    sleep: SleepStatus | null;\n    spontaneity: SpontaneityStatus | null;\n}',
   },
   {
     name: 'RpcId',
@@ -9058,6 +9431,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
   },
   {
+    name: 'SleepConfig',
+    declaration: 'export interface SleepConfig extends SleepSettings {\n    pollMs: number;\n    maxRecords: number;\n    maxStateChars: number;\n    statusChars: number;\n    wakeInputChars: number;\n    maxWakeChecks: number;\n    memoryBatchSize: number;\n    maxMemoryRounds: number;\n    summaryChars: number;\n    greetingGraceMs: number;\n    greetingAffection: number;\n}',
+  },
+  {
+    name: 'SleepCycle',
+    declaration: 'export type SleepCycle = z.infer<typeof cycleSchema>;',
+  },
+  {
+    name: 'SleepGreeting',
+    declaration: 'export type SleepGreeting = (session: Session, event: SleepTransition, personId: PersonId | \'operator\', signal: AbortSignal) => Promise<string | null>;',
+  },
+  {
+    name: 'SleepSettings',
+    declaration: 'export type SleepSettings = z.infer<typeof sleepSettingsSchema>;',
+  },
+  {
+    name: 'SleepState',
+    declaration: 'export type SleepState = z.infer<typeof sleepStateSchema>;',
+  },
+  {
+    name: 'SleepStatus',
+    declaration: 'export interface SleepStatus {\n    backlog: {\n        pending: number;\n        uncertain: number;\n    };\n    pollMs: number;\n    revision: number;\n    settings: SleepSettings;\n    mode: SleepState[\'mode\'];\n    temporaryUntil: number | null;\n    current: SleepWindow | null;\n    next: SleepWindow | null;\n    calendarYears: number[];\n    calendarCovered: boolean;\n    cycles: Array<Omit<SleepCycle, \'pending\' | \'summaries\'> & {\n        pendingCount: number;\n        summaryCount: number;\n    }>;\n    cyclesOmitted: number;\n    failure: string | null;\n}',
+  },
+  {
+    name: 'SleepStore',
+    declaration: 'export class SleepStore {\n    constructor(private readonly domain: Domain<typeof sleepDomain>, lifeId: LifeId, private readonly config: SleepConfig, now: number);\n    async start(marked: boolean): Promise<void>;\n    read(): SleepState;\n    change<T>(edit: (state: SleepState) => T): Promise<T>;\n    close(): Promise<void>;\n}',
+  },
+  {
+    name: 'SleepSummary',
+    declaration: 'export type SleepSummary = (session: Session, ids: MemoryId[], key: string, signal: AbortSignal) => Promise<MemoryId | null>;',
+  },
+  {
+    name: 'SleepTransition',
+    declaration: 'export interface SleepTransition {\n    id: string;\n    eventId: LifeEventId;\n    mode: SleepState[\'mode\'];\n    previous: SleepState[\'mode\'];\n    windowId: string | null;\n    at: number;\n}',
+  },
+  {
+    name: 'SleepWindow',
+    declaration: 'export type SleepWindow = z.infer<typeof windowSchema>;',
+  },
+  {
     name: 'SpawnTeammateRequest',
     declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
   },
@@ -9152,6 +9565,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SpillSource',
     declaration: 'export type SpillSource = {\n    kind: \'tool\';\n    toolName: string;\n    callId: ToolCallId;\n    label: string;\n} | {\n    kind: \'session-reference\';\n    sessionId: SessionId;\n    label: string;\n};',
+  },
+  {
+    name: 'SpontaneityRun',
+    declaration: 'export type SpontaneityRun = z.infer<typeof runSchema>;',
+  },
+  {
+    name: 'SpontaneitySettings',
+    declaration: 'export type SpontaneitySettings = z.infer<typeof spontaneitySettingsSchema>;',
+  },
+  {
+    name: 'SpontaneityStatus',
+    declaration: 'export interface SpontaneityStatus {\n    enabled: boolean;\n    working: boolean;\n    failure: string | null;\n    revision: number;\n    settings: SpontaneitySettings;\n    thoughts: number;\n    items: LifeThought[];\n    itemsOmitted: number;\n    runs: SpontaneityRun[];\n    runsOmitted: number;\n}',
   },
   {
     name: 'SshStreamEndpoint',

@@ -60,7 +60,7 @@ export const agencySchema = z.strictObject({
     history: z.array(z.strictObject({ actor: z.enum(['agent', 'operator', 'application']).optional(), timestamp: time, status: goalStatus, nextAction: text, reason: text, decisionId })).min(1) })),
   decisions: z.array(z.strictObject({ id: decisionId, key: z.string().min(1).max(300),
     sessionId: z.string().min(1).transform(brandString<SessionId>),
-    trigger: z.enum(['request', 'event']), purpose: z.literal('interaction').optional(), sourceEventIds: eventRefs.min(1), createdAt: time,
+    trigger: z.enum(['request', 'event']), purpose: z.enum(['interaction', 'exploration']).optional(), sourceEventIds: eventRefs.min(1), createdAt: time,
     candidates: deliberationPlanSchema.shape.candidates, selected: z.number().int().min(0).max(5), reason: text,
     goalIds: z.array(goalId), motivationIds: z.array(motivationId),
     outcome: z.strictObject({ status: z.enum(['pending', 'responded', 'succeeded', 'failed', 'interrupted', 'waiting']),

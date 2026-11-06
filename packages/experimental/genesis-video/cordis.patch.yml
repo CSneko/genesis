@@ -1,0 +1,8 @@
+# Optional Genesis video tools; no rendering or executable downloads start at load.
+- insert:
+    - id: genesis-video
+      name: '@deepseek-ai/dsh-experimental-genesis-video'
+      config:
+        dataDir: !!js dshHomePath('video-projects')
+        browserExecutable: !!js process.env.GENESIS_VIDEO_CHROMIUM ?? ''
+        ffprobeExecutable: !!js process.env.GENESIS_VIDEO_FFPROBE ?? 'ffprobe'

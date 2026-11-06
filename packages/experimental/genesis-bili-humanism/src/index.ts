@@ -1,4 +1,4 @@
-/** Bilibili reading with one Genesis writing path and explicit legacy journal migration. @module */
+/** Bilibili reading with one Genesis writing path. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as schema } from 'zod'
@@ -7,9 +7,7 @@ import { apply as mountUpstream } from 'dsh-bili-humanism'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import type { WritingImportId, WritingTypeId } from '@deepseek-ai/dsh-experimental-genesis'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import { legacyPage } from './legacy.ts'
+import type { WritingTypeId } from '@deepseek-ai/dsh-experimental-genesis'
 import { readingGuide } from './guide.ts'
 import * as LocalAsr from './local-asr.ts'
 import type { LocalAsrConfig } from './local-asr.ts'
@@ -36,8 +34,6 @@ export interface Config {
   recordTypeId: string
   /** Initial display name for a newly created viewing-note category. */
   recordTypeName: string
-  /** Maximum complete legacy journals migrated per explicit call. */
-  legacyBatchSize: number
   /** Maximum complete tool JSON characters admitted for decoding and evidence reconstruction. */
   sourceChars: number
 }
@@ -57,17 +53,16 @@ export const Config: z<Config> = z.object({
   lifePreset: z.string().default('life'),
   recordTypeId: z.string().pattern(/^[a-z][a-z0-9-]{0,63}$/).default('viewing-notes'),
   recordTypeName: z.string().default('观影札记'),
-  legacyBatchSize: z.natural().min(1).max(50).default(8),
   sourceChars: z.natural().min(1).max(1000000).default(100000),
 })
 /** Loader plugin name. */
 export const name = 'experimental-genesis-bili-humanism'
 /** Existing life, tools and replay owners are prerequisites. */
-export const inject = ['genesis', 'genesisRecords', 'tools', 'sessions', 'agents', 'agentPresets']
+export const inject = ['genesis', 'genesisRecords', 'tools', 'agents', 'agentPresets']
 
 /**
- * Mount the pinned reader and migrate old journals only through explicit, logged tool calls.
- * @param ctx - Cordis owner; accepted migrations and tool bodies settle before upstream storage closes.
+ * Mount the pinned reader and its derived Genesis guidance.
+ * @param ctx - Cordis owner; accepted tool bodies settle before upstream storage closes.
  * @param config - Trusted private paths, Life preset and explicit retrieval limits.
  * @returns After tools and the shared writing category are ready; loading never fetches videos or imports memories.
  */
@@ -97,8 +92,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
   ctx.tools.guard((exec) => {
     if (exec.name === 'bili_humanism_memory') return 'Personal memories are managed by Genesis.'
-    if (exec.name === 'bili_humanism_journal') return 'Write viewing notes with genesis_record. Use genesis_bili_sync only to migrate old journals.'
-    if ((upstream(exec.name) || exec.name === 'genesis_bili_sync') && !participates(exec.agent)) {
+    if (exec.name === 'bili_humanism_journal') return 'Write viewing notes with genesis_record.'
+    if (upstream(exec.name) && !participates(exec.agent)) {
       return 'Bilibili life experiences are available only in the configured Life preset.'
     }
     if (upstream(exec.name) && JSON.stringify(exec.arguments).length > config.sourceChars) {
@@ -136,33 +131,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     return next()
   }, { global: true })
 
-  ctx.tools.register(defineTool({
-    name: 'genesis_bili_sync',
-    description: 'Migrate one bounded page of old Bilibili journals into the shared genesis_record viewing-note category. Start at offset=0 and continue with nextOffset. Preserves original text, source IDs, timestamps and coverage; retries never duplicate or restore deleted records. Does not create life memories, change personality, fetch media or write to the platform. New writings use genesis_record directly.',
-    parameters: { offset: { type: 'number', description: 'Initially zero; continue with the returned nextOffset.' } },
-    output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-    async execute(args, exec) {
-      exec.signal.throwIfAborted()
-      if (exec.agent === undefined) throw new Error('Legacy journal migration requires an active Life conversation.')
-      const { offset } = schema.object({ offset: schema.number().int().nonnegative().default(0) }).parse(args)
-      const page = legacyPage(config.dataDir, offset, config.legacyBatchSize, config.sourceChars)
-      if (!await ctx.sessions.flush(exec.agent.session)) throw new Error('Journal migration requires durable Session persistence. Restore persistence before retrying.')
-      const records = []
-      for (const journal of page.entries) {
-        const receipt = await ctx.genesisRecords.importRecord({ title: journal.title, content: journal.content, typeId: recordType },
-          { sessionId: exec.agent.session.id, callId: exec.callId },
-          { id: brandString<WritingImportId>(`bili-humanism:${journal.journalId}`), createdAt: journal.createdAt }, exec.signal)
-        records.push({ journalId: journal.journalId, ...receipt })
-      }
-      return { records, total: page.total, nextOffset: page.nextOffset }
-    },
-    presentCall: () => ({ card: 'generic', title: 'Bilibili → Genesis', kind: 'edit' }),
-  }))
   const restrictions = new Map<Agent, () => void>()
   const restrict = (agent: Agent) => {
     restrictions.get(agent)?.()
     const deny = participates(agent) ? ['bili_humanism_memory', 'bili_humanism_journal']
-      : [...ctx.tools.schemas().map(tool => tool.name).filter(upstream), 'genesis_bili_sync']
+      : [...ctx.tools.schemas().map(tool => tool.name).filter(upstream)]
     restrictions.set(agent, agent.ctx.tools.restrict({ deny }))
   }
   ctx.on('agent/created', ({ agent }) => { restrict(agent) }, { global: true })
@@ -176,7 +149,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const lifetime = new AbortController()
   const executions = new Set<Promise<unknown>>()
   ctx.on('tools/execute', async (exec, next) => {
-    if (!upstream(exec.name) && exec.name !== 'genesis_bili_sync') return next()
+    if (!upstream(exec.name)) return next()
     const original = exec.signal
     exec.signal = AbortSignal.any([original, lifetime.signal])
     const operation = next()

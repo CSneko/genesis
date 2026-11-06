@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
-import { LlmAdapter, type GenerateOptions, type StreamChunk, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, type GenerateOptions, type StreamChunk, ToolCallId, createUserMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,6 +21,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import * as Genesis from '../../genesis/src/index.ts'
 import * as GenesisQq from '../src/index.ts'
 import type { RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
+import { CompactionId } from '@deepseek-ai/dsh-compaction'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { qqPersonId } from '@deepseek-ai/dsh-experimental-genesis'
 import { z } from 'zod'
@@ -853,6 +854,7 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   expect((await execute('genesis_toolkit', { action: 'enable', id: 'operator' })).isError).toBe(false)
   first.socket.send(incoming('group', 1104, 12345))
   await receipt(first.ctx, 4)
+  expect(first.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)).toContain('fixture_operator')
   expect((await execute('fixture_operator')).isError).toBe(true)
   expect((await execute('fixture_public')).isError).toBe(false)
   await first.ctx.fiber.dispose()
@@ -861,6 +863,7 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   second.socket.send(incoming('group', 1105, 12345))
   await receipt(second.ctx, 5)
   const restored = second.ctx.agents.get(binding.sessionId)!
+  expect(second.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)).toContain('fixture_operator')
   const run = (name: string, args = {}) => second.ctx.tools.execute({ agent: restored, name, arguments: args, callId: ToolCallId(`qq-policy-restored-${name}`), signal })
   expect((await run('fixture_public')).isError).toBe(false)
   expect((await run(navigate, { url: 'https://example.com' })).isError).toBe(false)
@@ -869,6 +872,34 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await second.ctx.genesisToolkits.save(entries.map(entry => ({ ...entry, qqAccess: 'disabled' })), 1, signal)
   expect((await run('fixture_public')).isError).toBe(true)
   expect((await run('genesis_toolkit', { action: 'enable', id: 'public' })).isError).toBe(true)
+  second.socket.send(incoming('group', 1106))
+  await receipt(second.ctx, 6)
+  const advertised = () => second.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)
+  expect(advertised()).toContain('fixture_public')
+  restored.session.append('compaction/end', { compactionId: CompactionId('qq-idle-tools'), turn: null })
+  second.socket.send(incoming('group', 1107))
+  await receipt(second.ctx, 7)
+  expect(advertised()).not.toContain('fixture_public')
+  const policy = await second.ctx.genesisQqSettings.inspect(signal)
+  await second.ctx.genesisQqSettings.save({ ...policy.settings, allowUsers: ['55555', '12345', '99999'] }, policy.revision, signal)
+  second.socket.send(incoming('private', 1108, 55555, '操作者'))
+  await receipt(second.ctx, 8)
+  const operatorBinding = (await second.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'private')!
+  const operatorAgent = second.ctx.agents.get(operatorBinding.sessionId)!
+  const operatorRun = (name: string, args = {}) => second.ctx.tools.execute({ agent: operatorAgent, name, arguments: args,
+    callId: ToolCallId(`qq-private-${name}`), signal })
+  expect((await operatorRun('genesis_toolkit', { action: 'enable', id: 'disabled' })).isError).toBe(false)
+  expect((await operatorRun('fixture_disabled')).isError).toBe(false)
+  expect((await operatorRun('genesis_toolkit', { action: 'enable', id: 'public' })).isError).toBe(false)
+  expect((await operatorRun(evaluate)).isError).toBe(false)
+  second.socket.send(incoming('private', 1109, 55555, '操作者'))
+  await receipt(second.ctx, 9)
+  expect(advertised()).toContain(evaluate)
+  expect(advertised()).toContain('fixture_disabled')
+  expect((await operatorRun('genesis_toolkit', { action: 'disable', id: 'public' })).isError).toBe(false)
+  second.socket.send(incoming('private', 1110, 55555, '操作者'))
+  await receipt(second.ctx, 10)
+  expect(advertised()).not.toContain(evaluate)
 })
 
 it('offers learned writings on QQ but executes them only for the authenticated operator', async () => {
@@ -980,6 +1011,23 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   expect(JSON.stringify(calls[1])).toContain('"sub_type":1')
   expect(JSON.stringify(calls[3])).toContain('"type":"reply"')
   expect(JSON.stringify(agent.session.ownEvents())).not.toContain(png.toString('base64'))
+  const wav = Buffer.from('RIFF0000WAVE')
+  const voice = await first.ctx.attachments.saveFile({ data: wav, name: 'speech.wav' })
+  const generated = ToolCallId('qq-generated-speech')
+  agent.session.append('tool/call', { turn: 1, step: 20, callId: generated, name: 'genesis_speech', arguments: '{"text":"你好"}' })
+  agent.session.append('tool/result', { turn: 1, step: 20, message: createToolResultMessage({ callId: generated,
+    content: [{ type: 'file', attachment: voice }], isError: false }) }, { surfaceOp: 'append' })
+  const voiceCall = ToolCallId('qq-send-voice')
+  const voiceRequest = { kind: 'file', asVoice: true, attachmentId: voice.attachmentId }
+  agent.session.append('tool/call', { turn: 1, step: 21, callId: voiceCall, name: 'genesis_qq_send', arguments: JSON.stringify(voiceRequest) })
+  const sentVoice = await first.ctx.tools.execute({ agent, name: 'genesis_qq_send', callId: voiceCall, arguments: voiceRequest, signal })
+  expect(sentVoice.isError).not.toBe(true)
+  expect(first.sentSegments.at(-1)).toEqual([{ type: 'record', data: { file: `base64://${wav.toString('base64')}` } }])
+  expect(JSON.stringify(agent.session.ownEvents())).not.toContain(`base64://${wav.toString('base64')}`)
+  const badVoice = ToolCallId('qq-send-image-as-voice')
+  agent.session.append('tool/call', { turn: 1, step: 22, callId: badVoice, name: 'genesis_qq_send', arguments: '{}' })
+  await expect(sendMedia(first.ctx, agent, media, config, 'private', { kind: 'file', asVoice: true,
+    attachmentId: original.file.attachmentId }, badVoice, signal, action)).rejects.toThrow(/WAV/u)
 })
 
 it('persists an independent QQ decision route and shows real endpoint probability without changing memory settings', async () => {

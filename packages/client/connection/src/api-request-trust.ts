@@ -16,6 +16,14 @@ import { isLoopbackHostname } from './loopback-hostname.ts'
 import type { ConnectionTrustRequest } from './rpc.ts'
 import { socketIp } from './socket-address.ts'
 
+/**
+ * `trustedHosts` marker that accepts every request authority. Operators reach a
+ * deployment through a hostname they cannot enumerate (a public IP, a rotating
+ * proxy) set it; the Host fence then grants every Host, so loopback-only
+ * deployments must not. Browser token authentication still applies.
+ */
+export const TRUST_ANY_AUTHORITY = '*'
+
 function header(headers: ConnectionTrustRequest['headers'], name: string): string | undefined {
   if (headers instanceof Headers) return headers.get(name) ?? undefined
   const value = headers[name]
@@ -48,10 +56,11 @@ function parseAuthority(authority: string, scheme: 'http:' | 'https:' = 'http:')
  * zero-padded port (which would broaden an intended exact-port grant to every
  * port), and non-canonical host spellings (`0x7f.0.0.1`, percent-encoding,
  * unbracketed IPv6; IDN hosts are declared in punycode, the form the wire
- * carries).
+ * carries). The {@link TRUST_ANY_AUTHORITY} marker is the one exception.
  * @param entry - the configured value, verbatim.
  */
 export function assertTrustedAuthority(entry: string): void {
+  if (entry === TRUST_ANY_AUTHORITY) return
   const entryUrl = parseAuthority(entry)
   if (entryUrl !== undefined && canonicalAuthority(entry, entryUrl) === entry.toLowerCase()) return
   throw new Error(`client-connection: trustedHosts entry ${JSON.stringify(entry)} is not a bare host[:port] authority`)
@@ -72,10 +81,12 @@ function canonicalAuthority(entry: string, entryUrl: URL): string {
 /**
  * Whether the request authority matches a `trustedHosts` entry. An entry with
  * an explicit port matches that exact authority; a port-less entry matches the
- * hostname on any port. Both sides compare through WHATWG normalization,
- * so case and a redundant scheme-default port never decide trust.
+ * hostname on any port; {@link TRUST_ANY_AUTHORITY} matches every authority.
+ * Both sides compare through WHATWG normalization, so case and a redundant
+ * scheme-default port never decide trust.
  */
 function isTrustedAuthority(hostUrl: URL, trustedHosts: readonly string[], protocol: 'http:' | 'https:'): boolean {
+  if (trustedHosts.includes(TRUST_ANY_AUTHORITY)) return true
   return trustedHosts.some((entry) => {
     const entryUrl = parseAuthority(entry, protocol)
     if (entryUrl === undefined) return false
@@ -88,9 +99,10 @@ function isTrustedAuthority(hostUrl: URL, trustedHosts: readonly string[], proto
 /**
  * Classify an authority already accepted by {@link assertTrustedAuthority}.
  * @param entry - the configured authority, verbatim.
- * @returns true unless the entry parses as a loopback hostname.
+ * @returns true unless the entry parses as a loopback hostname, or for {@link TRUST_ANY_AUTHORITY}.
  */
 export function isRemoteAuthority(entry: string): boolean {
+  if (entry === TRUST_ANY_AUTHORITY) return true
   const url = parseAuthority(entry)
   return url === undefined || !isLoopbackHostname(url.hostname)
 }
@@ -119,7 +131,7 @@ function isBindAddressAuthority(hostUrl: URL, bindHost: string | undefined, loca
 /**
  * Decide whether one /api request may reach the RPC bridge.
  * @param request - Node HTTP or Fetch request facts (headers).
- * @param trustedHosts - non-loopback authorities this deployment serves: exact `host:port`, or port-less `host` matching any port.
+ * @param trustedHosts - non-loopback authorities this deployment serves: exact `host:port`, port-less `host` matching any port, or `*` for any authority.
  * @param bindHost - the listener's own bind IP literal, accepted on any port independently of `trustedHosts`.
  * @param protocol - listener protocol for default Host ports; HTTP when no Web carrier is mounted.
  * @returns true when the Host is ours (loopback, the bind address, or trusted) and any attached browser markers are same-origin.

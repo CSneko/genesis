@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for spontaneity.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/genesis/spontaneity.md
+/:
+  en: c3ed096fe4e5f972
+  zh: f2f40af0677700aa
+/genesis-spontaneous-cognition:
+  en: c6fdaeeccdc1925c
+  zh: c460d7de3f4fd89e
+/genesis-spontaneous-cognition/summary:
+  en: 22ab56c6fd6ab170
+  zh: 7028c58da213812f
+/genesis-spontaneous-cognition/enable:
+  en: 98b7cd05e28c0b78
+  zh: 9aef90eff95fb155
+/genesis-spontaneous-cognition/choose-and-revisit:
+  en: 3bac03a6719239f9
+  zh: 11572e6e07f16329
+/genesis-spontaneous-cognition/private-work-and-budgets:
+  en: 1f1138f92d23b5e7
+  zh: 1deb7be192958934
+/genesis-spontaneous-cognition/experiences-and-recovery:
+  en: 8893ae5cfe0755de
+  zh: 429633fbac76c0eb
+/genesis-spontaneous-cognition/verification-limits:
+  en: 95bb4c40dbf91f99
+  zh: 5b5b01d6f4ee0741
+/genesis-spontaneous-cognition/dev-note:
+  en: b75c8458928b72b9
+  zh: 45e76642489dcc3c

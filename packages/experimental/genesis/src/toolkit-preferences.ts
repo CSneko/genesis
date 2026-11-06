@@ -30,7 +30,7 @@ export class ToolkitPreferences {
       || JSON.stringify(entries).length > this.config.maxStateChars) {
       throw new GenesisError('capacity', 'Toolkit catalogue exceeds maxRecords or maxStateChars. Reduce its entries or increase these limits.')
     }
-    if (entries.some(entry => entry.tools.some(rule => ['learn', 'genesis_recall', 'genesis_plan', 'genesis_toolkit', 'genesis_qq_history', 'genesis_qq_read_media', 'genesis_qq_send']
+    if (entries.some(entry => entry.tools.some(rule => ['learn', 'genesis_recall', 'genesis_thought', 'genesis_plan', 'genesis_toolkit', 'genesis_qq_history', 'genesis_qq_read_media', 'genesis_qq_send']
       .some(name => rule.endsWith('*') ? name.startsWith(rule.slice(0, -1)) : name === rule)))) {
       throw new GenesisError('invalid-source', 'Innate tools cannot be placed in a toolkit. Remove their membership rules.')
     }

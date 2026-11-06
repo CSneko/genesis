@@ -1,0 +1,4 @@
+# Apply after the Life overlay in a persistent profile. No independent wake timer is installed.
+- id: genesis
+  config:
+    spontaneity: {}

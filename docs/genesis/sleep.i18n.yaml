@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for sleep.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/genesis/sleep.md
+/:
+  en: ef144aea719ef8b9
+  zh: e81e5709f3f4fab1
+/genesis-sleep:
+  en: ade8a652eb7fae6b
+  zh: 43c6e83c4449f0df
+/genesis-sleep/summary:
+  en: f923a1999a05941b
+  zh: 05fa83c0fb095315
+/genesis-sleep/schedule-and-controls:
+  en: ae0707a3b86e4c7d
+  zh: b67f1b94cad154c8
+/genesis-sleep/messages-and-greetings:
+  en: fe0abd13b8faa915
+  zh: ebdf618e7abdde54
+/genesis-sleep/memories-and-recovery:
+  en: 870e13bc1cbd1b27
+  zh: aa8dff0b461f842d
+/genesis-sleep/verification-limits:
+  en: 05303bd91f018c4c
+  zh: 3ab88ff6cb09059c
+/genesis-sleep/dev-note:
+  en: b75c8458928b72b9
+  zh: 45e76642489dcc3c

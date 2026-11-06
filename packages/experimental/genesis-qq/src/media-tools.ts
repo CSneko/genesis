@@ -25,6 +25,8 @@ const readResult = z.strictObject({ content: z.array(z.discriminatedUnion('type'
 export interface MediaSendRequest {
   kind: 'image' | 'sticker' | 'file' | 'video' | 'face' | 'reply'
   attachmentId?: string | undefined
+  /** Send a WAV file as a playable OneBot voice message instead of uploading a file. */
+  asVoice?: boolean | undefined
   messageId?: string | undefined
   faceId?: string | undefined
   text?: string | undefined
@@ -75,15 +77,15 @@ export function registerMediaTools(ctx: Context, agent: Agent, media: QqMedia, c
   }))
   const removeSend = agent.ctx.tools.register(defineTool({
     name: 'genesis_qq_send',
-    description: 'Send an image, sticker image, video, file, QQ face emoji, or quoted text reply to this QQ conversation only. Files/images must use an attachmentId already received or produced here. For reply use an observed numeric QQ messageId from genesis_qq_history and text. No host paths, arbitrary URLs, recipients or raw OneBot actions. Uncertain delivery must not be automatically retried.',
+    description: 'Send an image, sticker image, video, file, QQ face emoji, or quoted text reply to this QQ conversation only. Files/images must use an attachmentId already received or produced here. For generated speech use kind=file, asVoice=true and the attachmentId returned by genesis_speech to send a playable QQ voice message. For reply use an observed numeric QQ messageId from genesis_qq_history and text. No host paths, arbitrary URLs, recipients or raw OneBot actions. Uncertain delivery must not be automatically retried.',
     parameters: { kind: { type: 'string', required: true, enum: ['image', 'sticker', 'file', 'video', 'face', 'reply'] },
-      attachmentId: { type: 'string' }, messageId: { type: 'string' }, faceId: { type: 'string' }, text: { type: 'string' } },
+      attachmentId: { type: 'string' }, asVoice: { type: 'boolean', description: 'With kind=file, send a WAV attachment as QQ voice.' }, messageId: { type: 'string' }, faceId: { type: 'string' }, text: { type: 'string' } },
     output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {
       exec.signal.throwIfAborted()
       if (!authorize(exec.agent)) throw new GenesisError('invalid-source', 'QQ delivery is unavailable outside its active authorized conversation.')
       const request = z.strictObject({ kind: z.enum(['image', 'sticker', 'file', 'video', 'face', 'reply']),
-        attachmentId: z.string().min(1).max(512).optional(), messageId: z.string().max(200).optional(),
+        attachmentId: z.string().min(1).max(512).optional(), asVoice: z.boolean().optional(), messageId: z.string().max(200).optional(),
         faceId: z.string().regex(/^[0-9]{1,8}$/u).optional(), text: z.string().max(config.maxOutputChars).optional() }).parse(args)
       return send(request, exec.callId, exec.signal)
     },
@@ -109,6 +111,7 @@ export async function sendMedia(ctx: Context, agent: Agent, media: QqMedia, conf
   signal.throwIfAborted()
   const call = agent.session.ownEvents().findLast(event => event.type === 'tool/call' && event.data.callId === callId)
   if (!call) throw new GenesisError('invalid-source', 'QQ sending requires its original logged tool call.')
+  if (request.asVoice && request.kind !== 'file') throw new GenesisError('invalid-source', 'QQ voice delivery requires kind=file and a WAV attachment from this conversation.')
   let parts: Array<Array<{ type: string; data: Record<string, unknown> }>> = []
   let upload: { file: string; name: string } | undefined
   if (request.kind === 'reply') {
@@ -122,7 +125,12 @@ export async function sendMedia(ctx: Context, agent: Agent, media: QqMedia, conf
     const ref = attachmentIn(agent.session, request.attachmentId)
     const bytes = await media.bytes(ref, signal)
     const encoded = `base64://${bytes.toString('base64')}`
-    if (request.kind === 'file') upload = { file: encoded, name: ref.attachment.name ?? 'attachment.bin' }
+    if (request.asVoice) {
+      if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') {
+        throw new GenesisError('invalid-source', 'QQ voice delivery requires a WAV audio attachment. Generate speech with genesis_speech first.')
+      }
+      parts = [[{ type: 'record', data: { file: encoded } }]]
+    } else if (request.kind === 'file') upload = { file: encoded, name: ref.attachment.name ?? 'attachment.bin' }
     else {
       if (request.kind !== 'video' && !rasterType(bytes)) throw new GenesisError('invalid-source', 'The selected attachment is not a supported raster image.')
       parts = [[{ type: request.kind === 'video' ? 'video' : 'image', data: { file: encoded, ...(request.kind === 'sticker' ? { sub_type: 1 } : {}) } }]]

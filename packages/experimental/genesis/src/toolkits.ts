@@ -1,20 +1,22 @@
 /** Learned tools enter a conversation only after their operator toolkit is activated. @module */
+import type {} from '@deepseek-ai/dsh-compaction'
 import type { Context } from '@deepseek-ai/cordis'
+import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { appendPluginRecord } from '@deepseek-ai/dsh-session'
+import { appendPluginRecord, pluginRecordOf } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Config } from './config.ts'
 import type { LifeCore } from './core.ts'
 import { GenesisError } from './error.ts'
-import { toolkitContains } from './toolkit-model.ts'
+import { activationSchema, toolkitContains } from './toolkit-model.ts'
 import type { ToolkitId } from './toolkit-types.ts'
 import type { ToolkitPreferences } from './toolkit-preferences.ts'
 import { qqBrowserDenial } from './qq-tool-policy.ts'
 
 /** Toolkit activation is innate only when there is a learned member to discover. */
 export const TOOLKIT_TOOL = 'genesis_toolkit'
-/** Personal records and workspace task access on QQ require the current authenticated operator. */
-const OPERATOR_QQ_TOOLS = ['genesis_record', 'genesis_tasks']
+/** Operator-owned QQ capabilities require the current authenticated speaker, independently of learning. */
+const OPERATOR_QQ_TOOLS = ['genesis_record', 'genesis_tasks', 'genesis_speech']
 /** Instance-owned policy; activation comes exclusively from the calling Session's committed records. */
 export class LifeToolkits {
   /** @param ctx - Real scoped tools and Session projections. @param core - Durable learning owner. @param preferences - Operator catalogue. @param config - Retrieval and output bounds. */
@@ -45,6 +47,11 @@ export class LifeToolkits {
    */
   qqAllowed(agent: Agent, name: string, operation: 'advertise' | 'execute' = 'execute'): boolean {
     if (!this.core.isQqSession(agent.id)) return false
+    if (this.core.isOperatorSession(agent.id)) {
+      return ['learn', 'genesis_recall', 'genesis_plan', TOOLKIT_TOOL, 'genesis_message', 'genesis_qq_history',
+        'genesis_qq_read_media', 'genesis_qq_send', ...this.config.qqBasicTools].includes(name)
+        || (this.core.learningStatus().tools.includes(name) && this.exposed(agent, name))
+    }
     if (name === 'genesis_message') return this.operatorSpeaking(agent)
     if (!this.operatorSpeaking(agent) && qqBrowserDenial(name) !== undefined) return false
     if (['genesis_recall', 'genesis_qq_history', 'genesis_qq_read_media', 'genesis_qq_send', TOOLKIT_TOOL, ...this.config.qqBasicTools].includes(name)) return true
@@ -76,6 +83,7 @@ export class LifeToolkits {
    * @returns A denial reason, or undefined when current channel policy permits the call.
    */
   qqExecutionDenial(agent: Agent, name: string, args: unknown): string | undefined {
+    if (this.core.isOperatorSession(agent.id)) return undefined
     if (!this.qqAllowed(agent, name)) return 'This QQ tool is not currently authorized. Enable an eligible toolkit first; operator-only tools require the actual bound operator to speak. Relationships do not grant permissions.'
     return this.operatorSpeaking(agent) ? undefined : qqBrowserDenial(name, args)
   }
@@ -87,9 +95,55 @@ export class LifeToolkits {
    * @returns Whether no group owns the tool, or at least one owning group is active here.
    */
   exposed(agent: Agent, name: string): boolean {
-    if (this.core.isQqSession(agent.id)) return this.qqAllowed(agent, name)
+    if (this.core.isQqSession(agent.id) && !this.core.isOperatorSession(agent.id)) return this.qqAllowed(agent, name)
     const owners = this.preferences.read().entries.filter(entry => toolkitContains(entry, name))
     return owners.length === 0 || owners.some(entry => this.enabled(agent).includes(entry.id))
+  }
+  /**
+   * Retain registered QQ declarations across permission changes; explicit closure removes members.
+   * Successful compaction retires members unused since the preceding compaction or first declaration.
+   * @param agent - Calling QQ conversation; inherited declarations are excluded.
+   * @param registered - Currently registered schemas before Genesis filtering.
+   * @param eligible - Schemas admitted by current learning and toolkit policy.
+   * @returns Stable declarations; execution guards still check current authority.
+   */
+  retainQqTools(agent: Agent, registered: ToolSchema[], eligible: ToolSchema[]): ToolSchema[] {
+    let retained = new Set<string>()
+    const dormant = new Set<string>()
+    const used = new Set<string>()
+    const entries = this.preferences.read().entries
+    const active = new Set<ToolkitId>()
+    for (const event of agent.session.ownEvents()) {
+      if (event.type === 'request/header') retained = new Set(event.data.header.tools?.map(tool => tool.name))
+      if (event.type === 'tool/call') used.add(event.data.name)
+      if (event.type === 'compaction/end' && event.data.error === undefined) {
+        for (const name of retained) {
+          if (!used.has(name)) { retained.delete(name); dormant.add(name) }
+        }
+        used.clear()
+      }
+      const record = pluginRecordOf(event)
+      if (record?.type !== 'plugin:genesis/toolkit') continue
+      const activation = activationSchema.parse(record.data)
+      if (activation.sessionId !== agent.id) continue
+      if (activation.enabled) active.add(activation.id)
+      else active.delete(activation.id)
+      const entry = entries.find(entry => entry.id === activation.id)
+      if (entry === undefined) continue
+      for (const tool of registered) {
+        if (!toolkitContains(entry, tool.name)) continue
+        if (activation.enabled) dormant.delete(tool.name)
+        else if (!entries.some(other => active.has(other.id) && toolkitContains(other, tool.name))) {
+          retained.delete(tool.name)
+          dormant.add(tool.name)
+        }
+      }
+    }
+    // Innate channel and discovery tools must remain available without reactivation.
+    const innate = new Set(['learn', 'genesis_recall', 'genesis_plan', TOOLKIT_TOOL, 'genesis_message',
+      'genesis_qq_history', 'genesis_qq_read_media', 'genesis_qq_send', ...this.config.qqBasicTools])
+    const admitted = new Set(eligible.filter(tool => innate.has(tool.name) || !dormant.has(tool.name)).map(tool => tool.name))
+    return registered.filter(tool => retained.has(tool.name) || admitted.has(tool.name))
   }
   private enabled(agent: Agent) {
     const state = this.ctx.sessionProjections.stateOf(agent.session, 'genesisToolkits')
@@ -99,7 +153,7 @@ export class LifeToolkits {
   /** Whether any group has a learned member. @returns Discovery visibility without revealing unknown tools. */
   discoverable(agent?: Agent): boolean {
     const learned = this.core.learningStatus().tools
-    return this.preferences.read().entries.some(entry => (agent === undefined || !this.core.isQqSession(agent.id) || (entry.qqAccess !== undefined && entry.qqAccess !== 'disabled'))
+    return this.preferences.read().entries.some(entry => (agent === undefined || !this.core.isQqSession(agent.id) || this.core.isOperatorSession(agent.id) || (entry.qqAccess !== undefined && entry.qqAccess !== 'disabled'))
       && learned.some(name => toolkitContains(entry, name)))
   }
   /**
@@ -113,7 +167,7 @@ export class LifeToolkits {
     const learned = this.core.learningStatus().tools
     const available = new Set(this.ctx.tools.schemas(agent).map(tool => tool.name))
     const active = this.enabled(agent)
-    const qq = this.core.isQqSession(agent.id)
+    const qq = this.core.isQqSession(agent.id) && !this.core.isOperatorSession(agent.id)
     const matching = this.preferences.read().entries.filter(entry => (!qq || entry.qqAccess === 'anyone' || entry.qqAccess === 'operator') && learned.some(name => toolkitContains(entry, name))
       && `${entry.id} ${entry.name} ${entry.description}`.toLowerCase().includes(query.trim().toLowerCase()))
     const result: { entries: Array<{ id: ToolkitId; name: string; description?: string; learned: number; available: number; enabled: boolean; qqAccess?: 'disabled' | 'anyone' | 'operator' }>; omitted: number } = {
@@ -147,7 +201,7 @@ export class LifeToolkits {
     })
     this.ctx.tools.register(defineTool({
       name: TOOLKIT_TOOL,
-      description: '查看、启用或关闭当前对话的工具包。仅展示含有已学会工具的工具包；启用后，下次请求注入包内当前可用且已学会的工具。新对话默认关闭。QQ 工具包由操作者配置为禁用、任何人可启用或仅操作者可启用；受限工具的每次调用也必须由当前已验证的操作者发言触发。搜索等 QQ 基础工具已内置。其他执行权限仍单独检查。',
+      description: '查看、启用或关闭当前对话的工具包。仅展示含有已学会工具的工具包；启用后，下次请求注入包内当前可用且已学会的工具。新对话默认关闭。QQ 工具包由操作者配置为禁用、任何人可启用或仅操作者可启用；受限工具的每次调用也必须由当前已验证的操作者发言触发。已绑定操作者的私聊采用 Web 权限，不受 QQ 工具包受众限制。工具声明在权限变化后保留，未授权调用返回错误；成功压缩时清理未用声明，重新启用工具包可恢复。搜索等 QQ 基础工具已内置。其他执行权限仍单独检查。',
       parameters: { action: { type: 'string', required: true, enum: ['list', 'enable', 'disable'] },
         id: { type: 'string', description: '启用或关闭时，传入上下文中的工具包 ID。' },
         query: { type: 'string', description: '查看时可按名称或说明搜索工具包。' } },
@@ -165,7 +219,7 @@ export class LifeToolkits {
         const enabled = args.action === 'enable'
         const qq = this.core.isQqSession(agent.id)
         const speaker = qq ? this.currentSpeaker(agent) : undefined
-        if (qq && enabled && (entry.qqAccess === undefined || entry.qqAccess === 'disabled'
+        if (qq && !this.core.isOperatorSession(agent.id) && enabled && (entry.qqAccess === undefined || entry.qqAccess === 'disabled'
           || speaker?.data.source.kind !== 'genesis-person'
           || entry.qqAccess === 'operator' && !this.core.isOperatorPerson(speaker.data.source.personId))) {
           throw new GenesisError('invalid-source', 'This QQ toolkit requires its configured audience and a current authenticated speaker; operator-only toolkits require the bound operator account.')

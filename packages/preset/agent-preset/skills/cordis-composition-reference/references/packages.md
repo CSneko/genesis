@@ -192,14 +192,20 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-experimental-browser-use-stagehand-native` | yes | Experimental Stagehand browser tools with separately configured native models |
 | `@deepseek-ai/dsh-experimental-claude-code-mods` | yes | Experimental bridge: load Claude Code mods (hooks modules) and run their hook chains on DeepSeek Harness extension points |
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | no | Web Agent Teams roster, task board, and teammate navigation |
+| `@deepseek-ai/dsh-experimental-client-ui-browser-preview` | no | AI browser tabs, page controls and recent actions in the right Sidebar |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | no | Web band above the prompt for Claude Code mods: draws each session's mod tree and sends button presses back to the bridge |
 | `@deepseek-ai/dsh-experimental-client-ui-cot-translation` | yes | Optional machine translation of expanded reasoning, preserving original Session text |
-| `@deepseek-ai/dsh-experimental-client-ui-genesis` | no | Genesis identity, memory and growth status in Web settings |
+| `@deepseek-ai/dsh-experimental-client-ui-genesis` | no | Genesis daily-use workspace and model, tool and connection settings |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | no | Record speech and insert editable text into the conversation draft |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp` | yes | Experimental computer use through an installed Cua Driver MCP executable |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | no | Experimental computer-use provider embedding the Cua Driver native npm SDK |
+| `@deepseek-ai/dsh-experimental-computer-use-portal` | yes | Consented Wayland application accessibility, desktop capture and input |
 | `@deepseek-ai/dsh-experimental-cua-macos` | yes | macOS native provider for shared Computer Use application and window objects |
 | `@deepseek-ai/dsh-experimental-genesis` | yes | Persistent life identity, sourced memories and observed capability history for Genesis. |
+| `@deepseek-ai/dsh-experimental-genesis-bili-humanism` | yes | Bilibili reading and shared Genesis viewing notes with explicit legacy migration. |
+| `@deepseek-ai/dsh-experimental-genesis-minecraft` | yes | Minecraft Java play and bounded Jev environment monitoring for Genesis. |
+| `@deepseek-ai/dsh-experimental-genesis-qq` | yes | QQ group and private conversations for one Genesis life with authenticated participants. |
+| `@deepseek-ai/dsh-experimental-genesis-video` | yes | Persistent Remotion video projects and sandboxed local rendering for Genesis. |
 | `@deepseek-ai/dsh-experimental-inspector` | yes | Experimental cross-realm CDP hub for Host debugging and Client Runtime inspection |
 | `@deepseek-ai/dsh-experimental-ptc-runtime-python` | yes | CPython subprocess implementation of the DeepSeek Harness PTC execution seam |
 | `@deepseek-ai/dsh-experimental-session-inspector` | no | Experimental virtualized Session log and live Chat group/node inspectors |

@@ -39,6 +39,9 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`genesis`](genesis/README.md) | Persistent life identity, sourced memories and system growth | `ctx.genesis`, `ctx.genesisStatus` |
 | [`genesis-bili-humanism`](genesis-bili-humanism/README.md) | Bilibili reading and shared viewing notes | — |
 | [`genesis-minecraft`](genesis-minecraft/README.md) | Minecraft Java play and Jev environment monitoring | — |
+| [`genesis-video`](genesis-video/README.md) | Persistent Remotion editing projects and sandboxed local rendering | — |
+| [`genesis-speech`](genesis-speech/README.md) | Configurable CosyVoice speech synthesis and custom voice IDs | — |
+| [`genesis-companion`](genesis-companion/README.md) | Internal AstrBot conversations and attributed partner understanding | — |
 | [`genesis-qq`](genesis-qq/README.md) | QQ text conversations and independently sourced people | — |
 | [`client-ui-genesis`](client-ui-genesis/README.md) | Read-only Genesis status in Web settings | — |
 | [`client-ui-browser-preview`](client-ui-browser-preview/README.md) | AI browser tabs, page controls and recent actions | — |

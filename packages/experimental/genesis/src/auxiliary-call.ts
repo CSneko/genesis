@@ -77,6 +77,7 @@ export async function auxiliaryCall(ctx: Context, session: Session, role: Auxili
   const route = models[role === 'decision' || role === 'emotion-decision' ? 'decision' : 'writer']
   const maxRetries = models.maxRetries ?? config.maxRetries
   return retryRequest(async () => {
+    if (ctx.get('genesisSleep')?.ownsMaintenance(session.id) !== true) ctx.get('genesisSpontaneity')?.reserveOutput(session, config.maxTokens)
     if (route.kind !== 'provider') {
       const body = endpointRequest(route, system, input, config.maxTokens, role === 'emotion-decision' ? 'emotion' : 'remember', criteria)
       if (JSON.stringify(body).length > config.inputChars) throw new GenesisError('capacity', 'Memory HTTP request exceeds inputChars.')

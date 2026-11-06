@@ -11,6 +11,10 @@ English | [中文](README.zh.md)
 
 Restore the same life identity after restart, retrieve sourced memories across Sessions, and inspect real tool availability and system growth. Choose this optional layer for Genesis experiments; ordinary Harness profiles remain usable without it. Storage and prompt budgets are bounded and incompatible data is refused.
 
+Sleep and spontaneous cognition are enabled in the workspace Life composition; see [sleep controls and recovery](../../../docs/genesis/sleep.md). Sleep organization supports multiple sourced results per batch, merging or splitting memories while retaining originals.
+
+Session creation commits its life binding and initial capability inventory together. Unchanged inventories reuse confirmed state without copying or validating the complete history; first-request context is assembled when a step is admitted. Proactive receipt recovery runs under its own owner; unrelated Session creation does not await that recovery.
+
 ## Table of Contents
 
 [Use](#use) · [Toolkits](#toolkits) · [Implementation](#implementation) · [Further Exploration](#further-exploration) · [Model Experience](#model-experience) · [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -20,9 +24,11 @@ Restore the same life identity after restart, retrieve sourced memories across S
 
 Mount the supplied `cordis.patch.yml` above a base-backed profile. It requires Storage Domain, Agent, tool and prompt services plus sandbox policy, and takes a shared absolute `leasePath`. See the [run instructions](../../../docs/genesis/README.md) and generated [configuration catalog](../../../docs/config-catalog.md) for deployment bounds.
 
+Optional [spontaneous cognition](../../../docs/genesis/spontaneity.md) provides private, bounded ideas and short explorations after an idle Life exchange. Thoughts can survive restart without becoming goals or messages to the operator.
+
 ## Configuration
 
-Life storage uses immutable components and a paged commit index. `storage.pageSize` defaults to 256 references per page; `storage.maxRecordChars` defaults to 2,000,000 characters per component/root. Life history has no aggregate record-count or serialized-character ceiling. An oversized individual record is refused before publication, with the named setting and attempted size; existing history remains intact. [Storage and recovery](../../../docs/genesis/data-model.md#consistency-and-recovery) describes migration, backup and hardware limits.
+Life storage uses immutable components and a paged commit index. `storage.pageSize` defaults to 256 references per page; `storage.maxRecordChars` defaults to 2,000,000 characters per component/root. Life history has no aggregate record-count or serialized-character ceiling. An oversized individual record is refused before publication, with the named setting and attempted size; existing history remains intact. [Storage and recovery](../../../docs/genesis/data-model.md) describes migration, backup and hardware limits.
 
 `maxRecords` and `maxStateChars` retain their independent catalogue limits; the context and result fields bound model-visible output. `backupPath` selects the local life backup. Optional `memory` enables independent decision/writer models and semantic recall; optional `awakening` enables naming and tool learning. `awakening.lifePreset` confines life prompts, tools, observations and independent memory/emotion/interest review to one preset; omission retains the legacy all-Session policy. The Web companion configures Jev and writer routes plus embeddings in separate revisioned domains, with secrets in Harness credentials. A single embedding result may omit `index`; if present it must be numeric `0`. Exactly one finite, nonzero vector with the configured dimensions is required. See [memory configuration](../../../docs/genesis/memory.md) and [first awakening](../../../docs/genesis/awakening.md). Model catalogs have an independent `modelCatalogChars` response limit (default 4,000,000 characters); inference output remains bounded by `memory.outputChars`. No configuration grants execution permissions.
 
@@ -55,6 +61,8 @@ Optional [Bilibili reading](../genesis-bili-humanism/README.md) uses the shared 
 
 Optional [QQ conversations](../../../docs/genesis/qq.md) use authenticated OneBot text input with stable people, independent relationship estimates and source-attributed group/private memories. The life overlay selects `memorySharing: life` for shared Web/QQ recall; standalone mounts default to `conversation` for source-audience isolation. Logged participants use QQ accounts, nicknames and recorded names; the bound operator keeps the configured name across groups while private identity descriptions stay private; QQ includes policy-controlled recall, its own history and registered search tools; toolkit permissions explicitly control additional learned tools.
 
+Learned [speech synthesis](../genesis-speech/README.md) follows the current authenticated operator requirement on QQ, including group calls.
+
 <a id="toolkits"></a>
 ## Toolkits
 
@@ -62,9 +70,11 @@ In awakening mode, `toolkits` supplies initial `{ id, name, description, tools }
 
 New conversations start with every toolkit disabled. Only groups containing at least one durably learned tool appear in the bounded logged `genesis:toolkits` context, with learned/available counts and omission counts. `genesis_toolkit` lists or searches eligible groups and enables/disables one by ID; activation exposes every currently available learned member on the next request. Unknown members are never taught automatically. Ordinary task presets are unchanged. Innate learning, recall, planning and activation cannot be grouped. A member in several groups needs any one owning group enabled. Removing its last group restores ordinary learned-tool availability.
 
-Learned `genesis_tasks` and `genesis_record` are available on QQ without toolkit activation; execution requires the current authenticated speaker to be the bound operator. QQ toolkit entries add optional `qqAccess` (`disabled`, `anyone` or `operator`); old entries stay disabled. Operator-only activation and execution require the authenticated current speaker. Innate `qqBasicTools` defaults to registered `web_search` and `web_fetch`, independently of learning; other tools still require learned membership and active QQ permission. Version-two catalogue rows read version-one predecessors; version-two activation records retain authenticated grants and source sequence references. See [QQ toolkit permissions](../../../docs/genesis/qq.md#qq-toolkit-permissions).
+Learned `genesis_tasks` and `genesis_record` are available on QQ without toolkit activation; execution requires the current authenticated speaker to be the bound operator. QQ toolkit entries add optional `qqAccess` (`disabled`, `anyone` or `operator`); old entries stay disabled. Operator-only activation and execution require the authenticated current speaker. Innate `qqBasicTools` defaults to registered `web_search`, `web_fetch` and `genesis_speech`, independently of learning; other tools still require learned membership and active QQ permission. Version-two catalogue rows read version-one predecessors; version-two activation records retain authenticated grants and source sequence references. See [QQ toolkit permissions](../../../docs/genesis/qq.md#qq-toolkit-permissions). Bound operator private QQ conversations use Web tool permissions regardless of `qqAccess`. QQ retains injected registered declarations across permission changes, rejects unauthorized calls at execution, and retires unused declarations on successful compaction; explicit toolkit closure removes members immediately.
 
 Activation records use versioned `plugin:genesis/toolkit` Session records carrying the owning Session ID; forked conversations start disabled; reopening that same conversation restores activation, while unrelated conversations remain disabled. Catalogue edits keep active group IDs and apply current membership on subsequent requests and executions. The executor independently rejects closed groups; activation never bypasses learning, sandbox, consent or authorization checks. Tool results and context changes remain logged. Settings do not load executable plugins, and the life-state backup does not include this separate preferences domain.
+
+Operator Life Web conversations have the innate `genesis_message` tool for registered conversation destinations. Optional providers own target discovery and delivery receipts; current operator input and the original logged tool call authorize each action. The [AI partner integration](../genesis-companion/README.md) contributes its persistent internal Session. QQ keeps its existing scoped transport, verified speaker checks and outbound allowlists.
 
 <a id="implementation"></a>
 ## Implementation
@@ -84,7 +94,7 @@ Plan edits retain actual Session/tool-call evidence and reject stale revisions, 
 
 Integrations can use `lifeContextUpdate` to emit changed named life modules through the logged Genesis state source; include its returned message in admitted Agent input.
 
-The independent [temporary-memory pipeline](../../../docs/genesis/temporary-memory.md) stores atomic source progress and expiring summaries in its own version-one domain. QQ summaries use logged nicknames or the verified operator name. Its summary route is configured separately, and importance reuses the memory decision route. Each new batch costs one summary and one importance call; only changed selected records and withdrawals enter main-model context.
+The Life-mode-only [temporary-memory pipeline](../../../docs/genesis/temporary-memory.md) stores atomic source progress and expiring summaries in its own version-one domain. QQ summaries use logged nicknames or the verified operator name. Its summary route is configured separately, and importance reuses the memory decision route. Each new batch costs one summary and one importance call; only changed selected records and withdrawals enter main-model context.
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -113,7 +123,7 @@ Guidance remains stable while the plugin is enabled. Identity, participants, cap
 
 #### What the model sees
 
-Logged context lists bounded non-declarative content and declarative recall cues even when `memory` is unconfigured. Declarative lines prefer saved summaries clipped to twenty characters, otherwise content excerpts. Memory lines contain no JSON wrapper, ID, source, score or history; `memoryChars` bounds each section. Configured association supplies a few related plain summaries, disabled by `associationLimit: 0`. The recall tool returns only full current-content strings; management retains sources and prior interpretations. Whole-conversation overview reads oversized evidence in bounded sections before one atomic commit of valid entries; invalid entries produce Host warnings and withhold planned deletions. It has separate configurable change, citation and output limits; see [memory behavior](../../../docs/genesis/memory.md) for operation budgets and recovery. Independent decision and writer instructions live in [memory.ts](src/memory.ts); shared [summary instructions](src/memory-summary.ts) ask for concise descriptions and a pre-output length check. The following guidance is fixed:
+Logged context lists bounded non-declarative content and declarative recall cues even when `memory` is unconfigured. Declarative lines prefer saved summaries clipped to twenty characters, otherwise content excerpts. Memory lines contain no JSON wrapper, ID, source, score or history; `memoryChars` bounds each section. Configured association supplies a few related plain summaries, disabled by `associationLimit: 0`. The recall tool returns only full current-content strings; management retains sources and prior interpretations. Whole-conversation overview reads oversized evidence in bounded sections before one atomic commit of valid entries; invalid entries produce Host warnings and withhold planned deletions. It has separate configurable change, citation and output limits; see [memory behavior](../../../docs/genesis/memory.md) for operation budgets and recovery. Independent decision and writer instructions live in [memory.ts](src/memory.ts); shared [summary instructions](src/memory-summary.ts) ask for concise descriptions and a pre-output length check. The following guidance is fixed: Automatic association uses existing vectors with a short `memory.associationTimeoutMs` deadline; explicit recall can fill missing vectors.
 
 ##### Verbatim guidance
 

@@ -123,7 +123,7 @@ export class SocialInitiative {
       await this.resumePending()
       const state = await this.core.snapshot()
       const policy = resolveInitiative(this.policy, state.initiative)
-      if (!policy.enabled) return
+      if (!policy.enabled || this.ctx.get('genesisSleep')?.autonomousAllowed() === false) return
       // A timer may reconsider grounded life evidence, but never its own request,
       // decision or delivery records; those would turn silence into a feedback loop.
       const source = [...state.events].reverse().find(event => event.type === 'goal.completed'
@@ -190,7 +190,7 @@ export class SocialInitiative {
   private async process(record: InteractionRecord, signal: AbortSignal): Promise<InteractionRecord> {
     if (record.status !== 'pending') return record
     const policy = resolveInitiative(this.policy, (await this.core.snapshot()).initiative)
-    if (!policy.enabled) return record
+    if (!policy.enabled || this.ctx.get('genesisSleep')?.autonomousAllowed() === false) return record
     if (Date.now() - Date.parse(record.createdAt) >= policy.maxPendingAgeMs) {
       record = { ...record, status: 'skipped', note: 'The opportunity expired without a confirmed delivery.' }
     } else {
@@ -265,8 +265,11 @@ export class SocialInitiative {
 
   private async resumePending(): Promise<void> {
     const agents = this.ctx.agents.list().filter(this.applies)
-    for (const agent of agents) await this.reconcile(agent.session, agent)
-    const records = (await this.core.snapshot()).initiative?.records ?? []
+    const initial = (await this.core.snapshot()).initiative?.records ?? []
+    const unsettled = new Set(initial.filter(record => ['dispatching', 'uncertain'].includes(record.status)).map(record => record.sessionId))
+    const relevant = agents.filter(agent => unsettled.has(agent.id))
+    for (const agent of relevant) await this.reconcile(agent.session, agent)
+    const records = relevant.length ? (await this.core.snapshot()).initiative?.records ?? [] : initial
     for (const record of records) {
       if (['dispatching', 'uncertain'].includes(record.status) && !agents.some(agent => agent.session.id === record.sessionId)) {
         await this.reconcileCold(record)

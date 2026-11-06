@@ -104,7 +104,7 @@ export class QqMessenger {
   register(agent: Agent, authorize: (caller: Agent | undefined) => boolean, transport: MessageTransport): () => void {
     return agent.ctx.tools.register(defineTool({
       name: 'genesis_message',
-      description: 'Operator-only cross-conversation QQ text messaging. Use targets to find exact platform contacts allowed for outbound messaging; never guess a target or silently choose between ambiguous names. send writes supplied text. forward copies an observed original plain-text message by the current operator from this conversation; it does not paraphrase or forward attachments. status checks an earlier delivery id from this source conversation. Confirmed means QQ acknowledged every part, not that a person read it. Uncertain deliveries must not be resent automatically. A clear operator request authorizes sending without another confirmation.',
+      description: 'Operator-only cross-conversation text messaging. Use targets to discover allowed QQ contacts and available internal AI partner conversations; never guess targets. send writes supplied text. forward copies an observed original plain-text message by the current operator, without paraphrasing or attachments. status checks a receipt from this source conversation. QQ confirmed means every part was acknowledged, not read. Internal emitted means a socket write completed, not QQ delivery. An AI partner message may start a bounded exchange in its persistent Session; both sides must be awake. Never automatically retry uncertain delivery or share unrelated private context. A clear operator request authorizes sending.',
       parameters: { action: { type: 'string', required: true, enum: ['targets', 'send', 'forward', 'status'] },
         query: { type: 'string' }, offset: { type: 'integer' }, target: { type: 'string' }, text: { type: 'string' },
         messageId: { type: 'string' }, id: { type: 'string' } },
@@ -114,7 +114,13 @@ export class QqMessenger {
         const operation = (async () => {
           if (!authorize(exec.agent)) throw new GenesisError('invalid-source', 'The source QQ conversation is no longer authorized.')
           exec.signal.throwIfAborted()
-          this.operator(agent)
+          const actor = this.operator(agent)
+          const routing = this.ctx.get('genesisMessaging')
+          const forwarded = z.object({ action: z.string(), messageId: z.string().optional() }).parse(args)
+          const routed = await routing?.route(args, { agent, callId: exec.callId, signal: exec.signal,
+            ...(forwarded.action === 'forward' && forwarded.messageId !== undefined
+              ? { forwardedText: this.original(agent, forwarded.messageId, actor.accountId).text } : {}) })
+          if (routed !== undefined) return routed
           const request = requestSchema.parse(args)
           if (request.action === 'status') {
             const receipt = this.store.get(request.id)
@@ -127,8 +133,8 @@ export class QqMessenger {
           if (request.action === 'targets') {
             if ((request.query?.length ?? 0) > this.config.maxInputChars) throw new GenesisError('capacity', 'Shorten the target search.')
             const query = request.query?.trim().toLowerCase() ?? ''
-            const found = (await this.targets(transport)).filter(row =>
-              !query || row.name.toLowerCase().includes(query) || row.account === query)
+            const found = [...await this.targets(transport), ...(await routing?.targets(agent, exec.signal) ?? [])].filter(row =>
+              !query || row.name.toLowerCase().includes(query) || row.account === query || row.target === query)
             const offset = request.offset ?? 0
             const result = { items: found.slice(offset, offset + this.config.historyLimit), total: found.length,
               nextOffset: offset + this.config.historyLimit < found.length ? offset + this.config.historyLimit : null }

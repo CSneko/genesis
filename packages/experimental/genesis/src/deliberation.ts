@@ -121,6 +121,7 @@ export class LifeDeliberationEngine {
     const operation = this.tail.then(async () => {
       const signal = AbortSignal.any([caller, this.lifetime.signal])
       signal.throwIfAborted()
+      if (this.ctx.get('genesisSleep')?.autonomousAllowed() === false) return
       const previous = (await this.core.snapshot()).events.find(event => event.dedupKey === `planning:${agent.session.id}:${request.key}`)
       if (previous !== undefined) {
         if (previous.payload['sourceEventId'] !== request.sourceEventId) throw new GenesisError('invalid-source', 'This planning key already refers to different evidence.')

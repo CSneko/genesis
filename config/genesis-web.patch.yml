@@ -11,6 +11,9 @@
 
 - id: connection
   config:
-    trustedHosts: !!js ctx.webStartup.trustedHosts
+    # Public deployment default: accept every Host (the `*` marker) on top of
+    # any explicit --trusted-host entries. Origin and cross-site checks remain.
+    trustedHosts: !!js >-
+      [...(ctx.webStartup.trustedHosts ?? []), "*"]
     keyLogin:
       keyFile: !!js dshHomePath('web-login.key')

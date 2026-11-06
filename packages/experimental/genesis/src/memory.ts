@@ -156,7 +156,10 @@ export class LifeMemoryEngine {
    * @returns Whole memories ranked by full-text and semantic relevance, without vector caches; provider failure returns keyword matches with a Host warning, or rejects when none exist.
    */
   recall(query: MemoryQuery, caller?: AbortSignal): Promise<LifeMemory[]> {
-    const pending = this.search(query, caller)
+    return this.trackSearch(this.search(query, caller))
+  }
+
+  private trackSearch(pending: Promise<LifeMemory[]>): Promise<LifeMemory[]> {
     this.searches.add(pending)
     const release = () => { this.searches.delete(pending) }
     void pending.then(release, release)
@@ -166,7 +169,7 @@ export class LifeMemoryEngine {
   /**
    * Select bounded related memories for accepted user input without another LLM decision call.
    * @param text - Actual current user text, clipped to the configured cue budget.
-   * @param signal - Turn cancellation; retrieval has the ordinary deadline.
+   * @param signal - Turn cancellation; automatic retrieval has its own short deadline.
    * @param sessionId - Actual conversation for audience checks; omission is reserved for host management.
    * @returns Plain summary lines, or an explicit diagnostic on lookup failure; chat may continue.
    */
@@ -174,8 +177,8 @@ export class LifeMemoryEngine {
     if (!text.trim() || this.config.associationLimit === 0) return ''
     if (!(await this.core.snapshot()).memories.some(memory => !isNonDeclarative(memory))) return ''
     try {
-      const memories = await this.recall({ text: text.slice(0, Math.min(this.config.associationInputChars, this.config.inputChars)),
-        ...(sessionId === undefined ? {} : { sessionId }), limit: this.config.associationLimit, chars: this.limits.resultChars, contentOnly: true }, signal)
+      const memories = await this.trackSearch(this.search({ text: text.slice(0, Math.min(this.config.associationInputChars, this.config.inputChars)),
+        ...(sessionId === undefined ? {} : { sessionId }), limit: this.config.associationLimit, chars: this.limits.resultChars, contentOnly: true }, signal, undefined, true))
       const now = new Date()
       return boundedMemoryText(memories.filter(memory => !isNonDeclarative(memory)).map(memory =>
         memory.summary ?? readMemory(memory, now, this.limits.timeZone).content), this.config.associationChars)
@@ -188,8 +191,8 @@ export class LifeMemoryEngine {
   }
 
   private async search(query: MemoryQuery, caller?: AbortSignal,
-    embeddings?: ReturnType<typeof configuredEmbeddings>): Promise<LifeMemory[]> {
-    const signal = this.signal(caller)
+    embeddings?: ReturnType<typeof configuredEmbeddings>, automatic = false): Promise<LifeMemory[]> {
+    const signal = this.signal(caller, automatic ? this.config.associationTimeoutMs : this.config.timeoutMs)
     if (!query.text.trim() || query.text.length > this.config.inputChars) {
       throw new GenesisError('capacity', 'Recall query is empty or exceeds memory.inputChars. Narrow the query.')
     }
@@ -211,8 +214,9 @@ export class LifeMemoryEngine {
         let embedding = memory.embedding
         if (embedding?.space !== provider.space || embedding.vector.length !== needle.vector.length) {
           const cached = this.cache.get(memory.id)
-          embedding = cached?.content === memory.content && cached.embedding.space === provider.space
-            ? cached.embedding : await provider.embed(memory.content, signal)
+          if (cached?.content === memory.content && cached.embedding.space === provider.space) embedding = cached.embedding
+          else if (automatic) continue
+          else embedding = await provider.embed(memory.content, signal)
           this.cache.set(memory.id, { content: memory.content, embedding })
         }
         const score = cosine(needle, embedding)

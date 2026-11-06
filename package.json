@@ -219,6 +219,7 @@
     "verify-product-use": "tsx scripts/verify-product-use.ts"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-atomic-write": "workspace:*",
     "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",
     "@deepseek-ai/dsh-hooks-codex": "workspace:*",
     "@deepseek-ai/dsh-tool-ralph": "workspace:*",
@@ -297,6 +298,9 @@
     "@deepseek-ai/dsh-experimental-genesis-bili-humanism": "workspace:*",
     "@deepseek-ai/dsh-experimental-computer-use-portal": "workspace:*",
     "@deepseek-ai/dsh-experimental-genesis-qq": "workspace:*",
-    "@deepseek-ai/dsh-experimental-genesis-minecraft": "workspace:*"
+    "@deepseek-ai/dsh-experimental-genesis-minecraft": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-video": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-speech": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-companion": "workspace:*"
   }
 }

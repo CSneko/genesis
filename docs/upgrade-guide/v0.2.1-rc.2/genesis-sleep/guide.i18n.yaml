@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/genesis-sleep/guide.md
+/:
+  en: e338df74be3ecb0e
+  zh: 87efd1df2f7da06e
+/genesis-sleep-and-spontaneous-cognition-defaults:
+  en: 08173a9f7f59091c
+  zh: 45245e1b3c5efe76
+/genesis-sleep-and-spontaneous-cognition-defaults/change:
+  en: c44d478f70964dc6
+  zh: 2f88d59138906f43
+/genesis-sleep-and-spontaneous-cognition-defaults/migration:
+  en: bfb098cc039d7a65
+  zh: bed7b9024f6593ac

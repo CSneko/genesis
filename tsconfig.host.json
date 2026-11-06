@@ -239,7 +239,10 @@
   "references": [
     { "path": "./packages/experimental/genesis" },
     { "path": "./packages/experimental/genesis-qq" },
+    { "path": "./packages/experimental/genesis-companion" },
     { "path": "./packages/experimental/genesis-minecraft" },
+    { "path": "./packages/experimental/genesis-speech" },
+    { "path": "./packages/experimental/genesis-video" },
     { "path": "./packages/experimental/genesis-bili-humanism" },
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json" },
     { "path": "./packages/experimental/cot-translation-bundle" },

@@ -223,3 +223,7 @@ export type { ToolkitId, ToolkitDefinition, ToolkitStatus } from './toolkit-type
 export type { PersonSummary, PeopleCatalog, PersonDetail, PersonEvidence, PersonId } from './people-status.ts'
 
 export type { TemporaryMemoryId, TemporaryMemory, TemporarySettings, TemporaryStatus } from './temporary-model.ts'
+
+export type { RhythmStatus } from './rhythm-gateway.ts'
+export type { SleepStatus, SleepSettings, SleepCycle } from './sleep-model.ts'
+export type { SpontaneitySettings, SpontaneityStatus } from './spontaneity-state.ts'

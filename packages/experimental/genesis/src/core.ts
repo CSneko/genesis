@@ -557,6 +557,48 @@ export class LifeCore {
     })
   }
 
+  /** Record a trusted sleep transition or initialization without admitting a chat message.
+   * @param key - Stable operation receipt key.
+   * @param kind - Sleep event suffix.
+   * @param payload - Nonsecret state and source references.
+   * @returns Committed life event, including on replay.
+   */
+  recordSleep(key: string, kind: string, payload: LifeEvent['payload']): Promise<LifeEvent> {
+    return this.change((state) => fact(state, `sleep.${kind.replace(/[^a-z]/gu, '')}`, `sleep:${key}`, { ...payload, kind }, 'system'))
+  }
+
+  /** Initialize the independent thought store ownership marker without creating another life.
+   *
+   * @returns After the marker commits; a missing marked store must be restored by its owner.
+   */
+  initializeSpontaneity(): Promise<void> {
+    return this.change((state) => { fact(state, 'spontaneity.initialized', 'spontaneity:initialized', {}) })
+  }
+
+  /** Record an internal Session before it can receive input; the marker also fences cold resumes.
+   *
+   * @param sessionId - Reserved internal identity.
+   * @param sourceEventId - Actual triggering life event.
+   *
+   * @returns After source attribution commits; no Agent is created by this method.
+   */
+  beginSpontaneitySession(sessionId: SessionId, sourceEventId: LifeEventId): Promise<void> {
+    return this.change((state) => {
+      this.checkSources(state, [sourceEventId])
+      fact(state, 'spontaneity.started', `spontaneity:session:${sessionId}`, { sourceEventId }, 'system', sessionId)
+    })
+  }
+
+  /** Identify internal Sessions without opening their logs.
+   *
+   * @param sessionId - Candidate identity.
+   * @returns Whether life history records an internal interval.
+   */
+  isSpontaneitySession(sessionId: SessionId): boolean {
+    this.assertUsable()
+    return this.state().events.some(event => event.dedupKey === `spontaneity:session:${sessionId}`)
+  }
+
   /**
    * Publish a validated deliberation and all its state transitions atomically.
    * @param commit - Captured evidence, revision and proposal from the owning integration.
@@ -566,6 +608,10 @@ export class LifeCore {
     return this.change((state) => {
       const config = this.config.deliberation
       if (config === undefined) throw new GenesisError('invalid-state', 'Enable deliberation before making life decisions.')
+      if (commit.purpose === 'exploration' && (this.config.spontaneity?.enabled !== true
+        || !state.events.some(event => event.dedupKey === `spontaneity:session:${commit.sessionId}`))) {
+        throw new GenesisError('invalid-source', 'Exploration needs an enabled, recorded internal opportunity.')
+      }
       const trigger = state.events.find(event => event.id === commit.sourceEventIds[0])
       if (trigger?.type !== 'decision.triggered' || trigger.relatedSessionId !== commit.sessionId
         || trigger.payload['kind'] !== commit.trigger || trigger.dedupKey !== `deliberation-trigger:${commit.key}`) throw new GenesisError('invalid-source', 'Decision trigger does not match its Session.')
@@ -636,7 +682,8 @@ export class LifeCore {
     this.assertUsable()
     const agency = this.state().agency
     const decision = agency?.decisions.find(item => item.id === id)
-    return decision?.purpose !== 'interaction' && decision?.outcome.status === 'pending' && decision.candidates[decision.selected]?.disposition === 'accept'
+    return (decision?.purpose !== 'exploration' || this.config.spontaneity?.enabled === true)
+      && decision?.purpose !== 'interaction' && decision?.outcome.status === 'pending' && decision.candidates[decision.selected]?.disposition === 'accept'
       && decision.goalIds.every(goalId => agency?.goals.some(goal => goal.id === goalId && goal.status === 'active'))
   }
 
@@ -851,19 +898,29 @@ export class LifeCore {
       let appraisal: ReturnType<typeof applyAppraisal> | undefined
       let peopleChanges: object[] = []
       if (update !== undefined) {
+        const autonomous = state.agency?.decisions.find(item => item.id === current.decisionId && item.purpose === 'exploration'
+          && item.sessionId === sessionId && ['responded', 'succeeded', 'failed'].includes(item.outcome.status))
         const messages = evidence.flatMap(turn => turn.messages)
         const sourceSeqs = [...new Set([...update.sourceSeqs, ...(update.relationships ?? []).flatMap(item => item.sourceSeqs)])]
         const cited = messages.filter(message => sourceSeqs.includes(message.seq))
         if (new Set(update.sourceSeqs).size !== update.sourceSeqs.length || cited.length !== sourceSeqs.length
-          || !current.messages.some(message => message.role === 'user' && update.sourceSeqs.includes(message.seq))) {
+          || (!current.messages.some(message => message.role === 'user' && update.sourceSeqs.includes(message.seq))
+            && (autonomous === undefined || !current.messages.some(message => message.role === 'assistant' && update.sourceSeqs.includes(message.seq))
+              || cited.some(message => !autonomous.outcome.sourceEventIds.some(id => state.events.some(event => event.id === id
+                && event.relatedSessionId === sessionId && event.relatedEventId === String(message.seq))))))) {
           throw new GenesisError('invalid-source', 'Emotion updates must cite supplied dialogue and new real user evidence. No changes were applied.')
+        }
+        if (autonomous !== undefined && (Object.keys(update.relationshipDelta ?? {}).length || (update.relationships?.length ?? 0)
+          || ['recentInteraction', 'socialSatisfaction', 'relationshipQuality'].some(field => field in update.needsDelta))) {
+          throw new GenesisError('invalid-source', 'Private exploration cannot update social relationships or count as user contact.')
         }
         const social = state.people?.conversations.some(item => item.sessionId === sessionId) === true
         if (social && Object.keys(update.relationshipDelta ?? {}).length > 0) {
           throw new GenesisError('invalid-source', 'Social dialogue must name actual speakers in per-person relationship proposals; the operator relationship was not changed.')
         }
         appraisal = applyAppraisal(after, update, settings, state.events,
-          current.messages.filter(message => message.role === 'user' && update.sourceSeqs.includes(message.seq)).map(message => message.text))
+          current.messages.filter(message => (autonomous === undefined ? message.role === 'user' : message.role === 'assistant')
+            && update.sourceSeqs.includes(message.seq)).map(message => message.text))
         for (const message of cited) {
           const event = fact(state, 'interaction.observed', `session:${sessionId}:${message.seq}`, { kind: `${message.role}-message`, ...(message.participant === undefined ? {} : { participant: message.participant }) },
             message.role === 'user' ? 'user' : 'agent', sessionId, String(message.seq), message.timestamp)
@@ -1136,12 +1193,17 @@ export class LifeCore {
    * Bind an actual created or resumed Session to this life without changing identity.
    * @param sessionId - Harness Session identifier.
    * @param source - Actual Harness creation/resume source.
-   * @returns After the binding fact commits; repeat bindings are idempotent.
+   * @param tools - Optional initial inventory committed atomically with the binding.
+   * @returns After the binding and supplied inventory commit; repeat observations are idempotent.
    */
-  bind(sessionId: SessionId, source: string): Promise<void> {
+  bind(sessionId: SessionId, source: string, tools?: readonly ToolSchema[]): Promise<void> {
+    const visible = tools === undefined ? undefined : new Map(tools.map(tool => [brandString<CapabilityId>(tool.name),
+      createHash('sha256').update(JSON.stringify(tool)).digest('hex')]))
     return this.change((state) => {
       fact(state, 'interaction.observed', `binding:${sessionId}:${source}`, { kind: 'session-bound', source }, 'system', sessionId)
-    })
+      if (visible !== undefined) this.scanState(state, sessionId, visible)
+    }, state => state.events.some(event => event.dedupKey === `binding:${sessionId}:${source}`)
+      && (visible === undefined || this.sameInventory(state, sessionId, visible)) ? { result: undefined } : undefined)
   }
 
   /**
@@ -1152,48 +1214,57 @@ export class LifeCore {
    * @returns After the baseline or subsequent capability changes commit with their source events.
    */
   scan(sessionId: SessionId, tools: readonly ToolSchema[]): Promise<void> {
-    return this.change((state) => {
-      const previous = Object.hasOwn(state.sessions, sessionId) ? state.sessions[sessionId] ?? [] : []
-      const visible = new Map(tools.map(tool => [brandString<CapabilityId>(tool.name),
-        createHash('sha256').update(JSON.stringify(tool)).digest('hex')]))
-      const now = new Date().toISOString()
-      if (!Object.hasOwn(state.sessions, sessionId)) {
-        const baseline = [...visible].map(([id, declarationHash]) => ({ id, declarationHash, firstSeenAt: now, changedAt: now,
-          available: true, verification: 'unverified' as const, permission: 'checked-at-execution' as const }))
-        Object.defineProperty(state.sessions, sessionId, { value: baseline, enumerable: true, writable: true, configurable: true })
-        fact(state, 'capability.discovered', `inventory:${sessionId}`, { baseline: true,
-          capabilities: baseline.map(item => ({ capabilityId: item.id, declarationHash: item.declarationHash })),
-          verification: 'unverified', permission: 'checked-at-execution',
-        }, 'system', sessionId, undefined, now)
-        return
+    const visible = new Map(tools.map(tool => [brandString<CapabilityId>(tool.name),
+      createHash('sha256').update(JSON.stringify(tool)).digest('hex')]))
+    return this.change(state => { this.scanState(state, sessionId, visible) }, state =>
+      this.sameInventory(state, sessionId, visible) ? { result: undefined } : undefined)
+  }
+
+  private sameInventory(state: Readonly<LifeState>, sessionId: SessionId, visible: ReadonlyMap<CapabilityId, string>): boolean {
+    const previous = Object.hasOwn(state.sessions, sessionId) ? state.sessions[sessionId] : undefined
+    return previous !== undefined && previous.filter(item => item.available).length === visible.size
+      && previous.every(item => item.available ? visible.get(item.id) === item.declarationHash : !visible.has(item.id))
+  }
+
+  private scanState(state: LifeState, sessionId: SessionId, visible: ReadonlyMap<CapabilityId, string>): void {
+    const previous = Object.hasOwn(state.sessions, sessionId) ? state.sessions[sessionId] ?? [] : []
+    const now = new Date().toISOString()
+    if (!Object.hasOwn(state.sessions, sessionId)) {
+      const baseline = [...visible].map(([id, declarationHash]) => ({ id, declarationHash, firstSeenAt: now, changedAt: now,
+        available: true, verification: 'unverified' as const, permission: 'checked-at-execution' as const }))
+      Object.defineProperty(state.sessions, sessionId, { value: baseline, enumerable: true, writable: true, configurable: true })
+      fact(state, 'capability.discovered', `inventory:${sessionId}`, { baseline: true,
+        capabilities: baseline.map(item => ({ capabilityId: item.id, declarationHash: item.declarationHash })),
+        verification: 'unverified', permission: 'checked-at-execution',
+      }, 'system', sessionId, undefined, now)
+      return
+    }
+    for (const [id, hash] of visible) {
+      const old = previous.find(capability => capability.id === id)
+      if (old !== undefined && old.available && old.declarationHash === hash) continue
+      const known = Object.values(state.sessions).flat().find(capability => capability.id === id && capability.declarationHash === hash)
+      if (old === undefined && known !== undefined) {
+        previous.push({ ...known, available: true, changedAt: now, verification: 'unverified' })
+        continue
       }
-      for (const [id, hash] of visible) {
-        const old = previous.find(capability => capability.id === id)
-        if (old !== undefined && old.available && old.declarationHash === hash) continue
-        const known = Object.values(state.sessions).flat().find(capability => capability.id === id && capability.declarationHash === hash)
-        if (old === undefined && known !== undefined) {
-          previous.push({ ...known, available: true, changedAt: now, verification: 'unverified' })
-          continue
-        }
-        const type = old === undefined ? 'capability.discovered' : !old.available ? 'capability.acquired' : 'capability.updated'
-        const event = fact(state, type, `capability:${randomUUID()}`, {
-          capabilityId: id, declarationHash: hash, available: true, verification: 'unverified',
-          permission: 'checked-at-execution',
-        }, 'system', sessionId)
-        grow(state, event, `${id}: ${type}`, 'Observed callable declaration in this Session. Authorization is checked per call; successful use is recorded separately.')
-        if (old === undefined) previous.push({ id, declarationHash: hash, firstSeenAt: now, changedAt: now,
-          available: true, verification: 'unverified', permission: 'checked-at-execution' })
-        else Object.assign(old, { declarationHash: hash, changedAt: now, available: true, verification: 'unverified' })
-      }
-      for (const old of previous) {
-        if (!old.available || visible.has(old.id)) continue
-        old.available = false
-        old.changedAt = now
-        const event = fact(state, 'capability.lost', `capability:${randomUUID()}`, { capabilityId: old.id, available: false }, 'system', sessionId)
-        grow(state, event, `${old.id}: unavailable`, 'The tool is absent from this Session registry view; its historical use remains recorded.')
-      }
-      Object.defineProperty(state.sessions, sessionId, { value: previous, enumerable: true, writable: true, configurable: true })
-    })
+      const type = old === undefined ? 'capability.discovered' : !old.available ? 'capability.acquired' : 'capability.updated'
+      const event = fact(state, type, `capability:${randomUUID()}`, {
+        capabilityId: id, declarationHash: hash, available: true, verification: 'unverified',
+        permission: 'checked-at-execution',
+      }, 'system', sessionId)
+      grow(state, event, `${id}: ${type}`, 'Observed callable declaration in this Session. Authorization is checked per call; successful use is recorded separately.')
+      if (old === undefined) previous.push({ id, declarationHash: hash, firstSeenAt: now, changedAt: now,
+        available: true, verification: 'unverified', permission: 'checked-at-execution' })
+      else Object.assign(old, { declarationHash: hash, changedAt: now, available: true, verification: 'unverified' })
+    }
+    for (const old of previous) {
+      if (!old.available || visible.has(old.id)) continue
+      old.available = false
+      old.changedAt = now
+      const event = fact(state, 'capability.lost', `capability:${randomUUID()}`, { capabilityId: old.id, available: false }, 'system', sessionId)
+      grow(state, event, `${old.id}: unavailable`, 'The tool is absent from this Session registry view; its historical use remains recorded.')
+    }
+    Object.defineProperty(state.sessions, sessionId, { value: previous, enumerable: true, writable: true, configurable: true })
   }
 
   /**
@@ -1202,20 +1273,32 @@ export class LifeCore {
    * @returns Newly committed memory.
    */
   remember(input: MemoryInput): Promise<LifeMemory> {
-    const parsed = memoryInputSchema.parse(input)
-    parsed.content = memoryTimeText(parsed.content)
-    return this.change((state) => {
-      this.checkSources(state, parsed.sourceEventIds)
-      const previous = state.memories.find(memory => memory.content === parsed.content && memory.category === parsed.category
-        && JSON.stringify(memory.sourceEventIds) === JSON.stringify(parsed.sourceEventIds))
+    return this.rememberBatch([input]).then(memories => memories[0]!)
+  }
+
+  /**
+   * Create a complete batch of sourced candidates atomically, retaining existing identical memories.
+   * @param inputs - Memory fields with existing life-event references; all are validated before commit.
+   * @returns Committed memories in input order; validation failures create no memories.
+   */
+  rememberBatch(inputs: MemoryInput[]): Promise<LifeMemory[]> {
+    const parsed = inputs.map(input => {
+      const memory = memoryInputSchema.parse(input)
+      memory.content = memoryTimeText(memory.content)
+      return memory
+    })
+    return this.change((state) => parsed.map(input => {
+      this.checkSources(state, input.sourceEventIds)
+      const previous = state.memories.find(memory => memory.content === input.content && memory.category === input.category
+        && JSON.stringify(memory.sourceEventIds) === JSON.stringify(input.sourceEventIds))
       if (previous !== undefined) return previous
       const now = new Date().toISOString()
-      const memory: LifeMemory = { ...parsed, id: brandString<MemoryId>(randomUUID()), lifeId: state.identity.id,
+      const memory: LifeMemory = { ...input, id: brandString<MemoryId>(randomUUID()), lifeId: state.identity.id,
         createdAt: now, updatedAt: now }
       state.memories.push(memory)
       fact(state, 'memory.created', `memory:${memory.id}`, { memoryId: memory.id }, 'agent')
       return memory
-    })
+    }))
   }
 
   /**
@@ -1664,12 +1747,14 @@ export class LifeCore {
       throw new GenesisError('invalid-source', 'Memory source event is absent from this life.')
     }
   }
-  private change<T>(operation: (state: LifeState) => T): Promise<T> {
+  private change<T>(operation: (state: LifeState) => T, unchanged?: (state: Readonly<LifeState>) => { result: T } | undefined): Promise<T> {
     try { this.assertUsable() } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error('Genesis operation refused', { cause: error }))
     }
     const pending = this.chain.then(async () => {
       if (this.failure !== undefined) throw this.failure
+      const retained = unchanged?.(this.state())
+      if (retained !== undefined) return retained.result
       const state = structuredClone(this.state())
       const before = JSON.stringify(state)
       const result = operation(state)

@@ -10,7 +10,7 @@ import { GenesisError, InactiveLifeGoalsError } from './error.ts'
 
 /** Evidence captured by the integration before an auxiliary call; not supplied by the model. */
 export interface DeliberationCommit {
-  purpose?: 'interaction'
+  purpose?: 'interaction' | 'exploration'
   key: string
   sessionId: SessionId
   trigger: 'request' | 'event'
@@ -116,7 +116,7 @@ export function applyDeliberation(state: LifeState, commit: DeliberationCommit, 
   if (selected === undefined) throw new GenesisError('invalid-source', 'The selected candidate is absent.')
   const goalIds = selected.goalIds.length ? selected.goalIds : changedGoals.filter(id => agency.goals.some(item => item.id === id && item.status === 'active'))
   const motivationIds = selected.motivationIds.length ? selected.motivationIds : changedMotivations
-  if (selected.disposition === 'accept' && commit.trigger === 'event' && commit.purpose !== 'interaction' && !goalIds.length) {
+  if (selected.disposition === 'accept' && commit.trigger === 'event' && commit.purpose !== 'interaction' && commit.purpose !== 'exploration' && !goalIds.length) {
     throw new GenesisError('invalid-source', 'Autonomous execution requires an active life goal.')
   }
   if (selected.disposition === 'accept') {

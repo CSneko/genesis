@@ -37,7 +37,8 @@
         "@deepseek-ai/dsh-client-ui-workspace",
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-ui-chat",
-        "@deepseek-ai/dsh-client-ui-sidebar"
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-sidebar-documentpreview"
       ],
       "platform": "web"
     },
@@ -76,7 +77,11 @@
     "@deepseek-ai/dsh-util-crypto": "workspace:*",
     "@deepseek-ai/dsh-experimental-genesis-minecraft": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:*",
-    "@deepseek-ai/dsh-experimental-genesis-qq": "workspace:*"
+    "@deepseek-ai/dsh-experimental-genesis-qq": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-sidebar-documentpreview": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-tool": "workspace:*",
+    "@deepseek-ai/dsh-util-workspace-path": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-companion": "workspace:*"
   },
   "files": [
     "lib/index.js",

@@ -64,12 +64,11 @@ The patch adds `genesis-bili-humanism` with a private `dataDir` under the curren
 | `lifePreset` | `life` | Only this composed preset may execute Bilibili tools |
 | `recordTypeId`, `recordTypeName` | `viewing-notes`, `观影札记` | Stable category id and initial-only display name |
 | `sourceChars` | 100000 | Complete source JSON decoding limit |
-| `legacyBatchSize` | 8 | Old journals per explicit migration call, at most 50 |
 | `localAsr` | Unset; workspace patch enables `{}` | Register local transcription through the existing Subprocess provider |
 | `localAsr.timeoutMs`, `localAsr.graceMs` | 180000, 1000 | Complete audio/transcription deadline and process termination grace in milliseconds |
 | `localAsr.maxOutputBytes` | 1000000 | Captured bytes per maintenance-command stream; truncated output is refused |
 
-Upstream errors become failed Harness tool results; empty, unconfirmed text readings do not count as success. Learn genesis_bili_sync, start at offset=0 and follow nextOffset until null to migrate old journals. It reads the pinned upstream ledger without modifying it and retains original times, journal IDs, video sources, coverage and full text. Creation attribution identifies the actual migration Session and tool call. The original upstream ledger and previously imported life memories remain intact.
+Upstream errors become failed Harness tool results; empty, unconfirmed text readings do not count as success.
 
 <a id="implementation"></a>
 ## Implementation
@@ -79,7 +78,7 @@ Upstream errors become failed Harness tool results; empty, unconfirmed text read
 
 The adapter mounts the unmodified [upstream v1.11.3 release](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.3), pinned by dependency URL and lockfile integrity. It replaces the model-visible guide, disables upstream personality learning, post-viewing questions, daily fetching and platform writes, and denies separate personal-memory and journal writes. New text uses genesis_record; no application binary is added.
 
-Explicit migration validates a complete bounded page before serialized commits through the Genesis record owner. Each entry has a permanent receipt derived from life identity and old journal ID; cross-Session retries preserve operator edits and never recreate deleted content. Migration first confirms durable Session persistence for the source call. Records use the existing storage format and Markdown recovery. Unknown storage outcomes stop dependent work; restore access and restart before retrying synchronization. Unloading cancels and drains active operations before upstream storage closes.
+Upstream tool execution is bound to the plugin lifetime: unloading cancels and drains active operations before upstream storage closes. Records use the existing storage format and Markdown recovery. Unknown storage outcomes stop dependent work; restore access and restart before retrying.
 
 </details>
 
@@ -95,11 +94,11 @@ Explicit migration validates a complete bounded page before serialized commits t
 
 #### What the model sees
 
-Learned reading tools expose bounded materials, timestamps and coverage. The guide directs writing through genesis_record; genesis_bili_sync returns migration receipts and continuation offsets. Only received text and images can support interpretation; tool results and record reads use normal Session logging.
+Learned reading tools expose bounded materials, timestamps and coverage. The guide directs writing through genesis_record. Only received text and images can support interpretation; tool results and record reads use normal Session logging.
 
 #### Token effect
 
-Reading and writing use the conversation model’s normal budget. Migration adds no auxiliary model call or archive dump to the prompt. Record search uses substring matching without an embedding call.
+Reading and writing use the conversation model’s normal budget; no auxiliary model call or archive dump enters the prompt. Record search uses substring matching without an embedding call.
 
 #### KV cache effect
 
@@ -109,8 +108,7 @@ Tool results enter the durable conversation; saved writings enter context throug
 ## Known Limitations and Deferred Work
 
 - Integration checks cover real upstream tools, storage and managed process cleanup; media command outputs and model decisions use synthetic fixtures. Successful local extraction or transcription does not verify subtitle accuracy, ASR wording or visual model understanding.
-- Legacy migration is explicit, not automatic at startup or Session restore. Entries commit individually; retry the same offset after an interrupted page. Record length or capacity limits reject instead of silently truncating text.
-- Notes remain unverified personal expression, not automatic facts, long-term memories or personality; deletion of original upstream archives and Session logs is independent.
+- Record length or capacity limits reject instead of silently truncating text. Notes remain unverified personal expression, not automatic facts, long-term memories or personality; deletion of original upstream archives and Session logs is independent.
 
 <a id="dev-note"></a>
 ### Dev Note

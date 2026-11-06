@@ -11,6 +11,10 @@ kind: "package-bundle"
 
 重启后恢复同一生命身份，跨会话检索带来源记忆，查询真实工具可用性与系统成长。此可选层用于 Genesis 实验，普通 Harness 配置不依赖它。存储与提示词预算有界，不兼容数据会被拒绝。
 
+工作区 Life 组合默认启用睡眠和自发认知；参见[睡眠控制与恢复](../../../docs/genesis/sleep.zh.md)。 睡眠整理支持每批多条有来源结果，可合并或拆分记忆；原始记录保留。
+
+会话创建将生命绑定与初始能力清单一起提交。未变化的清单复用已确认状态，不复制或校验整份历史；首次请求上下文在步骤接纳时构建。主动消息回执恢复由其自身模块负责，无关会话创建不等待该恢复。
+
 ## 目录
 
 [使用](#use) · [工具包](#toolkits) · [实现](#implementation) · [延伸阅读](#further-exploration) · [模型体验](#model-experience) · [已知限制与后续工作](#known-limitations-and-deferred-work)
@@ -20,9 +24,11 @@ kind: "package-bundle"
 
 将提供的 `cordis.patch.yml` 叠加到使用 base 的配置，需具备 Storage Domain、Agent、工具与提示词服务，并指定共享绝对路径 `leasePath`。[运行说明](../../../docs/genesis/README.zh.md)与生成的[配置目录](../../../docs/config-catalog.zh.md)说明部署上限。
 
+可选[自发认知](../../../docs/genesis/spontaneity.zh.md)在 Life 交流后的空闲时段提供私有、有预算的念头与短暂探索。念头可以跨重启保留，无需成为目标或发给操作者的消息。
+
 ## 配置
 
-生命存储使用不可变组件及分页提交索引。`storage.pageSize` 默认每页 256 条引用，`storage.maxRecordChars` 默认每组件／根清单 2,000,000 字符。生命历史不设总记录数或序列化总字符上限；单条记录过大会在发布前被拒绝，并指出对应设置及尝试大小，既有历史保持不变。[存储与恢复](../../../docs/genesis/data-model.zh.md#一致性与恢复)说明迁移、备份及硬件限制。
+生命存储使用不可变组件及分页提交索引。`storage.pageSize` 默认每页 256 条引用，`storage.maxRecordChars` 默认每组件／根清单 2,000,000 字符。生命历史不设总记录数或序列化总字符上限；单条记录过大会在发布前被拒绝，并指出对应设置及尝试大小，既有历史保持不变。[存储与恢复](../../../docs/genesis/data-model.zh.md)说明迁移、备份及硬件限制。
 
 `maxRecords` 和 `maxStateChars` 保留各独立目录的容量限制，上下文与结果字段限制模型可见输出，`backupPath` 选择生命本地备份。可选 `memory` 启用独立决策/写入模型和语义检索，可选 `awakening` 启用命名与工具学习。`awakening.lifePreset` 将生命工具、上下文、观察及独立记忆、情绪、兴趣评审限定在一个预设，省略时保留所有会话参与的策略。Web 配套插件在独立版本化存储域中配置 Jev、写入路由和嵌入，密钥保存在 Harness 凭据库。单条嵌入结果允许省略 `index`；若存在则必须为数字 `0`。响应必须恰好包含一个数值有限且非零、维度符合配置的向量。参见[记忆配置](../../../docs/genesis/memory.zh.md)和[首次唤醒](../../../docs/genesis/awakening.zh.md)。模型目录使用独立的 `modelCatalogChars` 响应上限（默认 4,000,000 字符），推理输出仍由 `memory.outputChars` 限制。所有配置均不授予执行权限。
 
@@ -55,6 +61,8 @@ kind: "package-bundle"
 
 可选的 [QQ 对话](../../../docs/genesis/qq.zh.md)使用鉴权的 OneBot 文本输入，提供稳定人物、独立关系估计和带来源归属的群聊及私聊记忆。生命覆盖层选择 `memorySharing: life`，允许 Web／QQ 共享回忆；单独挂载时默认使用 `conversation`，按来源受众隔离。带日志的人物信息使用 QQ 号、昵称和已记录称呼；已绑定操作者跨群保留配置称呼，私密身份描述仍保持私有；QQ 内置按策略召回、本对话历史和已注册搜索工具，额外已学工具由明确的工具包权限控制。
 
+已学习的[语音合成](../genesis-speech/README.zh.md)在 QQ 中要求当前已验证操作者发起，包括群内调用。
+
 <a id="toolkits"></a>
 ## 工具包
 
@@ -62,9 +70,11 @@ kind: "package-bundle"
 
 新对话中的工具包全部关闭。只有至少含一个持久化已学会工具的包才出现在有界且已记录的 `genesis:toolkits` 上下文，附带已学会、当前可用和省略数量。`genesis_toolkit` 按 ID 列出、搜索或启用/关闭工具包；启用后，下一次请求展示包内当前可用且已学会的所有工具，不会自动学会未知成员。普通任务预设保持原有行为。先天的学习、回忆、计划和启用工具不能分组；工具属于多个包时，启用任意所属包即可。移除最后一个所属包后恢复常规已学工具的可用方式。
 
-已学会的 `genesis_tasks` 和 `genesis_record` 在 QQ 中无需启用工具包；执行时要求当前已鉴权发言者为已绑定操作者。QQ 工具包条目添加可选 `qqAccess`（`disabled`、`anyone` 或 `operator`），旧条目保持禁用。仅操作者启用和执行均要求当前已鉴权发言者匹配操作者。内置 `qqBasicTools` 默认为已注册的 `web_search` 和 `web_fetch`，独立于学习；其他工具仍须已经学会、属于已启用且获准的 QQ 工具包。第二版目录行可读取第一版前身；第二版启用记录保留已鉴权授权及来源序号。详见 [QQ 工具包权限](../../../docs/genesis/qq.zh.md#qq-toolkit-permissions)。
+已学会的 `genesis_tasks` 和 `genesis_record` 在 QQ 中无需启用工具包；执行时要求当前已鉴权发言者为已绑定操作者。QQ 工具包条目添加可选 `qqAccess`（`disabled`、`anyone` 或 `operator`），旧条目保持禁用。仅操作者启用和执行均要求当前已鉴权发言者匹配操作者。内置 `qqBasicTools` 默认为已注册的 `web_search`、`web_fetch` 和 `genesis_speech`，独立于学习；其他工具仍须已经学会、属于已启用且获准的 QQ 工具包。第二版目录行可读取第一版前身；第二版启用记录保留已鉴权授权及来源序号。详见 [QQ 工具包权限](../../../docs/genesis/qq.zh.md#qq-toolkit-permissions)。 已绑定操作者的 QQ 私聊使用 Web 工具权限，不受 `qqAccess` 限制。QQ 在权限变化后保留已注入且仍注册的工具声明，执行时拒绝未授权调用，并在成功压缩时清理未用声明；主动关闭工具包会立即移除成员。
 
 启用状态使用带版本并携带所属 Session ID 的 `plugin:genesis/toolkit` Session 记录，分叉对话默认关闭，重新打开同一对话会恢复状态，其他对话仍保持关闭。目录编辑保留已启用的包 ID，并在后续请求和执行中应用当前成员规则。执行入口独立拒绝未启用的包；启用不会绕过学习、沙箱、同意或授权检查。工具结果和上下文变更仍会记录。设置不会加载可执行插件，生命状态备份也不包含这个独立偏好域。
+
+操作者的生命模式 Web 对话内置 `genesis_message`，用于已注册的会话目标。可选提供方负责目标发现与投递回执，每次动作都验证当前操作者输入及原始带日志的工具调用。[智能体伙伴集成](../genesis-companion/README.zh.md)贡献其持久内部 Session。QQ 保留既有的会话内传输、真实发言者核验和独立出站允许列表。
 
 <a id="implementation"></a>
 ## 实现
@@ -84,7 +94,7 @@ kind: "package-bundle"
 
 集成可使用 `lifeContextUpdate`，通过带日志的 Genesis 状态来源发送发生变更的具名生命模块，并将返回消息加入准入的 Agent 输入。
 
-独立的[临时记忆管线](../../../docs/genesis/temporary-memory.zh.md)在自有第一版域中保存原子来源进度与过期摘要。QQ 摘要使用消息昵称或已验证操作者称呼。总结路线独立配置，重要性复用记忆决策路线。每个新批次使用一次总结和一次重要性调用；主模型上下文只追加所选条目的变化与撤销。
+仅在生命模式下读写的[临时记忆管线](../../../docs/genesis/temporary-memory.zh.md)在自有第一版域中保存原子来源进度与过期摘要。QQ 摘要使用消息昵称或已验证操作者称呼。总结路线独立配置，重要性复用记忆决策路线。每个新批次使用一次总结和一次重要性调用；主模型上下文只追加所选条目的变化与撤销。
 
 <a id="model-experience"></a>
 ## 模型体验
@@ -113,7 +123,7 @@ Genesis maintains a persistent life identity across Sessions and models. Describ
 
 #### 模型看到的内容
 
-已记录上下文列出有界的非陈述性正文与陈述性回忆线索，未配置 `memory` 时也如此。陈述性文本行优先采用已存摘要并截为二十字以内，否则使用正文摘录。记忆行不附带 JSON 包装、ID、来源、分数或历史；每节受 `memoryChars` 限制。配置后的关联检索提供少量相关的普通摘要，可通过 `associationLimit: 0` 关闭。回忆工具仅返回完整的当前正文字符串，来源和以往认识保留在管理界面。会话总览将超长证据分段读取，再一次性提交有效条目；无效条目在主机日志中警告，同时保留原计划删除的记忆。操作预算与恢复规则见[记忆行为](../../../docs/genesis/memory.zh.md)。独立决策与写入指令位于 [memory.ts](src/memory.ts)，共用[摘要指引](src/memory-summary.ts)要求精简描述并在输出前检查长度。以下指导文本固定：
+已记录上下文列出有界的非陈述性正文与陈述性回忆线索，未配置 `memory` 时也如此。陈述性文本行优先采用已存摘要并截为二十字以内，否则使用正文摘录。记忆行不附带 JSON 包装、ID、来源、分数或历史；每节受 `memoryChars` 限制。配置后的关联检索提供少量相关的普通摘要，可通过 `associationLimit: 0` 关闭。回忆工具仅返回完整的当前正文字符串，来源和以往认识保留在管理界面。会话总览将超长证据分段读取，再一次性提交有效条目；无效条目在主机日志中警告，同时保留原计划删除的记忆。操作预算与恢复规则见[记忆行为](../../../docs/genesis/memory.zh.md)。独立决策与写入指令位于 [memory.ts](src/memory.ts)，共用[摘要指引](src/memory-summary.ts)要求精简描述并在输出前检查长度。以下指导文本固定： 自动关联在较短的 `memory.associationTimeoutMs` 时限内使用已有向量；显式回忆可以补齐缺失向量。
 
 ##### 指导原文
 

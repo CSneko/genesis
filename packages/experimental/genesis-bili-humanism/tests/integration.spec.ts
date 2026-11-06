@@ -217,7 +217,6 @@ it('turns upstream JSON faults into tool errors and denies unlearned or ordinary
   const entry = [...ctx.loader.entries()].find(item => item.options.name === '@deepseek-ai/dsh-experimental-genesis-bili-humanism')!
   await entry.fiber!.dispose()
   expect(ctx.tools.get('bili_humanism_read')).toBeUndefined()
-  expect(ctx.tools.get('genesis_bili_sync')).toBeUndefined()
 })
 
 it('keeps successful frame delivery when subtitles are unconfirmed and exposes bounded local ASR behind learning', async () => {
@@ -287,65 +286,4 @@ it('keeps successful frame delivery when subtitles are unconfirmed and exposes b
     expect(await invoke('bili_humanism_read', {})).toMatchObject({ isError: false,
       content: [{ type: 'text', text: body }] })
   } finally { release() }
-})
-
-
-it('migrates legacy journals with restart-safe receipts, preserves edits and honors deletion', async () => {
-  const requests = network()
-  const root = await directory()
-  const first = await boot(root)
-  await first.genesis.awaken('小芽')
-  first.llm.registerAdapter(['fixture'], new Model([learn('bili_humanism_read'),
-    { name: 'bili_humanism_read', args: { video: bv } }, '已取得文字。']))
-  const agent = await create(first, 'bili-recovery')
-  agent.followup(prompt())
-  await agent.whenIdle()
-  const db = new DatabaseSync(join(root, 'bili', 'ledger.sqlite'))
-  const journalId = randomUUID()
-  const originalTime = '2026-10-24T00:00:00.000Z'
-  try {
-    const reading = db.prepare('SELECT id FROM readings LIMIT 1').get()?.['id']
-    if (typeof reading !== 'string') throw new Error('Fixture reading missing')
-    db.prepare('INSERT INTO notes VALUES(?,?,?,?)').run(journalId, reading, originalTime, JSON.stringify(note))
-  } finally { db.close() }
-  await first.tools.execute({ callId: ToolCallId('teach-sync'), name: 'learn', arguments: { name: 'genesis_bili_sync' },
-    agent, signal: new AbortController().signal })
-  const importRecord = first.genesisRecords.importRecord.bind(first.genesisRecords)
-  const interrupted = vi.spyOn(first.genesisRecords, 'importRecord').mockImplementationOnce(async (...args) => {
-    await importRecord(...args)
-    throw new Error('Simulated loss after committed migration')
-  })
-  const failure = await first.tools.execute({ callId: ToolCallId('bili-migration-interrupted'), name: 'genesis_bili_sync',
-    arguments: {}, agent, signal: new AbortController().signal })
-  expect(failure).toMatchObject({ isError: true })
-  expect(interrupted).toHaveBeenCalledTimes(1)
-  expect((await first.genesisRecords.search({}, new AbortController().signal)).total).toBe(1)
-  interrupted.mockRestore()
-  const identity = (await first.genesis.snapshot()).identity
-  await first.fiber.dispose()
-  const second = await boot(root)
-  second.llm.registerAdapter(['fixture'], new Model([learn('genesis_bili_sync'), { name: 'genesis_bili_sync', args: {} }, '旧记录已迁移。']))
-  const resumed = await create(second, 'bili-migration-new-session')
-  resumed.followup(prompt())
-  await resumed.whenIdle()
-  const signal = new AbortController().signal
-  const found = await second.genesisRecords.search({}, signal)
-  expect(found.total).toBe(1)
-  const record = await second.genesisRecords.read(found.items[0]!.id, 0, signal)
-  expect(record).toMatchObject({ createdAt: originalTime, typeId: 'viewing-notes', source: { sessionId: agent.session.id } })
-  expect(record.content).toContain(journalId)
-  expect(record.content).toContain(note.missing)
-  expect(record.content).toContain(bv)
-  expect((await second.genesis.snapshot()).identity).toEqual(identity)
-  expect((await second.genesis.snapshot()).memories).toHaveLength(0)
-  const invoke = () => second.tools.execute({ callId: ToolCallId(randomUUID()), name: 'genesis_bili_sync', arguments: {}, agent: resumed, signal })
-  const replacement = { title: '人工修正', content: '保留人工编辑。', typeId: record.typeId }
-  await second.genesisRecords.edit(record.id, replacement, record.revision, signal)
-  expect(await invoke()).toMatchObject({ isError: false })
-  expect(await second.genesisRecords.read(record.id, 0, signal)).toMatchObject(replacement)
-  await second.genesisRecords.deleteRecord(record.id, record.revision + 1, signal)
-  const again = await invoke()
-  expect(again).toMatchObject({ isError: false, value: { records: [{ status: 'already-deleted' }], nextOffset: null, total: 1 } })
-  expect((await second.genesisRecords.search({}, signal)).total).toBe(0)
-  expect(requests).toHaveLength(3)
 })

@@ -1,0 +1,5 @@
+# Optional speech synthesis; credentials are resolved only on explicit tool calls.
+- insert:
+    - id: genesis-speech
+      name: '@deepseek-ai/dsh-experimental-genesis-speech'
+      config: {}

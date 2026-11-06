@@ -11,6 +11,14 @@ kind: "package-bundle"
 
 左侧边栏的 Genesis 与插件、自动化任务并列，集中提供生命信息、委派任务、记忆、性格、情绪、关系、目标、文字与发件记录。知识库、工具包、QQ 和 Minecraft 连接及主动发送策略仍在设置中。密钥使用既有凭据库，生命模式会话共享单一生命与记忆，普通预设保持隔离。“初始化生命”由用户在新对话界面或 Genesis 概览主动点击，命名后进入首次生命对话，成功完成后按钮消失。“不再出现”会持久关闭自动配置提醒，不新增网络监听端口。
 
+设置 → 睡眠编辑作息和唤醒控制；Genesis → 念头管理私有认知。Life 会话显示当前睡眠状态。参见[睡眠](../../../docs/genesis/sleep.zh.md)。
+
+睡眠横幅使用轻量作息接口；打开会话时不会订阅完整生命状态检查。
+
+设置 → 语音合成配置可选的 [CosyVoice 工具](../genesis-speech/README.zh.md)，包括模型、接口和自定义音色 ID。
+
+语音工具结果为新生成的本地 WAV 附件显示播放器与下载入口；AI 选择的语速和表达指令保留在日志结果中。
+
 ## 目录
 
 [使用](#use) · [实现](#implementation) · [延伸阅读](#further-exploration) · [模型体验](#model-experience) · [已知限制与后续工作](#known-limitations-and-deferred-work)
@@ -43,6 +51,10 @@ kind: "package-bundle"
 独立的 [Minecraft 分区](../genesis-minecraft/README.zh.md)配置访问权限、独立模型与监测，提供停止和断开控制。AI 在当前会话中通过 `minecraft_connect` 自行选择连接信息。实时状态订阅仅在资源打开时运行；关闭面板后仍继续游戏。
 
 设置 → 临时记忆可配置独立的小总结模型、可选只写端点密钥与空闲时长，并提供过期预览、立即遗忘和失败来源重试。参见[临时记忆](../../../docs/genesis/temporary-memory.zh.md)。
+
+可选的[视频工具包](../genesis-video/README.zh.md)生成 `*.genesis-remotion.html` 文件。其专用右侧栏查看器直接播放已保存的 Remotion 合成，支持拖动进度、音量与全屏；“在浏览器中打开”显示同一个隔离 Player。修改源码后，重新构建预览并重新载入文件即可查看。共享文件读取器负责鉴权、大小限制与刷新。关闭视图会释放 Blob URL，隐藏时暂停播放。
+
+内置的[智能体伙伴设置](../genesis-companion/README.zh.md)按需启用内部 AstrBot 连接，配置独立作息，并提供手动交流、唤醒和停止控制。来源链接打开唯一持久伙伴 Session，手动交流和跨会话工具共享此会话。有界内部历史与带归属的关系认识独立于 QQ。刷新读取当前进度，不启动模型。
 
 <a id="implementation"></a>
 ## 实现

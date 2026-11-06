@@ -8,7 +8,7 @@ Genesis 在会话和模型之间保持同一生命身份，保存带来源的候
 
 ## 目录
 
-[首次唤醒](awakening.zh.md) · [记忆](memory.zh.md) · [临时记忆](temporary-memory.zh.md) · [情绪](emotion.zh.md) · [兴趣](interest.zh.md) · [动机与决策](motivation.zh.md) · [主动消息](social.zh.md) · [架构](architecture.zh.md) · [数据模型](data-model.zh.md) · [开发](development.zh.md) · [后续方向](roadmap.zh.md) · [文字记录](records.zh.md) · [远程访问](remote-access.zh.md) · [工作区任务](tasks.zh.md) · [QQ 对话](qq.zh.md)
+[首次唤醒](awakening.zh.md) · [记忆](memory.zh.md) · [临时记忆](temporary-memory.zh.md) · [情绪](emotion.zh.md) · [兴趣](interest.zh.md) · [动机与决策](motivation.zh.md) · [主动消息](social.zh.md) · [架构](architecture.zh.md) · [数据模型](data-model.zh.md) · [开发](development.zh.md) · [后续方向](roadmap.zh.md) · [文字记录](records.zh.md) · [远程访问](remote-access.zh.md) · [工作区任务](tasks.zh.md) · [QQ 对话](qq.zh.md) · [自发认知](spontaneity.zh.md) · [睡眠](sleep.zh.md)
 
 ## 从源码工作区运行
 

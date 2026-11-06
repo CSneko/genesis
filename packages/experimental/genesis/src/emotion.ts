@@ -84,7 +84,10 @@ export class LifeEmotionEngine {
         const current = evidence.at(-1)
         if (current === undefined || current.turn !== turn) return
         if (current.overflow) throw new GenesisError('capacity', 'Emotion dialogue exceeds memory.inputChars. Increase the auxiliary input budget before continuing.')
-        if (!current.messages.some(message => message.role === 'user') || !current.messages.some(message => message.role === 'assistant')) return
+        const autonomous = state.agency?.decisions.find(item => item.id === current.decisionId && item.purpose === 'exploration'
+          && item.sessionId === agent.id && ['responded', 'succeeded', 'failed'].includes(item.outcome.status))
+        if ((!current.messages.some(message => message.role === 'user') && autonomous === undefined)
+          || !current.messages.some(message => message.role === 'assistant')) return
         evidence = evidence.filter(item => item === current || item.completed)
         stage = 'storage'
         if (state.events.some(event => event.dedupKey === `emotion-review:${agent.session.id}:${current.startSeq}`)) return
@@ -100,7 +103,7 @@ export class LifeEmotionEngine {
         const memoryView = (items: typeof related) => items.map(memory => ({ id: memory.id, content: memory.content,
           confidence: memory.confidence, sourceEventIds: memory.sourceEventIds }))
         const goal = this.ctx.get('goals')?.get(agent)
-        const input = { emotion: state.people?.conversations.some(item => item.sessionId === agent.id) ? { ...emotion, relationship: null } : emotion, participants: participants(state, state.operator, agent.id, this.contextConfig.queryLimit), relatedMemories: memoryView(related), selfMemories: traits.map(memory => ({
+        const input = { autonomousExperience: autonomous ?? null, emotion: state.people?.conversations.some(item => item.sessionId === agent.id) ? { ...emotion, relationship: null } : emotion, participants: participants(state, state.operator, agent.id, this.contextConfig.queryLimit), relatedMemories: memoryView(related), selfMemories: traits.map(memory => ({
           ...behaviorReading(memory, state, new Date(now), this.contextConfig.timeZone),
           id: memory.id, sourceEventIds: memory.sourceEventIds })),
         goal: goal === undefined ? null : { id: goal.id, objective: goal.objective, phase: goal.phase },
@@ -125,7 +128,7 @@ export class LifeEmotionEngine {
         if (decision.update && !await admitted()) return
         stage = 'writer'
         const update = decision.update ? modelEmotionUpdate(await auxiliaryCall(this.ctx, agent.session,
-          'emotion-writer', `${EMOTION_WRITER_PROMPT}\n${PEOPLE_APPRAISAL_PROMPT}\n${PERSONALITY_GUIDANCE}`, input, signal, models, this.calls)) : undefined
+          'emotion-writer', `${EMOTION_WRITER_PROMPT}\n${PEOPLE_APPRAISAL_PROMPT}\n${PERSONALITY_GUIDANCE}${autonomous === undefined ? '' : '\nFor autonomousExperience, cite NEW actual assistant outcomes belonging to the supplied settled decision instead of user messages. A thought or plan alone is insufficient. Do not change relationships, recentInteraction, socialSatisfaction or relationshipQuality: this was private exploration, not social contact.'}`, input, signal, models, this.calls)) : undefined
         signal.throwIfAborted()
         if (!await admitted()) return
         stage = 'storage'

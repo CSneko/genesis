@@ -8,7 +8,7 @@ English | [中文](temporary-memory.zh.md)
 
 ## Summary
 
-Temporary memories are independent, expiring interpretations of conversation text. They coexist with [long-term memories](memory.md), keep source Session and event references, and never grant permissions or turn model statements into established facts.
+Temporary memories are read and written only in Life mode; other modes neither inject nor recall them and do not generate summaries. Without awakening configured, conversation-driven temporary memory stays inactive. Temporary memories are independent, expiring interpretations of conversation text. They coexist with [long-term memories](memory.md), keep source Session and event references, and never grant permissions or turn model statements into established facts.
 
 ## Configure
 

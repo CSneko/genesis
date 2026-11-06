@@ -1,7 +1,7 @@
 /** Behavior of the /api browser-trust fence (rebinding + cross-site defense). */
 
 import { describe, expect, it } from 'vitest'
-import { assertTrustedAuthority, isTrustedApiRequest } from '../src/api-request-trust.ts'
+import { assertTrustedAuthority, isRemoteAuthority, isTrustedApiRequest } from '../src/api-request-trust.ts'
 
 function request(headers: Record<string, string | undefined>): { headers: Record<string, string | undefined> } {
   return { headers }
@@ -79,6 +79,23 @@ describe('isTrustedApiRequest', () => {
     }
   })
 
+  it('accepts every Host for the `*` marker while the Origin and cross-site fences still decide', () => {
+    const trusted = ['*']
+    expect(isTrustedApiRequest(request({ host: '82.156.36.165:4004' }), trusted)).toBe(true)
+    expect(isTrustedApiRequest(request({ host: 'harness.example:8443', origin: 'http://harness.example:8443' }), trusted)).toBe(true)
+    // The marker admits the Host, not a mismatched Origin or a cross-site label.
+    expect(isTrustedApiRequest(request({ host: 'harness.example:8443', origin: 'http://evil.example' }), trusted)).toBe(false)
+    expect(isTrustedApiRequest(request({ host: 'harness.example:8443', 'sec-fetch-site': 'cross-site' }), trusted)).toBe(false)
+    // A missing Host still fails: there is no authority to admit.
+    expect(isTrustedApiRequest(request({}), trusted)).toBe(false)
+  })
+
+  it('reports the `*` marker as a remote authority', () => {
+    expect(isRemoteAuthority('*')).toBe(true)
+    expect(isRemoteAuthority('harness.internal')).toBe(true)
+    expect(isRemoteAuthority('127.0.0.1')).toBe(false)
+  })
+
   it('accepts a declared public authority: exact on host:port entries, any port on port-less entries', () => {
     const headers = { host: 'harness.internal:3080', origin: 'http://harness.internal:3080' }
     expect(isTrustedApiRequest(request(headers), ['harness.internal:3080'])).toBe(true)
@@ -122,7 +139,7 @@ describe('isTrustedApiRequest', () => {
   })
 
   it('assertTrustedAuthority accepts bare authorities and throws on anything more', () => {
-    for (const entry of ['harness.internal', 'harness.internal:3080', 'HARNESS.internal:80', '10.0.0.9', '[::1]:3080']) {
+    for (const entry of ['harness.internal', 'harness.internal:3080', 'HARNESS.internal:80', '10.0.0.9', '[::1]:3080', '*']) {
       expect(() => { assertTrustedAuthority(entry) }).not.toThrow()
     }
     // WHATWG parsing would quietly read a hostname out of each of these; the

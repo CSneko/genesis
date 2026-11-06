@@ -67,6 +67,18 @@
     },
     {
       "path": "../genesis-qq"
+    },
+    {
+      "path": "../../client/ui-sidebar-documentpreview/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-tool"
+    },
+    {
+      "path": "../../util/workspace-path"
+    },
+    {
+      "path": "../genesis-companion"
     }
   ]
 }

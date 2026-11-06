@@ -1,3 +1,7 @@
+import companionContribution from '@deepseek-ai/dsh-experimental-genesis-companion/remote'
+import { mountCompanion } from './companion-mount.ts'
+import { mountSpeech } from './speech-mount.tsx'
+import { mountRhythm } from './rhythm-mount.ts'
 /** Optional generated Remote, workspace and settings registration with shared resources. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -19,6 +23,7 @@ import { StatusResource } from './resource.ts'
 import { type RelationshipActions } from './RelationshipPanel.tsx'
 import { PeoplePanel, type PeopleActions } from './PeoplePanel.tsx'
 import qqContribution from '@deepseek-ai/dsh-experimental-genesis-qq/remote'
+import { mountRemotionPreview } from './video/index.ts'
 import { mountTemporary } from './temporary-mount.ts'
 import { mountQq } from './qq-mount.ts'
 import { EmotionPanel, type EmotionActions } from './EmotionPanel.tsx'
@@ -58,8 +63,10 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
   const unmount = await ctx.remote.$mount(contribution)
   const ui = ctx.inject(['remote.session', 'remote.genesisPeople', 'remote.genesisToolkits', 'remote.genesisStatus', 'remote.genesisAgency', 'remote.genesisInitiativeStatus', 'remote.genesisMemory', 'remote.genesisRecords', 'slots', 'locale', 'resources', 'remote.credentials', 'sessions', 'uiWorkspace', 'configForms', 'layout'], (scope) => {
     scope.effect(() => scope.locale.register('genesis', { en, zh }))
+    scope.inject(['documentPreviews'], mountRemotionPreview)
     mountNavigation(scope)
     mountTemporary(scope)
+    mountSpeech(scope)
     scope.slots.inject('genesis.page', () => scope.slots.register({
       name: 'genesis.page', key: 'outbox', locale: 'genesis', inject: (): InitiativeActions => ({
         view: 'activity', refresh: () => { resource.refresh() },
@@ -173,6 +180,8 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
     })
     const notice = createSnapshotStore<MemoryNoticeState>({ sequence: 0, outcome: null })
     mountRecords(scope, notice)
+    mountRhythm(scope, notice)
+    scope.effect(() => mountCompanion(scope, companionContribution, notice))
     scope.effect(() => mountQq(scope, qqContribution, notice))
     scope.effect(() => mountMinecraft(scope, minecraftContribution, notice))
     scope.slots.inject('settings.section', () => scope.slots.register({

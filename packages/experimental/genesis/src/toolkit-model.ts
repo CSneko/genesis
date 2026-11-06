@@ -17,7 +17,8 @@ export const toolkitSchema = z.strictObject({
 const sessionIdSchema = z.string().min(1).transform(SessionId)
 const legacyActivationSchema = z.strictObject({ version: z.literal(1), sessionId: sessionIdSchema, id: toolkitSchema.shape.id, enabled: z.boolean() })
 const grantSchema = z.strictObject({ actor: personIdSchema, sourceSeq: z.number().int().nonnegative() })
-const activationSchema = z.union([legacyActivationSchema, legacyActivationSchema.extend({ version: z.literal(2), grant: grantSchema.optional() })])
+/** Validate committed activation records before replaying declaration retention. */
+export const activationSchema = z.union([legacyActivationSchema, legacyActivationSchema.extend({ version: z.literal(2), grant: grantSchema.optional() })])
 const projectionSchema = z.strictObject({ sessionId: sessionIdSchema.nullable(), enabled: z.array(toolkitSchema.shape.id),
   grants: z.record(z.string(), grantSchema) })
 /** Validated Session-local activation reconstructed from plugin records. */

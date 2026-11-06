@@ -13,6 +13,8 @@ In Genesis awakening mode, learned browser and desktop tools previously entered 
 
 Ordinary QQ speakers are limited to four Playwright browsing operations even if an existing toolkit broadly grants browser access. Script execution, form input, file transfers and tab management require the authenticated operator and the existing permissions. QQ browsing rejects non-HTTP(S) navigation, embedded URL credentials and output filenames. New catalogues include the public `browser-reading` toolkit; saved catalogues are preserved. Browser pages and logins still follow provider ownership, including the workspace's shared persistent profile.
 
+Bound operator private QQ conversations now use Web tool permissions, including toolkits with disabled QQ access. Groups and other private conversations retain QQ audience restrictions. Registered declarations stay injected when speaker or permission changes deny execution; explicit toolkit closure removes them, and successful compaction retires unused declarations. Re-enable a toolkit when its retired members are needed.
+
 ## Migration
 
 1. Launch through the supported `pnpm dsh web --test-no-login` workspace entry or your existing Genesis-enabled `dsh` profile, with rebuilt Host and browser artifacts.

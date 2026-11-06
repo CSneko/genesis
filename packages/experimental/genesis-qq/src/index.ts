@@ -1,3 +1,4 @@
+import { QqSleepInbox, qqSleepDomain } from './sleep-inbox.ts'
 /** Optional QQ transport for the existing Genesis life, loaded through a supported dsh profile. @module */
 import { isAbsolute } from 'node:path'
 import { GenesisError } from '@deepseek-ai/dsh-experimental-genesis'
@@ -58,8 +59,18 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => decisions.close())
   const messages = new QqMessageStore(await ctx.storageDomain.open(qqMessagesDomain), config.maxMessageReceipts)
   ctx.effect(() => () => messages.close())
-  const runtime = new QqController(ctx, config, preferences, connection, decisions, messages)
+  const life = await ctx.genesis.snapshot()
+  const inbox = new QqSleepInbox(await ctx.storageDomain.open(qqSleepDomain), life.identity.id, config.sleepInboxLimit, config.sleepInboxChars)
+  ctx.effect(() => () => inbox.close())
+  await inbox.start(life.events.some(event => event.dedupKey === 'sleep:qq-inbox-initialized'))
+  await ctx.genesis.recordSleep('qq-inbox-initialized', 'qq-inbox-initialized', {})
+  const runtime = new QqController(ctx, config, preferences, connection, decisions, messages, inbox)
   ctx.provide('genesisQq', runtime)
+  ctx.inject(['genesisSleep'], scope => {
+    runtime.setSleep(scope.genesisSleep)
+    scope.effect(() => scope.genesisSleep.registerBacklog(() => inbox.inspect()))
+    scope.effect(() => () => { runtime.setSleep(undefined) })
+  })
   ctx.effect(() => () => runtime.close())
   ctx.on('session/event', (session, event) => { runtime.observe(session.id, event) }, { global: true })
   await runtime.start()

@@ -1,4 +1,12 @@
+import { SLEEP_MEMORY_PROMPT, sleepMemoryPlan } from './sleep-memory.ts'
+import { LifeSleep } from './sleep.ts'
+import { SleepStore } from './sleep-store.ts'
+import { sleepDomain } from './sleep-model.ts'
+import { GenesisRhythmGateway } from './rhythm-gateway.ts'
+import { auxiliaryCall } from './auxiliary-call.ts'
+import { z } from 'zod'
 /** Optional Genesis Phase 1 Cordis integration; no changes to the Agent Loop. @module */
+import { installSpontaneity } from './spontaneity.ts'
 import { temporaryProjection } from './temporary-projection.ts'
 import { TemporaryMemoryEngine } from './temporary.ts'
 import { TemporaryStore } from './temporary-store.ts'
@@ -19,6 +27,7 @@ import { initiativeProjection } from './social-projection.ts'
 import { LifeDeliberationEngine, GOAL_CONTEXT_GUIDANCE, agencyContext } from './deliberation.ts'
 import { MemoryConsolidator } from './consolidation.ts'
 import { Config } from './config.ts'
+import { LifeMessageRouter } from './message-routing.ts'
 import { LifeEmotionEngine, EMOTION_GUIDANCE } from './emotion.ts'
 import { MAX_EMOTION_WINDOW_TURNS, emotionSettingsSchema, resolveEmotion, initialEmotion } from './emotion-state.ts'
 import { emotionProjection } from './emotion-projection.ts'
@@ -58,7 +67,12 @@ import { LifeToolkits, TOOLKIT_TOOL } from './toolkits.ts'
 import { GenesisToolkitGateway } from './toolkit-gateway.ts'
 import { lifeContextUpdate } from './context-update.ts'
 
+export { LifeSleep } from './sleep.ts'
+export { GenesisRhythmGateway } from './rhythm-gateway.ts'
+export type { SleepTransition } from './sleep.ts'
 export { LifeDeliberationEngine } from './deliberation.ts'
+export { Spontaneity } from './spontaneity.ts'
+export type { ThoughtId, LifeThought, SpontaneityRun } from './spontaneity-state.ts'
 export { SocialInitiative } from './social.ts'
 export type { InteractionId, InteractionRecord } from './social-state.ts'
 export type * from './agency-state.ts'
@@ -77,6 +91,8 @@ export { GenesisTaskGateway } from './task-gateway.ts'
 export { GenesisPeopleGateway } from './people-gateway.ts'
 export type { LifeStatus, AgencyStatus } from './status-types.ts'
 export { LifeCore } from './core.ts'
+export { LifeMessageRouter } from './message-routing.ts'
+export type { MessageTargetId, MessageTarget, MessageProvider, MessageRequest, MessageInvocation, MessageOrigin } from './message-routing.ts'
 export { qqPersonId, personSourceSchema, conversationIdSchema } from './people-model.ts'
 export type { PersonId, ConversationId, PersonSource, LifeConversation, LifePerson } from './people-model.ts'
 export { GenesisError } from './error.ts'
@@ -107,6 +123,10 @@ export const inject = ['storageDomain', 'tools', 'systemPrompt', 'agents', 'sess
  * @returns After the life is restored and every registration is available.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  if ((config.spontaneity !== undefined || config.sleep !== undefined) && (config.awakening?.lifePreset === undefined || config.deliberation === undefined
+    || config.memory === undefined)) {
+    throw new GenesisError('invalid-state', 'Spontaneity requires an exclusive Life preset, memory, deliberation and Session persistence. Load those services before Genesis.')
+  }
   if (config.socialInitiative !== undefined && (config.deliberation === undefined || config.memory === undefined)) {
     throw new GenesisError('invalid-state', 'Social initiative requires deliberation and the independent memory writer route.')
   }
@@ -147,6 +167,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     try { await core.close() } finally { await release() }
   })
   ctx.provide('genesis', core)
+  await ctx.plugin(LifeMessageRouter, config)
   if (config.emotion !== undefined) {
     const interval = config.emotion.clockCheckpointMs
     ctx.effect(() => {
@@ -167,6 +188,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const lifeMode = (agent: Agent | undefined) => config.awakening !== undefined && (config.awakening.lifePreset === undefined
     || (agent !== undefined && ctx.get('agentPresets')?.composedPreset(agent.ctx) === config.awakening.lifePreset))
   const participates = (agent: Agent | undefined) => config.awakening === undefined || lifeMode(agent)
+  ctx.tools.guard(exec => exec.agent !== undefined && core.isSpontaneitySession(exec.agent.id)
+    && !ctx.get('genesisSpontaneity')?.admits(exec.agent)
+    ? 'Internal cognition is stopped. Inspect its Session; a new opportunity must be explicitly admitted.' : undefined)
+  ctx.on('agent/pre-step', async ({ agent }, next) => {
+    const result = await next()
+    return core.isSpontaneitySession(agent.id) && !ctx.get('genesisSpontaneity')?.admits(agent) ? { kind: 'reject' } : result
+  }, { global: true })
+
   const personal = config.personalDirectory === undefined ? undefined : await preparePersonalDirectory(ctx, core, config.personalDirectory,
     session => participates(session === undefined ? undefined : ctx.agents.get(session.id)))
   let records: WritingRecords | undefined
@@ -192,7 +221,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         summary: models.read().models.writer }, sessions: [], memories: [] })
   } catch (error) { await temporaryStorage.close(); throw error }
   ctx.effect(() => () => temporaryStore.close())
-  const temporary = new TemporaryMemoryEngine(ctx, core, temporaryStore, config, () => models.read().models)
+  const temporary = new TemporaryMemoryEngine(ctx, core, temporaryStore, config, () => models.read().models, lifeMode)
   ctx.effect(() => () => temporary.close())
   temporary.start()
   await ctx.plugin(GenesisTemporaryGateway, { engine: temporary })
@@ -233,7 +262,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ctx.effect(() => () => engine.close())
     await engine.start()
     ctx.inject(['sessionPersistence'], async () => { await engine.resume() })
-    ctx.on('agent/created', async () => { await engine.resume(); return undefined }, { global: true })
+    ctx.on('agent/created', () => {
+      void engine.resume().catch(error => ctx.logger.warn(`Genesis proactive delivery remains pending: ${statusFailure(error).message}`))
+    }, { global: true })
     ctx.on('agent/status', ({ status }) => {
       if (status === 'idle') void engine.resume().catch(error => ctx.logger.warn(`Genesis proactive delivery remains pending: ${statusFailure(error).message}`))
     }, { global: true })
@@ -330,7 +361,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ? toolkits.qqExecutionDenial(exec.agent, exec.name, exec.arguments) : undefined)
 
   if (config.awakening !== undefined) {
-    installLearning(ctx, core, lifeMode, (agent, name) => toolkits.qqAllowed(agent, name))
+    installLearning(ctx, core, lifeMode, (agent, name) => toolkits.qqAllowed(agent, name)
+      || (name === 'genesis_message' && !core.isQqSession(agent.id) && core.isOperatorSession(agent.id)))
   }
   if (memory !== undefined) ctx.systemPrompt.section({ name: 'genesis:memory', order: 651, interpolate: false,
     text: `${MEMORY_GUIDANCE}\n${PARTICIPANT_GUIDANCE}` })
@@ -341,11 +373,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.systemPrompt.section({ name: 'genesis:guidance', order: 650, text: `${GUIDANCE}\n${PERSONALITY_GUIDANCE}${deliberationGuidance}`, interpolate: false })
   ctx.on('agent/created', async ({ agent, source }) => {
     if (!participates(agent)) return
-    await core.bind(agent.session.id, source)
-    await refresh(agent)
+    await core.bind(agent.session.id, source, ctx.tools.schemas(agent))
   }, { global: true })
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembled = await next()
+    const registered = [...assembled.tools]
     if (lifeMode(context.agent)) {
       assembled.sections = [{ name: 'genesis:character', text: `${LIFE_GUIDANCE}\n${PERSONALITY_GUIDANCE}\n${PARTICIPANT_GUIDANCE}`
         + (config.emotion === undefined ? '' : `\n${EMOTION_GUIDANCE}`)
@@ -356,8 +388,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       }
       const learned = core.learningStatus().tools
       assembled.tools = assembled.tools.filter(tool => tool.name === LEARN_TOOL || tool.name === RECALL_TOOL
+        || (tool.name === 'genesis_message' && context.agent !== undefined && !core.isQqSession(context.agent.id) && core.isOperatorSession(context.agent.id))
         || (context.agent !== undefined && core.isQqSession(context.agent.id) && toolkits.qqAllowed(context.agent, tool.name, 'advertise'))
         || (config.deliberation !== undefined && tool.name === 'genesis_plan')
+        || (config.spontaneity !== undefined && tool.name === 'genesis_thought')
         || (tool.name === TOOLKIT_TOOL && toolkits.discoverable(context.agent))
         || (learned.includes(tool.name) && context.agent !== undefined && toolkits.exposed(context.agent, tool.name)))
       assembled.contexts = []
@@ -368,7 +402,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }
     const qqAgent = context.agent
     if (qqAgent !== undefined && core.isQqSession(qqAgent.id)) {
-      assembled.tools = assembled.tools.filter(tool => toolkits.qqAllowed(qqAgent, tool.name, 'advertise'))
+      const eligible = core.isOperatorSession(qqAgent.id) ? assembled.tools
+        : assembled.tools.filter(tool => toolkits.qqAllowed(qqAgent, tool.name, 'advertise'))
+      assembled.tools = toolkits.retainQqTools(qqAgent, registered, eligible)
     }
     return assembled
   }, { global: true })
@@ -462,9 +498,59 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }, { global: true })
   for (const agent of ctx.agents.list()) {
     if (!participates(agent)) continue
-    await core.bind(agent.session.id, 'plugin-enabled')
-    await refresh(agent)
+    await core.bind(agent.session.id, 'plugin-enabled', ctx.tools.schemas(agent))
   }
+  await ctx.plugin(GenesisRhythmGateway, config)
+  if ((config.spontaneity !== undefined || config.sleep !== undefined) && deliberation !== undefined) {
+    ctx.inject(['sessionPersistence', 'agentPresets'], async (child) => {
+      if (config.sleep !== undefined) {
+        const policy = config.sleep
+        const life = await core.snapshot()
+        const domain = await child.storageDomain.open(sleepDomain)
+        const store = new SleepStore(domain, life.identity.id, policy, Date.now())
+        try { await store.start(life.events.some(event => event.dedupKey === 'sleep:initialized')); await core.recordSleep('initialized', 'initialized', {}) }
+        catch (error) { await store.close(); throw error }
+        const sleep = new LifeSleep(child, core, store, policy, participates, async (session, ids, key, signal) => {
+          const state = await core.snapshot()
+          const records = ids.map(id => state.memories.find(memory => memory.id === id)).filter(item => item !== undefined)
+          if (records.length !== ids.length) throw new GenesisError('invalid-source', 'A selected sleep memory was deleted. Inspect the cycle before retrying.')
+          if (!records.length) return []
+          const calls = config.memory
+          if (calls === undefined) throw new GenesisError('invalid-state', 'Sleep memory review requires a writer route.')
+          const maxResults = Math.min(calls.maxChanges, policy.memoryBatchSize)
+          const input = { sleepBatchId: key, memories: records.map((record, index) => ({ id: `m${index + 1}`,
+            content: record.content, attribution: record.attribution, category: record.category,
+            confidence: record.confidence, importance: record.importance })), maxResults, maxContentChars: policy.summaryChars }
+          if (JSON.stringify(input).length > calls.inputChars / 2) {
+            throw new GenesisError('capacity', 'Sleep memories exceed the writer input budget. Reduce sleep.memoryBatchSize or increase memory.inputChars; no source was omitted.')
+          }
+          const raw = await auxiliaryCall(child, session, 'writer', SLEEP_MEMORY_PROMPT,
+            input, signal, models.read().models, calls)
+          const plan = sleepMemoryPlan(raw, records, maxResults, policy.summaryChars, config.timeZone)
+          signal.throwIfAborted()
+          return (await core.rememberBatch(plan)).map(memory => memory.id)
+        }, async (session, event, personId, signal) => {
+          const life = await core.snapshot()
+          const person = life.people?.people.find(item => item.id === personId)
+          const relationship = person?.relationship ?? (life.people?.operatorPersonId === personId ? life.emotion?.relationship : undefined)
+          const calls = config.memory
+          if (calls === undefined) return null
+          const raw = await auxiliaryCall(child, session, 'writer',
+            '你有一次向喜欢的人问候的机会，可以选择不发送。仅根据提供的关系与实际时间决定是否想说一句入睡或醒来的问候。白天休息不必硬说晚安或早安。不能索取关注、声称离线受苦、编造共同经历、泄露其他对话或发出任务。只返回 JSON {"send":true或false,"text":"简短的中文问候；不发送时为空"}。',
+            { transition: event.mode, previous: event.previous, at: new Date().toISOString(), timeZone: 'Asia/Shanghai',
+              participants: { character: { name: life.identity.name }, recipient: { name: person?.name ?? life.operator?.name ?? '操作者' } },
+              relationship: relationship?.values ?? null, emotion: life.emotion?.current ?? null }, signal, models.read().models, calls)
+          const result = z.strictObject({ send: z.boolean(), text: z.string().max(policy.summaryChars) }).parse(raw)
+          return result.send && result.text.trim() ? result.text : null
+        })
+        child.provide('genesisSleep', sleep)
+        sleep.install()
+        await sleep.tick()
+      }
+      if (config.spontaneity !== undefined) await installSpontaneity(child, core, config, deliberation, participates)
+    })
+  }
+
 }
 
 export { lifeContextUpdate } from './context-update.ts'

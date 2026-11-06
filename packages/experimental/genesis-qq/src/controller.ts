@@ -1,3 +1,5 @@
+import type { LifeSleep } from '@deepseek-ai/dsh-experimental-genesis'
+import type { QqSleepInbox } from './sleep-inbox.ts'
 /** One owner serializes QQ reconfiguration and drains the old transport before replacing it. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -16,6 +18,7 @@ const decisionKeyRef = credentialRef('GENESIS_QQ_DECISION_API_KEY')
 const tokenRef = credentialRef('GENESIS_QQ_TOKEN')
 /** Settings remain available when OneBot is absent or its listener cannot start. */
 export class QqController {
+  private sleep: LifeSleep | undefined
   private runtime: QqRuntime | undefined
   private tail: Promise<void> = Promise.resolve()
   private readonly lifetime = new AbortController()
@@ -31,7 +34,12 @@ export class QqController {
    * @param messages - Cross-conversation receipt owner, retained across transport replacement.
    */
   constructor(private readonly ctx: Context, private readonly config: Config, private readonly preferences: QqPreferences,
-    private readonly connection: QqConnectionPreferences, private readonly decisions: QqDecisionPreferences, private readonly messages: QqMessageStore) {}
+    private readonly connection: QqConnectionPreferences, private readonly decisions: QqDecisionPreferences, private readonly messages: QqMessageStore, private readonly inbox: QqSleepInbox) {}
+
+  /** Attach the optional life-wide sleep owner across transport replacements.
+   * @param sleep - Current owner; undefined detaches its callbacks.
+   */
+  setSleep(sleep: LifeSleep | undefined): void { this.sleep = sleep; this.runtime?.attachSleep(sleep) }
 
   private async token(): Promise<string> {
     if (this.credentialUncertain) throw new GenesisError('storage', 'QQ credential write has an uncertain outcome. Restart with verified credentials before reconnecting.')
@@ -59,8 +67,9 @@ export class QqController {
     if (this.lifetime.signal.aborted || !connection.enabled) return
     const accessToken = await this.token()
     if (this.lifetime.signal.aborted || accessToken.length < 16) return
-    const runtime = new QqRuntime(this.ctx, { ...this.config, ...connection, accessToken }, this.preferences, this.decisions, this.messages)
+    const runtime = new QqRuntime(this.ctx, { ...this.config, ...connection, accessToken }, this.preferences, this.decisions, this.messages, this.inbox)
     this.runtime = runtime
+    runtime.attachSleep(this.sleep)
     try { await runtime.start(); this.failure = null }
     catch (_error) {
       this.failure = 'transport'

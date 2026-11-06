@@ -64,12 +64,11 @@ BILI_HUMANISM_HOME="${DSH_HOME:-$HOME/.genesis-harness}/bili-humanism" node pack
 | `lifePreset` | `life` | 只有这个已组合的预设可以执行 B 站工具 |
 | `recordTypeId`, `recordTypeName` | `viewing-notes`, `观影札记` | 稳定分类编号和仅首次使用的展示名称 |
 | `sourceChars` | 100000 | 完整来源 JSON 的解码字符上限 |
-| `legacyBatchSize` | 8 | 每次显式同步迁移的旧手账数量，最多 50 条 |
 | `localAsr` | 未设置；工作区补丁启用 `{}` | 通过现有 Subprocess 提供方注册本地转写 |
 | `localAsr.timeoutMs`, `localAsr.graceMs` | 180000、1000 | 完整音频/转写期限与进程终止宽限，单位毫秒 |
 | `localAsr.maxOutputBytes` | 1000000 | 每个维护命令输出流的收集字节上限；拒绝被截断的输出 |
 
-上游错误会转换为失败的 Harness 工具结果；空稿和未确认的文字读取不计为成功。学习 `genesis_bili_sync` 后，从 `offset=0` 开始，按 `nextOffset` 迁移旧手账，直到它为 null。它只读固定版本的上游账本，保留原始时间、手账 ID、视频来源、覆盖范围和完整正文。创建归属指向实际执行迁移的会话与工具调用；原始上游账本和已经导入的长期记忆均保留。
+上游错误会转换为失败的 Harness 工具结果；空稿和未确认的文字读取不计为成功。
 
 <a id="implementation"></a>
 ## 实现
@@ -79,7 +78,7 @@ BILI_HUMANISM_HOME="${DSH_HOME:-$HOME/.genesis-harness}/bili-humanism" node pack
 
 适配器挂载未修改的[上游 v1.11.3 发行版](https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/tag/v1.11.3)，由依赖 URL 与锁文件完整性固定版本。它替换模型读到的指南，关闭上游人格学习、观影提问、每日取稿和所有平台写入，禁止独立的个人记忆与手账写入工具。新文字统一使用 `genesis_record`，不增加应用二进制入口。
 
-显式迁移按配置限制完整校验一页数据，再通过 Genesis 记录所有者串行提交。每条记录以生命身份和旧手账 ID 生成永久去重凭据，跨会话重试保持已有人工编辑，也不会恢复已删除内容。迁移先确认来源工具调用的 Session 持久化。记录沿用现有存储格式与 Markdown 恢复机制；存储结果不明时停止依赖操作，恢复访问并重启后可安全重试同步。卸载会取消并等待活动操作结束，再关闭上游存储。
+上游工具执行绑定插件生命周期：卸载会取消并等待活动操作结束，再关闭上游存储。记录沿用现有存储格式与 Markdown 恢复机制；存储结果不明时停止依赖操作，恢复访问并重启后可安全重试。
 
 </details>
 
@@ -95,11 +94,11 @@ BILI_HUMANISM_HOME="${DSH_HOME:-$HOME/.genesis-harness}/bili-humanism" node pack
 
 #### 模型看到的内容
 
-学会的读取工具提供有界材料、时间点和覆盖范围。指南引导角色通过 `genesis_record` 写作，`genesis_bili_sync` 返回迁移回执和继续位置。只有实际读取到的正文和图片可作为依据；工具结果和记录读取沿用普通 Session 日志。
+学会的读取工具提供有界材料、时间点和覆盖范围。指南引导角色通过 `genesis_record` 写作。只有实际读取到的正文和图片可作为依据；工具结果和记录读取沿用普通 Session 日志。
 
 #### Token 影响
 
-读取和写作使用对话模型的普通预算，迁移不增加辅助模型调用或复制整个档案进提示词。记录搜索使用文字子串匹配，不调用嵌入模型。
+读取和写作使用对话模型的普通预算，不增加辅助模型调用或复制整个档案进提示词。记录搜索使用文字子串匹配，不调用嵌入模型。
 
 #### KV 缓存影响
 
@@ -109,8 +108,7 @@ BILI_HUMANISM_HOME="${DSH_HOME:-$HOME/.genesis-harness}/bili-humanism" node pack
 ## 已知限制与后续工作
 
 - 集成检查覆盖真实上游工具、存储和受管进程清理；媒体命令输出和模型决策使用合成夹具。本地成功抽帧或转写不代表已验证字幕准确性、ASR 措辞或视觉模型理解。
-- 旧手账迁移需要显式同步，不在启动或恢复会话时自动执行。迁移可能逐条提交；中途失败后从同一偏移重试即可。超过记录长度或容量限制时会拒绝，不静默截断正文。
-- 札记仍是未经核实的个人表达，不自动成为事实、长期记忆或人格；原始上游档案和 Session 日志的删除独立管理。
+- 超过记录长度或容量限制时会拒绝，不静默截断正文。札记仍是未经核实的个人表达，不自动成为事实、长期记忆或人格；原始上游档案和 Session 日志的删除独立管理。
 
 <a id="dev-note"></a>
 ### 开发备注

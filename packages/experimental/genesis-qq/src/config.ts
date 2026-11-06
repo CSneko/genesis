@@ -9,6 +9,12 @@ export interface Config {
   outboundUsers: string[]
   /** Retained cross-conversation receipts; exhaustion refuses new sends without evicting deduplication evidence. */
   maxMessageReceipts: number
+  /** Maximum retained sleeping-message and replay receipts. */
+  sleepInboxLimit: number
+  /** Maximum complete sleeping-inbox JSON characters. */
+  sleepInboxChars: number
+  /** Maximum text characters introduced in one delayed batch. */
+  sleepInboxBatchChars: number
   /** Optional loopback OneBot forward-WebSocket URL; empty starts the reverse listener. */
   wsUrl: string
   /** Reconnection delay for an explicitly configured forward endpoint. */
@@ -101,6 +107,9 @@ export interface Config {
 
 /** Validated source-workspace deployment values; listener binding is always loopback. */
 export const Config: z<Partial<Config> & Pick<Config, 'cwd'>, Config> = z.object({
+  sleepInboxLimit: z.number().min(1).step(1).default(10000),
+  sleepInboxChars: z.number().min(1000).step(1).default(5000000),
+  sleepInboxBatchChars: z.number().min(1000).step(1).default(16000),
   outboundGroups: z.array(z.string()).default([]), outboundUsers: z.array(z.string()).default([]),
   maxMessageReceipts: z.number().min(1).step(1).default(10000),
   wsUrl: z.string().default(''), reconnectMs: z.number().min(100).step(1).default(2000),

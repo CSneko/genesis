@@ -26,7 +26,9 @@ export function genesisLaunch(argv: readonly string[], version: string, root: st
     'packages/experimental/genesis/cordis.life.patch.yml',
     'packages/experimental/genesis-bili-humanism/cordis.patch.yml',
     'packages/experimental/genesis-minecraft/cordis.patch.yml',
+    'packages/experimental/genesis-video/cordis.patch.yml',
     'packages/experimental/genesis-qq/cordis.patch.yml',
+    'packages/experimental/genesis-companion/cordis.patch.yml',
     'packages/experimental/client-ui-genesis/cordis.patch.yml',
     'config/genesis-browser.patch.yml',
     'config/genesis-computer.patch.yml',
@@ -34,7 +36,7 @@ export function genesisLaunch(argv: readonly string[], version: string, root: st
   ].map(path => resolve(root, path))
   const testNoLogin = invocation.mode === 'profile' && invocation.args.includes('--test-no-login')
   const testPatch = resolve(root, 'config/genesis-web-test.patch.yml')
-  const defaultPaths = new Set([...defaults, ...(testNoLogin ? [testPatch] : [])])
+  const defaultPaths = new Set([...defaults, resolve(root, 'packages/experimental/genesis-speech/cordis.patch.yml'), ...(testNoLogin ? [testPatch] : [])])
   const patches = [...defaults, ...invocation.patches.filter(path => !defaultPaths.has(resolve(path))),
     ...(testNoLogin ? [testPatch] : [])]
   return { genesisHome: true, args: [

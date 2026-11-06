@@ -11,6 +11,8 @@ kind: "package-bundle"
 
 为已初始化的 Genesis 生命添加 QQ 群聊和私聊对话。源码工作区包含其设置入口，QQ 初始未连接；上游配置需显式加载覆盖层。显式允许列表和鉴权的 OneBot 连接控制输入；关系不会授予主机权限。详见[连接与关系行为](../../../docs/genesis/qq.zh.md)。
 
+启用 Genesis 睡眠时，私聊暂存于持久化存储并暂停回复。经过验证的操作者可以临时唤醒或发送 `g#保持清醒`；参见[睡眠与恢复](../../../docs/genesis/sleep.zh.md)。
+
 ## 目录
 
 [使用](#use) · [实现](#implementation) · [进一步探索](#further-exploration) · [模型体验](#model-experience) · [已知限制与延后工作](#known-limitations-and-deferred-work)
@@ -37,6 +39,10 @@ QQ 指南说明有界图片／视频／文件读取、当前对话媒体发送�
 默认媒体来源通过 `https://*.qq.com` 允许 HTTPS 子域，并单独包含 `https://multimedia.nt.qq.com.cn`；部署覆盖 `mediaOrigins` 时须明确保留所有需要的来源。下载限制见 QQ 指南。
 
 仅操作者可用的 `genesis_message` 工具可搜索平台实际目标、发送文字、转发近期操作者原始消息并检查投递回执。单独配置 `outboundGroups` 和 `outboundUsers`，两者默认均为空，不继承输入接收权限。冷目标会被打开，但不启动模型轮次。持久预留防止相同工具请求重复发送，未知结果在重启后仍可检查。限制、配置、归属及删除方式见[跨会话发消息](../../../docs/genesis/qq.zh.md#cross-conversation-messages)。
+
+生成的[语音](../genesis-speech/README.zh.md)可直接作为 QQ 语音发送：将本对话中的附件 ID 交给 `genesis_qq_send`，设置 `kind: "file", asVoice: true`。预留发送额度和联网前会验证 WAV 格式；未知回执仍沿用禁止自动重发的行为。
+
+同一工具也能发现已启用的[智能体伙伴会话](../genesis-companion/README.zh.md)。内部发送交给伙伴提供方，可启动有界交流；QQ 发送仍沿用既有冷目标行为和允许列表。伙伴回执与 QQ 确认分别保留。
 
 <a id="implementation"></a>
 ## 实现

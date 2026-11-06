@@ -445,10 +445,11 @@ export interface ConnectionConfig {
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**
-   * Authorities this deployment serves beyond loopback: exact `host:port`, or
-   * port-less `host` matching any port. The fence accepts loopback and the
-   * listener's own bind IP independently; other remote authorities require
-   * an entry here. A non-canonical or non-bare authority fails plugin load.
+   * Authorities this deployment serves beyond loopback: exact `host:port`,
+   * port-less `host` matching any port, or `*` accepting every authority. The
+   * fence accepts loopback and the listener's own bind IP independently; other
+   * remote authorities require an entry here. A non-canonical or non-bare
+   * authority fails plugin load.
    */
   trustedHosts?: string[]
   /** Absolute browser and API cookie lifetime in days. Default: 30. */
@@ -1153,7 +1154,7 @@ export type Config = CuaConfig
 
 - `inject`: `storageDomain` · `tools` · `systemPrompt` · `agents` · `sessions` · `llm` · `sessionProjections` · `sandboxPolicy`
 - `refs`: `z` (`zod`)
-- `source`: [`packages/experimental/genesis/src/config.ts:69`](../packages/experimental/genesis/src/config.ts)
+- `source`: [`packages/experimental/genesis/src/config.ts:124`](../packages/experimental/genesis/src/config.ts)
 
 ```ts config-catalog
 /** Validated, resolved Genesis plugin configuration. */
@@ -1190,6 +1191,10 @@ export interface Config {
   personality?: PersonalityConfig | undefined
   /** Lightweight proactive conversation; requires deliberation and memory. */
   socialInitiative?: SocialInitiativeConfig | undefined
+  /** Optional internal cognition; requires awakening, deliberation, memory and Session persistence. */
+  spontaneity?: SpontaneityConfig | undefined
+  /** Optional shared sleep policy for Life, QQ and autonomous activity. */
+  sleep?: SleepConfig | undefined
   /** Calendar zone for memory anchors and relative recall; defaults to the host's IANA zone. */
   timeZone: string
   /** Enables naming, newborn conversations and persistent tool learning on the configured chat route. */
@@ -1312,6 +1317,62 @@ export interface SocialInitiativeConfig {
   maxPendingAgeMs: number
 }
 
+/** Bounded, idle-only internal thought and exploration opportunities. */
+export interface SpontaneityConfig {
+  /** Enable opportunities after completed real Life exchanges. */
+  enabled: boolean
+  /** Required quiet interval; new user input interrupts exploration. */
+  idleMs: number
+  /** Whole opportunity deadline, including model calls and reviews. */
+  maxDurationMs: number
+  /** Reserved output tokens per opportunity, including auxiliary inference and retries. */
+  maxOutputTokens: number
+  /** Maximum output tokens reserved for one conversation-model request. */
+  requestTokens: number
+  /** Maximum conversation-model requests per opportunity, including retries. */
+  maxRequests: number
+  /** Maximum admitted tool calls, including thought and recall tools. */
+  maxToolCalls: number
+  /** Maximum opportunities in a rolling twenty-four hours; empty and failed runs count. */
+  maxPer24Hours: number
+  /** Importance assigned to factual exploration receipts in episodic memory. */
+  experienceImportance: number
+  /** Maximum thoughts, audit receipts and opportunities retained together. */
+  maxRecords: number
+  /** Maximum complete serialized thought storage characters. */
+  maxStateChars: number
+  /** Maximum serialized thought selection supplied to a model request or tool. */
+  contextChars: number
+  /** Exact additional inline tools; learning, toolkits and execution authorization still apply. */
+  tools: string[]
+}
+
+/** Sleep defaults and bounded maintenance under the life writer lease. */
+export interface SleepConfig extends SleepSettings {
+  /** Maximum time between schedule checks. */
+  pollMs: number
+  /** Total retained cycle and control receipts. */
+  maxRecords: number
+  /** Complete serialized sleep state budget. */
+  maxStateChars: number
+  /** Complete sleep status response character budget. */
+  statusChars: number
+  /** Maximum operator text admitted to wake classification. */
+  wakeInputChars: number
+  /** Maximum classified wake requests per scheduled interval. */
+  maxWakeChecks: number
+  /** Maximum memories summarized per batch. */
+  memoryBatchSize: number
+  /** Maximum maintenance model calls before operator intervention. */
+  maxMemoryRounds: number
+  /** Maximum complete generated memory summary characters. */
+  summaryChars: number
+  /** Maximum age of a transition greeting opportunity. */
+  greetingGraceMs: number
+  /** Minimum sourced affection for optional transition greetings. */
+  greetingAffection: number
+}
+
 /** Storage and complete-response limits for independently authored writing records. */
 export interface RecordsConfig {
   /** Maximum characters in a supplied title. */
@@ -1403,6 +1464,8 @@ export interface MemoryConfig {
   associationChars: number
   /** Maximum current-input characters used as an associative cue. */
   associationInputChars: number
+  /** Deadline for automatic association before a chat request; explicit recall keeps timeoutMs. */
+  associationTimeoutMs: number
   /** Maximum gap for offering a same-conversation experience for extension. */
   experienceWindowMs: number
   /** Quiet-memory maintenance limits; no chat replies or external actions are generated. */
@@ -1510,6 +1573,9 @@ export interface DeliberationConfig {
   maxStrengthDelta: number
 }
 
+/** Persisted complete operator schedule. */
+export type SleepSettings = z.infer<typeof sleepSettingsSchema>
+
 /** Persistent inclinations and fulfillment estimates; longing has its own immediate field. */
 export type Needs = z.infer<typeof needsSchema>
 
@@ -1529,8 +1595,8 @@ export type MoodHalfLives = z.infer<typeof moodHalfLivesSchema>
 
 ## `@deepseek-ai/dsh-experimental-genesis-bili-humanism`
 
-- `inject`: `genesis` · `genesisRecords` · `tools` · `sessions` · `agents` · `agentPresets`
-- `source`: [`packages/experimental/genesis-bili-humanism/src/index.ts:18`](../packages/experimental/genesis-bili-humanism/src/index.ts)
+- `inject`: `genesis` · `genesisRecords` · `tools` · `agents` · `agentPresets`
+- `source`: [`packages/experimental/genesis-bili-humanism/src/index.ts:16`](../packages/experimental/genesis-bili-humanism/src/index.ts)
 
 ```ts config-catalog
 /** Validated trusted deployment configuration; account writes and upstream personality learning are unavailable. */
@@ -1555,8 +1621,6 @@ export interface Config {
   recordTypeId: string
   /** Initial display name for a newly created viewing-note category. */
   recordTypeName: string
-  /** Maximum complete legacy journals migrated per explicit call. */
-  legacyBatchSize: number
   /** Maximum complete tool JSON characters admitted for decoding and evidence reconstruction. */
   sourceChars: number
 }
@@ -1572,6 +1636,53 @@ export interface LocalAsrConfig {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-bili-humanism -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-companion -->
+<a id="deepseek-aidsh-experimental-genesis-companion"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-companion`
+
+- `inject`: `genesis` · `genesisMessaging` · `agents` · `agentPresets` · `agentDefaultModel` · `sessions` · `sessionPersistence` · `systemPrompt` · `tools` · `storageDomain` · `credentials`
+- `source`: [`packages/experimental/genesis-companion/src/index.ts:13`](../packages/experimental/genesis-companion/src/index.ts)
+
+```ts config-catalog
+/** Deployment limits; editable connection and sleep policy belong to the settings owner. */
+export interface Config {
+  /** Genesis preset whose operator Web conversations may recall the private partner interpretation. */
+  lifePreset: string
+  /** Dedicated directory used to attach the persistent internal conversation to the Web workspace. */
+  cwd: string
+  /** Maximum serialized model conversation characters before a new internal request is refused. */
+  contextChars: number
+  /** Maximum text characters in a single internal message. */
+  maxTextChars: number
+  /** Maximum characters in the current attributed relationship interpretation. */
+  maxUnderstandingChars: number
+  /** Maximum journal messages; capacity refusal retains existing evidence. */
+  maxRecords: number
+  /** Maximum complete serialized partner projection. */
+  maxStateChars: number
+  /** Maximum messages retrieved for prompts and settings. */
+  historyLimit: number
+  /** Maximum output tokens for each main-model internal request. */
+  maxTokens: number
+  /** Maximum time for one complete internal conversation. */
+  exchangeMs: number
+  /** Schedule and cancellation sampling interval during active exchanges. */
+  pollMs: number
+  /** Explicit partner wake override duration. */
+  wakeMs: number
+  /** Socket handshake deadline. */
+  connectTimeoutMs: number
+  /** OneBot heartbeat interval; sends no model-triggering message. */
+  heartbeatMs: number
+  /** Maximum incoming and outgoing UTF-8 JSON frame bytes. */
+  maxFrameBytes: number
+  /** Maximum accepted queued OneBot actions. */
+  maxPending: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-companion -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-minecraft -->
 <a id="deepseek-aidsh-experimental-genesis-minecraft"></a>
@@ -1710,6 +1821,12 @@ export interface Config {
   outboundUsers: string[]
   /** Retained cross-conversation receipts; exhaustion refuses new sends without evicting deduplication evidence. */
   maxMessageReceipts: number
+  /** Maximum retained sleeping-message and replay receipts. */
+  sleepInboxLimit: number
+  /** Maximum complete sleeping-inbox JSON characters. */
+  sleepInboxChars: number
+  /** Maximum text characters introduced in one delayed batch. */
+  sleepInboxBatchChars: number
   /** Optional loopback OneBot forward-WebSocket URL; empty starts the reverse listener. */
   wsUrl: string
   /** Reconnection delay for an explicitly configured forward endpoint. */
@@ -1801,6 +1918,103 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-qq -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-speech -->
+<a id="deepseek-aidsh-experimental-genesis-speech"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-speech`
+
+- `inject`: `genesis` · `agentPresets` · `tools` · `attachments`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/experimental/genesis-speech/src/index.ts:14`](../packages/experimental/genesis-speech/src/index.ts)
+
+```ts config-catalog
+/** Live route fields are captured once per invocation; budgets apply until completion. */
+export interface Config {
+  /** HTTPS CosyVoice SpeechSynthesizer endpoint, including regional workspace when required. */
+  endpoint: Volatile<string>
+  /** Alibaba model bound to the selected voice. */
+  model: Volatile<string>
+  /** Built-in voice or an already enrolled custom voice ID. */
+  voice: Volatile<string>
+  /** Credential reference resolved per invocation through the provider, or launch environment when no provider is mounted. */
+  keyEnv: Volatile<string>
+  /** Only the operator's configured Life preset may execute speech requests. */
+  lifePreset: string
+  /** Maximum input text characters per billable invocation. */
+  maxTextChars: number
+  /** Maximum downloaded WAV bytes per invocation. */
+  maxAudioBytes: number
+  /** Entire synthesis and download deadline. */
+  timeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-speech -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-video -->
+<a id="deepseek-aidsh-experimental-genesis-video"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-video`
+
+- `inject`: `agents` · `genesis` · `genesisToolkits` · `agentPresets` · `tools` · `fs` · `sandboxPolicy` · `sandbox` · `subprocess` · `attachments` · `jobs`
+- `source`: [`packages/experimental/genesis-video/src/index.ts:26`](../packages/experimental/genesis-video/src/index.ts)
+
+```ts config-catalog
+/** Trusted local deployment paths and finite editing/rendering budgets. */
+export interface Config {
+  /** Absolute private project directory; this exact directory is granted to operator Life Sessions in workspace-write mode. */
+  dataDir: string
+  /** Only this composed preset can execute video operations. */
+  lifePreset: string
+  /** Already installed Chromium executable; empty disables rendering while retaining editing and inspection. */
+  browserExecutable: string
+  /** Operator-selected ffprobe executable; used only for imported-media metadata. */
+  ffprobeExecutable: string
+  /** Maximum complete serialized model operation input, in characters. */
+  inputChars: number
+  /** Maximum complete serialized tool response, in characters, including metadata. */
+  resultChars: number
+  /** Maximum characters of source JSON returned by each read. */
+  pageChars: number
+  /** Maximum list entries per response. */
+  pageSize: number
+  /** Maximum live projects in dataDir. */
+  maxProjects: number
+  /** Maximum immutable revisions per project. */
+  maxRevisions: number
+  /** Maximum imported assets per project. */
+  maxAssets: number
+  /** Maximum retained render admissions per project. */
+  maxJobs: number
+  /** Wall-clock deadline for media metadata extraction. */
+  probeTimeoutMs: number
+  /** Maximum bytes of one imported media file; buffered by the local file provider. */
+  maxAssetBytes: number
+  /** Maximum bytes admitted for completed output delivery. */
+  maxOutputBytes: number
+  /** Maximum self-contained Player HTML and its embedded asset bytes before compilation. */
+  maxPreviewBytes: number
+  /** Maximum composition duration in seconds. */
+  maxDurationSeconds: number
+  /** Maximum simultaneous local render jobs. */
+  maxConcurrentRenders: number
+  /** Number of Chromium render workers per job. */
+  renderConcurrency: number
+  /** Wall-clock deadline for a render job, including bundling. */
+  renderTimeoutMs: number
+  /** Termination grace period for each managed process range. */
+  graceMs: number
+  /** Per-stream bounded diagnostic collection for child processes. */
+  processOutputBytes: number
+  /** Maximum recent progress characters in status results. */
+  progressChars: number
+  /** Interval between progress samples; does not decide completion. */
+  progressIntervalMs: number
+  /** Resolution multiplier for low-resolution preview exports. */
+  previewScale: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-video -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-inspector -->
 <a id="deepseek-aidsh-experimental-inspector"></a>

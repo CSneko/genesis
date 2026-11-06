@@ -100,11 +100,15 @@ it('deduplicates concurrent source delivery and keeps Session capabilities separ
   const observation = { sessionId, eventId: '3', timestamp: new Date().toISOString(), kind: 'user-message' as const }
   const events = await Promise.all(Array.from({ length: 10 }, () => core.observe(observation)))
   expect(new Set(events.map(event => event.id)).size).toBe(1)
-  await core.bind(sessionId, 'startup')
+  await core.bind(sessionId, 'startup', [tool])
   await core.bind(SessionId('another'), 'startup')
   await core.scan(sessionId, [tool])
   const count = (await core.snapshot()).events.length
-  await core.scan(sessionId, [tool])
+  const copied = vi.spyOn(globalThis, 'structuredClone')
+  try {
+    await core.scan(sessionId, [tool])
+    expect(copied).not.toHaveBeenCalled()
+  } finally { copied.mockRestore() }
   expect((await core.snapshot()).events).toHaveLength(count)
   const growthBefore = (await core.snapshot()).growth.length
   await core.scan(SessionId('another'), [tool])
@@ -413,7 +417,7 @@ it('counts independent user turns rather than saved copies or assistant repetiti
   const config = Config({ leasePath: '/fixture/lease', memory: { decisionProvider: 'fixture', decisionModel: 'decision',
     writerProvider: 'fixture', writerModel: 'writer', embeddingUrl: '', embeddingModel: '', embeddingDimensions: 0,
     windowTurns: 1, timeoutMs: 5000, maxRetries: 0, retryDelayMs: 0, inputChars: 24000, outputChars: 24000, maxTokens: 4096, reasoningEffort: 'auto', organizationLimit: 20, identityRewriteLimit: 100, maxChanges: 8, overview: { maxCalls: 64, timeoutMs: 5000, maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384 }, maxImplicitMemories: 4,
-    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, experienceWindowMs: 1800000, minSimilarity: 0.35,
+    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, associationTimeoutMs: 1200, experienceWindowMs: 1800000, minSimilarity: 0.35,
     consolidation: { enabled: true, idleMs: 60000, cooldownMs: 300000, retryMs: 60000, maxFailures: 3, batchLimit: 20, minHabitSupport: 3 },
   } }).memory!
   const embed = vi.fn().mockResolvedValue({ space: 'fixture', vector: [1, 0] })

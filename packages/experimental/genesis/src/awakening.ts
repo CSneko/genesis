@@ -30,7 +30,7 @@ export function installLearning(ctx: Context, core: LifeCore, lifeMode: (agent: 
       const status = core.learningStatus()
       if (!status.ready) return 'Complete API configuration or account sign-in, then name this life before chatting.'
       if (exec.agent === undefined) return 'Learning requires a conversation.'
-      if (exec.name !== LEARN_TOOL && exec.name !== RECALL_TOOL && exec.name !== 'genesis_plan' && exec.name !== 'genesis_toolkit' && !channelInnate(exec.agent, exec.name) && !status.tools.includes(exec.name)) return 'This tool has not been learned.'
+      if (exec.name !== LEARN_TOOL && exec.name !== RECALL_TOOL && exec.name !== 'genesis_thought' && exec.name !== 'genesis_plan' && exec.name !== 'genesis_toolkit' && !channelInnate(exec.agent, exec.name) && !status.tools.includes(exec.name)) return 'This tool has not been learned.'
       return undefined
     } catch {
       // An untrusted or closing life must never allow a previously admitted tool execution.

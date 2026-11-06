@@ -11,6 +11,14 @@ English | [中文](README.zh.md)
 
 Open Genesis in the left sidebar beside Plugins and Scheduled tasks for life information, delegated tasks, memories, personality, emotion, relationship, goals, writings and message deliveries. Knowledge Base, Toolkits, QQ and Minecraft connections and proactive sending policy remain in Settings. Keys use the existing credential store. Life conversations share one life and memory; ordinary presets remain isolated. Initialize life is a manual action on the new-conversation screen or Genesis overview; after naming it opens the first Life conversation. The button disappears after successful completion. Do not show again persistently suppresses automatic configuration reminders. No network listener is added.
 
+Settings → Sleep edits schedules and wake controls; Genesis → Thoughts manages private cognition. Life conversations display the current sleep state. See [sleep](../../../docs/genesis/sleep.md).
+
+The sleep banner uses the lightweight rhythm endpoint; it does not subscribe to full life inspection when opening conversations.
+
+Settings → Speech synthesis configures the optional [CosyVoice tool](../genesis-speech/README.md), including its model, endpoint and custom voice ID.
+
+The speech tool result shows native audio playback and download controls for new locally stored WAV attachments. AI-selected speed and expression instructions remain in the logged result.
+
 ## Table of Contents
 
 [Use](#use) · [Implementation](#implementation) · [Further Exploration](#further-exploration) · [Model Experience](#model-experience) · [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -43,6 +51,10 @@ Memories includes an expandable operator identity form. Saving it safely relabel
 The separate [Minecraft section](../genesis-minecraft/README.md) configures access, independent model selection and monitoring, with stop and disconnect controls. The AI chooses connection details through `minecraft_connect` in its current conversation. Its live status subscription runs only while the resource is open; game activity continues after closing the panel.
 
 Settings → Temporary memories configures a separate small summary model, optional write-only endpoint key and inactivity interval, with expiry previews, immediate forgetting and failed-source retry. See [temporary memory](../../../docs/genesis/temporary-memory.md).
+
+The optional [video toolkit](../genesis-video/README.md) creates `*.genesis-remotion.html` files. Their dedicated right-sidebar viewer plays the saved Remotion composition directly, with seeking, volume and fullscreen; Open in browser opens the same isolated Player. Source edits become visible after rebuilding the preview and reloading the file. The shared file reader owns authentication, size limits and refresh. Closing the view releases its Blob URLs; hiding it pauses playback.
+
+The built-in [AI companion settings](../genesis-companion/README.md) enable an internal AstrBot connection on demand, configure its independent sleep schedule and provide manual conversation, wake and stop controls. The source link opens one persistent partner Session shared by manual exchanges and the cross-conversation tool. Bounded internal history and attributed relationship understanding remain separate from QQ. Refresh reads current progress without starting a model.
 
 <a id="implementation"></a>
 ## Implementation

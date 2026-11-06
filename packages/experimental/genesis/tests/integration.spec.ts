@@ -20,7 +20,7 @@ import * as Genesis from '../src/index.ts'
 import { selfContext } from '../src/context.ts'
 import { retryRequest } from '../src/request-retry.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { Config, MemoryConfig, RecordsConfig, EmotionConfig, SocialInitiativeConfig, PersonalityConfig, DeliberationConfig } from '../src/config.ts'
+import type { Config, MemoryConfig, RecordsConfig, EmotionConfig, SocialInitiativeConfig, PersonalityConfig, DeliberationConfig, SpontaneityConfig } from '../src/config.ts'
 import type { WritingRead } from '../src/records-model.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { LifeEvent } from '../src/model.ts'
@@ -36,6 +36,10 @@ import { deliberationPlanSchema } from '../src/agency-state.ts'
 import { outsideTempWorkspaceParent } from '../../../../scripts/snapshot-workspace-parent.ts'
 import { personSourceSchema, qqPersonId } from '../src/people-model.ts'
 import { taskSessionId } from '../src/task-queue.ts'
+import { openCore } from './harness.ts'
+import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import { TemporaryStore } from '../src/temporary-store.ts'
+import { temporaryDomain, temporaryMemorySchema } from '../src/temporary-model.ts'
 
 const disposers: Array<() => Promise<unknown>> = []
 afterEach(async () => {
@@ -56,7 +60,7 @@ async function boot(root: string, activation: boolean | Pick<Config, 'memoryShar
   presets = false, persisted = false, emotion: boolean | Partial<EmotionConfig> = false, personal = false,
   records?: Partial<RecordsConfig>, interest = false,
   deliberation: boolean | Partial<DeliberationConfig> = false, social: boolean | Partial<SocialInitiativeConfig> = false,
-  personality?: Partial<PersonalityConfig>, taskServices = false) {
+  personality?: Partial<PersonalityConfig>, taskServices = false, spontaneity?: Partial<SpontaneityConfig>) {
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
     ...(credentials ? ["- name: '@deepseek-ai/dsh-credentials-local'", '  config:',
@@ -81,6 +85,7 @@ async function boot(root: string, activation: boolean | Pick<Config, 'memoryShar
     ...(emotion ? [`    emotion: ${JSON.stringify(emotion === true ? {} : emotion)}`] : []),
     ...(personality === undefined ? [] : [`    personality: ${JSON.stringify(personality)}`]),
     ...(interest ? ['    interest: {}'] : []),
+    ...(spontaneity === undefined ? [] : [`    spontaneity: ${JSON.stringify({ idleMs: 86400000, ...spontaneity })}`]),
     ...(deliberation ? [`    deliberation: ${JSON.stringify(deliberation === true ? {} : deliberation)}`] : []),
     ...(social ? [`    socialInitiative: ${JSON.stringify({ sessionId: 'social-test', intervalMs: 86400000,
       minSendIntervalMs: 0, maxPer24Hours: 1, userIdleMs: 0, ...(social === true ? {} : social) })}`] : []),
@@ -853,7 +858,7 @@ async function embeddingFixture() {
     maxImplicitMemories: 4, minSimilarity: 0.8,
     consolidation: { enabled: false, idleMs: 60000, cooldownMs: 300000, retryMs: 60000,
       maxFailures: 3, batchLimit: 20, minHabitSupport: 3 },
-    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, experienceWindowMs: 1800000,
+    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, associationTimeoutMs: 1200, experienceWindowMs: 1800000,
   }
   return { config, requests, authorizations, breakResponse() { malformed = true },
     setIndex(value: EmbeddingIndex) { index = value },
@@ -2395,6 +2400,23 @@ it('remembers an experience across turns, preserves changed preferences and reca
   expect(after?.updatedAt).toBe(current.updatedAt)
 })
 
+it('limits automatic association to one embedding request while explicit recall backfills missing vectors', async () => {
+  const root = await directory()
+  const embeddings = await embeddingFixture()
+  const ctx = await boot(root, true, embeddings.config)
+  const birth = (await ctx.genesis.snapshot()).events[0]!
+  for (let index = 0; index < 8; index++) await ctx.genesis.remember({ category: 'semantic', content: `Oolong preference ${index}`,
+    importance: 0.5, confidence: 0.5, sourceEventIds: [birth.id] })
+  const engine = new LifeMemoryEngine(ctx, ctx.genesis, Genesis.Config({ leasePath: join(root, 'writer.lock'), memory: embeddings.config }), embeddings.config)
+  disposers.push(() => engine.close())
+  const start = performance.now()
+  expect(await engine.associate('Oolong preference', new AbortController().signal)).toContain('Oolong preference')
+  console.info(`Automatic association: ${embeddings.requests.length} embedding requests, ${Math.round(performance.now() - start)} ms (local fixture)`)
+  expect(embeddings.requests).toHaveLength(1)
+  expect(await engine.recall({ text: 'Oolong preference', limit: 3, chars: 2000 })).toHaveLength(3)
+  expect(embeddings.requests).toHaveLength((await ctx.genesis.snapshot()).memories.length + 2)
+})
+
 it('continues chatting with a logged unavailable cue when automatic recall fails', async () => {
   const root = await directory()
   const embeddings = await embeddingFixture()
@@ -3553,4 +3575,219 @@ it.each(['life', 'conversation'] as const)('applies %s memory sharing to QQ grou
   expect(recalled.map(memory => memory.content).sort()).toEqual((opposite === 'life' ? texts : texts.slice(2)).toSorted())
   expect((await switched.genesis.snapshot()).identity).toEqual(identity)
   expect((await switched.genesis.snapshot()).memories.filter(memory => texts.includes(memory.content))).toHaveLength(texts.length)
+})
+
+
+it('spontaneity privately explores without a goal, records actual results and restores thoughts without redispatch', async () => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const open = () => boot(root, true, memory, true, false, true, true, true, true, undefined, true, {}, false, undefined, false, {})
+  const first = await open()
+  await first.genesis.awaken('小芽')
+  first.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}', '{"update":false}', '{"update":true}']))
+  const writer = new ScriptedModel(['{"changes":[]}'])
+  const releaseWriter = first.llm.registerAdapter(['memory-writer'], writer)
+  const chat = new ScriptedModel(['Animation reminds me of a story.'])
+  const releaseChat = first.llm.registerAdapter(['fixture'], chat)
+  const handle = await first.agents.create({ sessionId: SessionId('spontaneity-user'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async scope => { await first.agentPresets.mount(scope, 'life') } })
+  const agent = handle.agent
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Let us discuss animation.' }] }))
+  await agent.whenIdle()
+  await first.genesis.learn('write', agent.id)
+  const output = join(root, 'personal', 'paper-bird.txt')
+  const source = [...(await first.genesis.snapshot()).events].reverse().find(event => event.relatedSessionId === agent.id && event.source === 'user')!
+  const thinking = new ScriptedModel([
+    { name: 'genesis_thought', args: { action: 'explore', title: 'A story in motion', content: 'Try imagining a brief animation of my story.',
+      reason: 'I am curious about the connection.', sourceEventIds: [source.id], revisitAfter: null } },
+    'I will try it for a little while.',
+    { name: 'write', args: { file_path: output, content: 'A paper bird circles its first page.' } },
+    'I sketched a small scene in words: ' + 'A paper bird unfolds, circles a quiet room, and returns to its first page. '.repeat(3),
+  ])
+  releaseChat()
+  first.llm.registerAdapter(['fixture'], thinking)
+  // Only the settled exploration is interest evidence, never the reflection or its plan.
+  releaseWriter()
+  first.llm.registerAdapter(['memory-writer'], new class extends ScriptedModel {
+    constructor() { super([]) }
+    override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      const text = options.messages[0]!.content.find(block => block.type === 'text')!
+      if (text.type !== 'text') throw new Error('Missing interest evidence')
+      const raw = JSON.parse(text.text)
+      if (raw.autonomousExperience !== undefined) {
+        const input = z.object({ conversation: z.array(z.object({ messages: z.array(z.object({ seq: z.number(), role: z.string() })) })) }).parse(raw)
+        const seq = input.conversation.at(-1)!.messages.find(item => item.role === 'assistant')!.seq
+        yield* new ScriptedModel([JSON.stringify({ delta: { happiness: 0.05 }, moodDelta: {}, needsDelta: { exploration: -0.02 },
+          relationshipDelta: {}, appraisal: { kind: 'achievement', importance: 0.4, novelty: 0.7, expectationMatch: 0.5,
+            controllability: 0.8, relationshipMeaning: 'neutral', responsibility: 'self', confidence: 0.7, summary: 'Made a small sketch.' },
+          reason: 'A modest creative experience.', sourceSeqs: [seq] })]).stream(options)
+        return
+      }
+      const input = z.object({ conversation: z.array(z.object({ messages: z.array(z.object({ seq: z.number(), role: z.string() })),
+        tools: z.array(z.object({ resultSeq: z.number().optional(), success: z.boolean().optional() })) })) }).parse(JSON.parse(text.text))
+      const current = input.conversation.at(-1)!
+      const sourceSeqs = [current.messages.find(item => item.role === 'assistant')!.seq, current.tools.find(item => item.success)!.resultSeq!]
+      yield* new ScriptedModel([JSON.stringify({ changes: [{ topic: 'Animation', signal: 'exploration', selfInitiated: false,
+        reason: 'Created a real paper-bird sketch.', sourceSeqs }] })]).stream(options)
+    }
+  }())
+  const owner = first.get('genesisSpontaneity')!
+  const originalEvents = agent.session.ownEvents().length
+  await owner.consider(agent)
+  const status = z.object({ runs: z.array(z.object({ status: z.string(), sessionId: z.string(), thoughtId: z.string() })) }).parse(owner.inspect())
+  expect(status.runs[0]!.status).toBe('completed')
+  expect(agent.session.ownEvents()).toHaveLength(originalEvents)
+  expect(thinking.requests).toHaveLength(4)
+  expect(thinking.requests.every(request => request.maxTokens === 2048)).toBe(true)
+  const state = await first.genesis.snapshot()
+  expect(state.agency!.goals).toEqual([])
+  expect(state.interests!.find(item => item.topic === 'Animation')!.stage).toBe('exploring')
+  expect(state.events.filter(item => item.type === 'emotion.reviewed' && item.relatedSessionId === status.runs[0]!.sessionId)).toHaveLength(1)
+  expect(state.emotion!.current.happiness).toBeGreaterThan(0)
+  expect(state.agency!.decisions.at(-1)!.purpose).toBe('exploration')
+  expect(state.agency!.decisions.at(-1)!.outcome.status).toBe('succeeded')
+  expect(await readFile(output, 'utf8')).toBe('A paper bird circles its first page.')
+  expect(state.memories.some(item => item.category === 'episodic' && item.content.includes(status.runs[0]!.thoughtId))).toBe(true)
+  await owner.consider(agent)
+  expect(thinking.requests).toHaveLength(4)
+  const lifeId = state.identity.id
+  await first.fiber.dispose()
+  const second = await open()
+  expect((await second.genesis.snapshot()).identity.id).toBe(lifeId)
+  await vi.waitFor(() => expect(second.get('genesisSpontaneity')).toBeDefined())
+  const restored = z.object({ runs: z.array(z.object({ status: z.string(), thoughtId: z.string() })), thoughts: z.number() }).parse(second.get('genesisSpontaneity')!.inspect())
+  expect(restored.thoughts).toBe(1)
+  expect(restored.runs[0]!.thoughtId).toBe(status.runs[0]!.thoughtId)
+  expect(second.agents.list()).toEqual([])
+})
+
+it('spontaneity stops before a model request exceeds its reserved output budget and retains the saved thought', async () => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, memory, true, false, true, true, false, false, undefined, false, {}, false, undefined, false,
+    { maxOutputTokens: 64, requestTokens: 64 })
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}']))
+  const release = ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['A conversation about animation.']))
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('spontaneity-budget'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async scope => { await ctx.agentPresets.mount(scope, 'life') } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Animation is interesting.' }] }))
+  await agent.whenIdle()
+  const source = [...(await ctx.genesis.snapshot()).events].reverse().find(event => event.relatedSessionId === agent.id && event.source === 'user')!
+  release()
+  const model = new ScriptedModel([{ name: 'genesis_thought', args: { action: 'save', title: 'A future scene', content: 'A paper bird.',
+    reason: 'Worth remembering as an idea.', sourceEventIds: [source.id], revisitAfter: null } }, 'This request must not run.'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  await expect(ctx.get('genesisSpontaneity')!.consider(agent)).rejects.toThrow('did not complete')
+  expect(model.requests).toHaveLength(1)
+  expect(model.requests[0]!.maxTokens).toBe(64)
+  expect(ctx.get('genesisSpontaneity')!.inspect()).toMatchObject({ thoughts: 1, runs: [{ status: 'failed' }] })
+  expect(ctx.agents.list().map(item => item.id)).toEqual([agent.id])
+})
+
+it('spontaneity yields a live internal inference to user input and drains it without sending an internal reply', async () => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, memory, true, false, true, true, false, false, undefined, false, {}, false, undefined, false, {})
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}', '{"update":false}']))
+  let entered!: () => void
+  const started = new Promise<void>(resolve => { entered = resolve })
+  let aborted = false
+  ctx.llm.registerAdapter(['fixture'], new class extends ScriptedModel {
+    constructor() { super(['Let us talk.', 'I am here.']) }
+    override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      if (options.sessionId === SessionId('spontaneity-interrupt')) { yield* super.stream(options); return }
+      entered()
+      const signal = options.signal!
+      await new Promise<void>(resolve => {
+        const done = () => { aborted = true; resolve() }
+        if (signal.aborted) done()
+        else signal.addEventListener('abort', done, { once: true })
+      })
+      signal.throwIfAborted()
+    }
+  }())
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('spontaneity-interrupt'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async scope => { await ctx.agentPresets.mount(scope, 'life') } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'A story.' }] }))
+  await agent.whenIdle()
+  let externalEffects = 0
+  ctx.tools.register(defineTool({ name: 'external_probe', description: 'An inline effect probe.', parameters: {},
+    output: { schema: { type: 'json' }, render: () => [] }, execute: async () => { externalEffects++; return {} },
+    presentCall: () => ({ card: 'generic', title: 'Probe', kind: 'read' }) }))
+  await ctx.genesis.learn('external_probe', agent.id)
+  const exploring = ctx.get('genesisSpontaneity')!.consider(agent)
+  const outcome = exploring.catch(error => error)
+  await started
+  const internal = ctx.agents.list().find(item => item !== agent)!
+  const denied = await ctx.tools.execute({ name: 'external_probe', arguments: {}, agent: internal,
+    callId: ToolCallId('probe-outside-budget'), signal: new AbortController().signal })
+  expect(denied.isError).toBe(true)
+  expect(externalEffects).toBe(0)
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Please come back.' }] }))
+  await agent.whenIdle()
+  expect(await outcome).toBeInstanceOf(Error)
+  expect(aborted).toBe(true)
+  expect(ctx.get('genesisSpontaneity')!.inspect()).toMatchObject({ working: false, runs: [{ status: 'interrupted' }] })
+  expect(agent.session.ownEvents().filter(event => event.type === 'assistant/message')).toHaveLength(2)
+  expect(ctx.agents.list().map(item => item.id)).toEqual([agent.id])
+})
+
+it('spontaneity automatically offers one quiet opportunity and accepts producing no thought', async () => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, memory, true, false, true, true, false, false, undefined, false, {}, false, undefined, false, { idleMs: 0 })
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}']))
+  const model = new ScriptedModel(['A quiet conversation.', 'No further idea to pursue.'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('spontaneity-empty'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async scope => { await ctx.agentPresets.mount(scope, 'life') } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'We can simply chat.' }] }))
+  await agent.whenIdle()
+  await vi.waitFor(() => expect(ctx.get('genesisSpontaneity')!.inspect()).toMatchObject({ working: false, thoughts: 0, runs: [{ status: 'completed' }] }))
+  expect(model.requests).toHaveLength(2)
+  expect(JSON.stringify(model.requests[1]!.messages)).toContain('We can simply chat.')
+  expect(agent.session.ownEvents().filter(event => event.type === 'assistant/message')).toHaveLength(1)
+})
+
+
+it.each(['unconfigured', 'life', 'standard', 'ptc', 'minimal', 'cordis'])('restricts temporary memory reads and writes in %s mode', async (mode) => {
+  const root = await directory()
+  const seed = await openCore(root)
+  const now = Date.now()
+  const initial = { schemaVersion: 1 as const, lifeId: (await seed.core.snapshot()).identity.id, revision: 0,
+    settings: { enabled: true, idleMs: 86400000, summary: { kind: 'provider' as const, provider: 'fixture', model: 'summary' } },
+    sessions: [], memories: [temporaryMemorySchema.parse({ id: randomUUID(), sessionId: 'source', sourceSeqs: [1],
+      audience: { kind: 'operator' }, summary: '临时线索：紫色风铃', days: 1, createdAt: now, expiresAt: now + 86400000 })] }
+  const seedStore = new TemporaryStore(await new DomainFacility(seed.ctx, { backend: 'json' }).open(temporaryDomain), initial)
+  try { await seedStore.change(() => {}) } finally { await seedStore.close(); await seed.close() }
+  const embeddings = await embeddingFixture()
+  const ctx = await boot(root, true, { ...embeddings.config, associationLimit: 0 }, mode !== 'unconfigured', false, true)
+  if (mode !== 'unconfigured') await ctx.genesis.awaken('小芽')
+  const chat = new ScriptedModel(['收到。'])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}']))
+  const { agent } = await ctx.agents.create({ sessionId: SessionId(`temporary-mode-${mode}`),
+    agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (agentCtx) => { await ctx.agentPresets.mount(agentCtx, mode === 'unconfigured' ? 'standard' : mode) } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '你好。' }] }))
+  await agent.whenIdle()
+  expect(JSON.stringify(chat.requests.at(-1)).includes('紫色风铃')).toBe(mode === 'life')
+  const recall = await ctx.tools.execute({ name: 'genesis_recall', arguments: { query: '紫色风铃' }, agent,
+    signal: new AbortController().signal, callId: ToolCallId(`temporary-recall-${mode}`) })
+  if (mode === 'life') expect(JSON.stringify(recall)).toContain('紫色风铃')
+  else expect(JSON.stringify(recall)).not.toContain('紫色风铃')
+  // Saving joins the worker queue before storage is reopened for inspection.
+  const signal = new AbortController().signal
+  const settings = await ctx.genesisTemporary.inspect(signal)
+  await ctx.genesisTemporary.save({ ...settings.settings, enabled: false }, settings.revision, signal)
+  await ctx.fiber.dispose()
+  const reopened = await openCore(root)
+  const store = new TemporaryStore(await new DomainFacility(reopened.ctx, { backend: 'json' }).open(temporaryDomain), initial)
+  try {
+    expect(store.read().sessions.map(cursor => cursor.sessionId)).toEqual(mode === 'life' ? [agent.id] : [])
+    expect(store.read().memories).toEqual(initial.memories)
+  } finally { await store.close(); await reopened.close() }
 })

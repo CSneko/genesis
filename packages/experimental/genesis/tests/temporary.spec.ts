@@ -9,6 +9,7 @@ import { completedTemporaryAssessment } from '../src/temporary-recovery.ts'
 import { temporaryMemorySchema } from '../src/temporary-model.ts'
 import { qqPersonId, conversationSchema, personSourceSchema } from '../src/people-model.ts'
 import { Context } from '@deepseek-ai/cordis'
+import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { temporaryProjection } from '../src/temporary-projection.ts'
 import { TemporaryStore } from '../src/temporary-store.ts'
@@ -140,7 +141,7 @@ it('forgets expired current records and preserves QQ audiences independently of 
     sessions: [], memories: [memory] })
   dispose.push(() => store.close())
   const engine = new TemporaryMemoryEngine(life.ctx, life.core, store, life.config,
-    () => ({ decision: { kind: 'provider', provider: '', model: '' }, writer: { kind: 'provider', provider: '', model: '' } }))
+    () => ({ decision: { kind: 'provider', provider: '', model: '' }, writer: { kind: 'provider', provider: '', model: '' } }), () => true)
   dispose.push(() => engine.close())
   expect(engine.inspect().count).toBe(0)
   await engine.sweep()
@@ -162,6 +163,7 @@ it.each(['life', 'conversation'] as const)('applies %s sharing to unexpired temp
   const root = await mkdtemp(join(tmpdir(), 'temporary-sharing-'))
   dispose.push(() => rm(root, { recursive: true, force: true }))
   const life = await openCore(root, 'json', { memorySharing })
+  new AgentRegistry(life.ctx)
   dispose.push(() => life.close())
   await life.core.bindConversation({ id: conversationSchema.parse({ id: 'qq:group:11111:67890', sessionId: 'target-group', kind: 'group' }).id,
     sessionId: SessionId('target-group'), kind: 'group' })
@@ -175,7 +177,7 @@ it.each(['life', 'conversation'] as const)('applies %s sharing to unexpired temp
   dispose.push(() => facility.closeAll())
   dispose.push(() => store.close())
   const engine = new TemporaryMemoryEngine(life.ctx, life.core, store, life.config,
-    () => ({ decision: { kind: 'provider', provider: '', model: '' }, writer: { kind: 'provider', provider: '', model: '' } }))
+    () => ({ decision: { kind: 'provider', provider: '', model: '' }, writer: { kind: 'provider', provider: '', model: '' } }), () => true)
   dispose.push(() => engine.close())
   const found = await engine.search('薄荷 共同记忆', SessionId('target-group'))
   expect(found.length).toBe(memorySharing === 'life' ? 1 : 0)
