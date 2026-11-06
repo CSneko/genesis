@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-computer-use-portal",
   "description": "Consented Wayland application accessibility, desktop capture and input",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.2-rc.1",
   "type": "module",
   "license": "MIT",
   "publishConfig": {

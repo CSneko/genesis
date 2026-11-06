@@ -20,7 +20,7 @@ const schema = z.object({
 /** Session-derived attempt history and delivery receipts; result bodies remain in their original events. */
 export type TaskProjection = z.infer<typeof schema>
 declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisTask: TaskProjection }
+
   interface SessionProjectionMap { genesisTask: TaskProjection }
 }
 /** Assignment survives inbox admission and restart; status derives only from actual turn events. */
@@ -50,4 +50,4 @@ export const taskProjection = {
     return state
   },
   wire: { viewSchema: schema, view: state => state },
-} satisfies ProjectionDefinition<'genesisTask'>
+} satisfies ProjectionDefinition<'genesisTask', TaskProjection>

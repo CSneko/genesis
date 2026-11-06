@@ -1,3 +1,4 @@
+import type { LifeGoalId } from '@deepseek-ai/dsh-experimental-genesis'
 /** Persistent life choices use real storage; the model proposal is the only synthetic input. */
 import { afterEach, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -28,7 +29,7 @@ async function fixture() {
 function proposal(source: LifeEventId): DeliberationPlan {
   return { motivations: [{ content: 'Understand my recorded capability changes', reason: 'The startup is an opportunity to review growth.',
     strength: 0.9, status: 'active', interestIds: [], memoryIds: [], sourceEventIds: [source] }],
-  goals: [{ id: brandString('review-capability-growth'), content: 'Review one capability change', reason: 'Ground my next choice in actual growth.', origin: 'autonomous',
+  goals: [{ id: brandString<LifeGoalId>('review-capability-growth'), content: 'Review one capability change', reason: 'Ground my next choice in actual growth.', origin: 'autonomous',
     motivationIds: [], memoryIds: [], sourceEventIds: [source], priority: 0.6, status: 'active', nextAction: 'Read the recorded growth history.' }],
   candidates: [{ disposition: 'accept', action: 'Read one recorded change.', reason: 'A bounded review is useful.', factors,
     goalIds: [], motivationIds: [] }, { disposition: 'wait', action: 'Wait for more evidence.', reason: 'No urgent external action is needed.',
@@ -147,7 +148,7 @@ it('keeps multiple life goals and abandons one without replacing another goal or
   const first = (await opened.core.snapshot()).agency!.goals[0]!
   const second = await commitInput(opened, 'two')
   second.plan.motivations = []
-  second.plan.goals[0]!.id = brandString('compare-capability-changes')
+  second.plan.goals[0]!.id = brandString<LifeGoalId>('compare-capability-changes')
   second.plan.goals[0]!.content = 'Compare two recorded capability changes'
   second.plan.goals[0]!.motivationIds = first.motivationIds
   const choice = await opened.core.commitDeliberation(second)

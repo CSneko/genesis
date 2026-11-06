@@ -1,3 +1,8 @@
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface PrincipalMap { 'test-guest': { readonly kind: 'test-guest'; readonly guest: string } }
+}
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
 /** Persistent social identity, independently sourced relationships and audience refusal. */
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -70,7 +75,7 @@ it('keeps strangers unretained and carries the same sourced relationship across 
   expect(detail.events[0]!.sources.some(source => source.sessionId === group)).toBe(true)
   await expect(f.ctx.genesisPeople.forget(profile.id, '2000-01-01T00:00:00.000Z', signal)).rejects.toThrow()
   expect((await f.core.snapshot()).people!.people).toHaveLength(1)
-  const guest = f.ctx.extend({ invocation: { peer: { principal: { kind: 'guest' } } } as RemoteInvocation })
+  const guest = f.ctx.extend({ invocation: { request: { namespace: 'fixture', method: 'inspect', args: {} }, service: 'genesis', signal, async *uplink() {}, peer: { id: brandString<PeerId>('guest'), ctx: f.ctx, principal: { kind: 'test-guest', guest: 'genesis-fixture' }, signal, interactions: 'none', async dispose() {} } } satisfies RemoteInvocation })
   await expect(guest.genesisPeople.inspect(0, signal)).rejects.toThrow('operator access')
   const relationship = initial.people!.people[0]!.relationship
   expect(relationship.values.familiarity).toBeGreaterThan(0)

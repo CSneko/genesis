@@ -60,7 +60,7 @@ export class LifeToolkits {
     }
     if (!this.core.learningStatus().tools.includes(name)) return false
     const active = this.enabled(agent)
-    const state = this.ctx.sessionProjections.stateOf(agent.session, 'genesisToolkits')!
+    const state = this.ctx.genesisSessionEvidence.toolkitsOf(agent.session)!
     const speaker = this.currentSpeaker(agent)
     return this.preferences.read().entries.some((entry) => {
       if (!active.includes(entry.id) || !toolkitContains(entry, name)) return false
@@ -146,7 +146,7 @@ export class LifeToolkits {
     return registered.filter(tool => retained.has(tool.name) || admitted.has(tool.name))
   }
   private enabled(agent: Agent) {
-    const state = this.ctx.sessionProjections.stateOf(agent.session, 'genesisToolkits')
+    const state = this.ctx.genesisSessionEvidence.toolkitsOf(agent.session)
     if (state === undefined) throw new GenesisError('invalid-state', 'Toolkit activation recovery is unavailable. Reload Genesis before using tools.')
     return state.sessionId === agent.session.id ? state.enabled : []
   }

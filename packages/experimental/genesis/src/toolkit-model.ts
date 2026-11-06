@@ -29,11 +29,8 @@ declare module '@deepseek-ai/dsh-session/types' {
     'plugin:genesis/toolkit': z.infer<typeof activationSchema>
   }
 }
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisToolkits: ToolkitActivation }
-}
 /** Unknown or damaged owner records stop activation recovery instead of unlocking tools. */
-export const toolkitProjection: ProjectionDefinition<'genesisToolkits'> = {
+export const toolkitProjection: ProjectionDefinition<'genesisToolkits', ToolkitActivation> = {
   key: 'genesisToolkits', stateVersion: 2, stateSchema: projectionSchema,
   init: () => ({ sessionId: null, enabled: [], grants: {} }),
   apply: (state, event) => {

@@ -8,6 +8,9 @@
 /genesis-development/summary:
   en: c39018556c435cfb
   zh: 3bee9c57c4420e15
+/genesis-development/dsh-baseline:
+  en: 0e5e66e3a6894dc4
+  zh: b5ad79b0afdd23e8
 /genesis-development/validate:
   en: 5921472349d22127
   zh: de6c8aca420c3ef4
@@ -15,8 +18,8 @@
   en: fdf006512fa8f098
   zh: 3a02eb9dabd57d91
 /genesis-development/diagnose-storage:
-  en: 0477c41111bbf131
-  zh: 2ad42a3f14d659a4
+  en: b09e26536540c902
+  zh: 547d1208358cd2ce
 /genesis-development/dev-note:
   en: b75c8458928b72b9
   zh: 45e76642489dcc3c

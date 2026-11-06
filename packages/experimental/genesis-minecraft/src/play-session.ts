@@ -1,7 +1,7 @@
 /** A connection-owned Life conversation for playing without an open chat window. @module */
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import { installModelSelection, type AgentHandle } from '@deepseek-ai/dsh-agent'
+import type { AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-workspace'
@@ -24,7 +24,6 @@ export async function createPlaySession(ctx: Context, preset: string, directory:
     agentOptions: selection, meta: { cwd: workspace.path, agentPreset: preset },
     setup: async (child) => {
       await ctx.agentPresets.mount(child, preset)
-      installModelSelection(child, { current: selection, assembled: undefined })
     },
   }))
   try {

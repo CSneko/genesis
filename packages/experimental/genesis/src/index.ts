@@ -1,3 +1,8 @@
+import './social-projection.ts'
+import './task-source.ts'
+import './session-evidence.ts'
+import { LifeToolExecutor } from './tool-executor.ts'
+import { GenesisSessionEvidence } from './session-evidence.ts'
 import { SLEEP_MEMORY_PROMPT, sleepMemoryPlan } from './sleep-memory.ts'
 import { LifeSleep } from './sleep.ts'
 import { SleepStore } from './sleep-store.ts'
@@ -7,7 +12,6 @@ import { auxiliaryCall } from './auxiliary-call.ts'
 import { z } from 'zod'
 /** Optional Genesis Phase 1 Cordis integration; no changes to the Agent Loop. @module */
 import { installSpontaneity } from './spontaneity.ts'
-import { temporaryProjection } from './temporary-projection.ts'
 import { TemporaryMemoryEngine } from './temporary.ts'
 import { TemporaryStore } from './temporary-store.ts'
 import { temporaryDomain } from './temporary-model.ts'
@@ -23,15 +27,12 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { GenesisAgencyGateway } from './agency-gateway.ts'
 import { GenesisInitiativeGateway } from './initiative-gateway.ts'
 import { SocialInitiative } from './social.ts'
-import { initiativeProjection } from './social-projection.ts'
 import { LifeDeliberationEngine, GOAL_CONTEXT_GUIDANCE, agencyContext } from './deliberation.ts'
 import { MemoryConsolidator } from './consolidation.ts'
 import { Config } from './config.ts'
 import { LifeMessageRouter } from './message-routing.ts'
 import { LifeEmotionEngine, EMOTION_GUIDANCE } from './emotion.ts'
-import { MAX_EMOTION_WINDOW_TURNS, emotionSettingsSchema, resolveEmotion, initialEmotion } from './emotion-state.ts'
-import { emotionProjection } from './emotion-projection.ts'
-import { interestProjection } from './interest-projection.ts'
+import { emotionSettingsSchema, resolveEmotion, initialEmotion } from './emotion-state.ts'
 import { LifeInterestEngine, INTEREST_GUIDANCE } from './interest.ts'
 import { LifeCore } from './core.ts'
 import { GUIDANCE, selfContextSections, boundedJson } from './context.ts'
@@ -44,8 +45,6 @@ import { preparePersonalDirectory } from './personal-directory.ts'
 import { PARTICIPANT_GUIDANCE } from './participants.ts'
 import { GenesisStatusGateway } from './status.ts'
 import { GenesisMemoryGateway } from './memory-gateway.ts'
-import { manualMemoryProjection } from './manual-projection.ts'
-import { conversationMemoryProjection } from './conversation-memory.ts'
 import { registerTools } from './tools.ts'
 import { LifeMemoryEngine, MEMORY_GUIDANCE } from './memory.ts'
 import { backupPath } from './backup.ts'
@@ -62,7 +61,6 @@ import { installModeIsolation } from './mode.ts'
 import { registerTaskTool } from './tasks.ts'
 import { registerPlanTool } from './plan-tool.ts'
 import { ToolkitPreferences, toolkitPreferencesDomain } from './toolkit-preferences.ts'
-import { toolkitProjection } from './toolkit-model.ts'
 import { LifeToolkits, TOOLKIT_TOOL } from './toolkits.ts'
 import { GenesisToolkitGateway } from './toolkit-gateway.ts'
 import { lifeContextUpdate } from './context-update.ts'
@@ -145,6 +143,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   if (config.emotion !== undefined) {
     emotionSettingsSchema.parse(resolveEmotion(config.emotion, initialEmotion(config.emotion, new Date().toISOString())))
   }
+  ctx.provide('genesisSessionEvidence', await GenesisSessionEvidence.create(ctx, config))
   backupPath(config.leasePath, config.backupPath)
   const release = await acquireLease(config.leasePath)
   let core: LifeCore
@@ -212,7 +211,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => preferences.close())
   const models = new ModelPreferences(await ctx.storageDomain.open(modelPreferencesDomain), config)
   ctx.effect(() => () => models.close())
-  ctx.effect(() => ctx.sessionProjections.register(temporaryProjection))
   const temporaryStorage = await ctx.storageDomain.open(temporaryDomain)
   let temporaryStore: TemporaryStore
   try {
@@ -234,7 +232,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   try { toolkitPreferences = new ToolkitPreferences(toolkitDomain, config) }
   catch (error) { await toolkitDomain.close(); throw error }
   ctx.effect(() => () => toolkitPreferences.close())
-  ctx.effect(() => ctx.sessionProjections.register(toolkitProjection))
   const toolkits = new LifeToolkits(ctx, core, toolkitPreferences, config)
   if (config.awakening !== undefined) toolkits.install(lifeMode)
   await ctx.plugin(GenesisToolkitGateway, { preferences: toolkitPreferences, config })
@@ -254,7 +251,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   let social: SocialInitiative | undefined
   if (config.socialInitiative !== undefined && deliberation !== undefined) {
-    ctx.effect(() => ctx.sessionProjections.register(initiativeProjection))
     social = new SocialInitiative(ctx, core, deliberation, config.socialInitiative,
       agent => config.awakening === undefined || lifeMode(agent))
     const engine = social
@@ -270,7 +266,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }, { global: true })
     ctx.tools.guard((exec) => {
       if (exec.agent === undefined) return undefined
-      const receipt = ctx.sessionProjections.stateOf(exec.agent.session, 'genesisInitiative')
+      const receipt = ctx.genesisSessionEvidence.initiativeOf(exec.agent.session)
       return receipt?.id !== null && receipt?.id !== undefined && !receipt.ended
         ? 'A proactive conversation may send an assistant message but cannot execute task tools.' : undefined
     })
@@ -291,8 +287,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   let emotion: LifeEmotionEngine | undefined
   if (config.emotion !== undefined && config.memory !== undefined) {
-    const projection = emotionProjection(MAX_EMOTION_WINDOW_TURNS, config.memory.inputChars)
-    ctx.effect(() => ctx.sessionProjections.register(projection))
     emotion = new LifeEmotionEngine(ctx, core, config.emotion, config.memory, () => models.read().models, config)
     const engine = emotion
     ctx.effect(() => () => engine.close())
@@ -307,7 +301,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const interestConfig = config.interest
   const memoryConfig = config.memory
   if (interestConfig !== undefined && memoryConfig !== undefined) {
-    ctx.effect(() => ctx.sessionProjections.register(interestProjection(interestConfig.windowTurns, memoryConfig.inputChars)))
     interest = new LifeInterestEngine(ctx, core, interestConfig, memoryConfig, () => models.read().models)
     const engine = interest
     ctx.effect(() => () => engine.close())
@@ -327,8 +320,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }, { global: true })
     consolidation.kick()
   }
-  ctx.effect(() => ctx.sessionProjections.register(manualMemoryProjection))
-  ctx.effect(() => ctx.sessionProjections.register(conversationMemoryProjection))
   await ctx.plugin(GenesisMemoryGateway, { memory, config, consolidation, participates })
   await ctx.plugin(GenesisPeopleGateway, config)
   await ctx.plugin(GenesisAgencyGateway, { config, lifeMode })
@@ -371,40 +362,50 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   if (config.deliberation !== undefined) registerPlanTool(ctx, core, config, participates)
   const deliberationGuidance = config.deliberation === undefined ? '' : `\n${GOAL_CONTEXT_GUIDANCE}`
   ctx.systemPrompt.section({ name: 'genesis:guidance', order: 650, text: `${GUIDANCE}\n${PERSONALITY_GUIDANCE}${deliberationGuidance}`, interpolate: false })
+  const executors = new Map<Agent, () => void>()
+  const installExecutor = (agent: Agent) => {
+    if (executors.has(agent) || !lifeMode(agent) && !core.isQqSession(agent.id)) return
+    const executor = new LifeToolExecutor(ctx, (registered) => {
+      let eligible = [...registered]
+      if (lifeMode(agent)) {
+        const learned = core.learningStatus().tools
+        eligible = eligible.filter(tool => tool.name === LEARN_TOOL || tool.name === RECALL_TOOL
+          || (tool.name === 'genesis_message' && !core.isQqSession(agent.id) && core.isOperatorSession(agent.id))
+          || (core.isQqSession(agent.id) && toolkits.qqAllowed(agent, tool.name, 'advertise'))
+          || (config.deliberation !== undefined && tool.name === 'genesis_plan')
+          || (config.spontaneity !== undefined && tool.name === 'genesis_thought')
+          || (tool.name === TOOLKIT_TOOL && toolkits.discoverable(agent))
+          || (learned.includes(tool.name) && toolkits.exposed(agent, tool.name)))
+      }
+      if (core.isQqSession(agent.id)) {
+        if (!core.isOperatorSession(agent.id)) eligible = eligible.filter(tool => toolkits.qqAllowed(agent, tool.name, 'advertise'))
+        const names = new Set(toolkits.retainQqTools(agent, [...registered], eligible).map(tool => tool.name))
+        eligible = registered.filter(tool => names.has(tool.name))
+      }
+      const spontaneous = ctx.get('genesisSpontaneity')
+      return eligible.filter(tool => spontaneous === undefined || spontaneous.advertises(agent, tool.name))
+    })
+    executors.set(agent, agent.ctx.tools.setExecutor(executor))
+  }
+  ctx.effect(() => () => { for (const dispose of executors.values()) dispose(); executors.clear() })
+  ctx.on('agent/disposed', ({ agent }) => { executors.get(agent)?.(); executors.delete(agent) }, { global: true })
+  ctx.on('agent/status', ({ agent, status }) => { if (status === 'running') installExecutor(agent) }, { global: true })
   ctx.on('agent/created', async ({ agent, source }) => {
     if (!participates(agent)) return
     await core.bind(agent.session.id, source, ctx.tools.schemas(agent))
   }, { global: true })
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembled = await next()
-    const registered = [...assembled.tools]
     if (lifeMode(context.agent)) {
       assembled.sections = [{ name: 'genesis:character', text: `${LIFE_GUIDANCE}\n${PERSONALITY_GUIDANCE}\n${PARTICIPANT_GUIDANCE}`
         + (config.emotion === undefined ? '' : `\n${EMOTION_GUIDANCE}`)
         + (config.interest === undefined ? '' : `\n${INTEREST_GUIDANCE}`)
         + deliberationGuidance, interpolate: false }]
-      if (assembled.tools.some(tool => tool.name === 'run_code')) {
-        throw new GenesisError('invalid-state', 'Awakening requires native tool presentation. Configure tools mode as native.')
-      }
-      const learned = core.learningStatus().tools
-      assembled.tools = assembled.tools.filter(tool => tool.name === LEARN_TOOL || tool.name === RECALL_TOOL
-        || (tool.name === 'genesis_message' && context.agent !== undefined && !core.isQqSession(context.agent.id) && core.isOperatorSession(context.agent.id))
-        || (context.agent !== undefined && core.isQqSession(context.agent.id) && toolkits.qqAllowed(context.agent, tool.name, 'advertise'))
-        || (config.deliberation !== undefined && tool.name === 'genesis_plan')
-        || (config.spontaneity !== undefined && tool.name === 'genesis_thought')
-        || (tool.name === TOOLKIT_TOOL && toolkits.discoverable(context.agent))
-        || (learned.includes(tool.name) && context.agent !== undefined && toolkits.exposed(context.agent, tool.name)))
       assembled.contexts = []
     }
     if (!participates(context.agent)) {
       assembled.sections = assembled.sections.filter(section => !section.name.startsWith('genesis:'))
       assembled.contexts = assembled.contexts.filter(section => !section.name.startsWith('genesis:'))
-    }
-    const qqAgent = context.agent
-    if (qqAgent !== undefined && core.isQqSession(qqAgent.id)) {
-      const eligible = core.isOperatorSession(qqAgent.id) ? assembled.tools
-        : assembled.tools.filter(tool => toolkits.qqAllowed(qqAgent, tool.name, 'advertise'))
-      assembled.tools = toolkits.retainQqTools(qqAgent, registered, eligible)
     }
     return assembled
   }, { global: true })
@@ -499,6 +500,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   for (const agent of ctx.agents.list()) {
     if (!participates(agent)) continue
     await core.bind(agent.session.id, 'plugin-enabled', ctx.tools.schemas(agent))
+    if (agent.status === 'running') installExecutor(agent)
   }
   await ctx.plugin(GenesisRhythmGateway, config)
   if ((config.spontaneity !== undefined || config.sleep !== undefined) && deliberation !== undefined) {

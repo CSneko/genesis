@@ -11,7 +11,7 @@ import { endpointResult } from './model-endpoint.ts'
  * @returns The untrusted recorded JSON result, or no result when the prior request outcome remains unknown.
  */
 export function completedTemporaryAssessment(ctx: Context, session: Session, id: TemporaryMemoryId): { value: unknown } | undefined {
-  const assessment = ctx.sessionProjections.stateOf(session, 'genesisTemporary')?.assessment
+  const assessment = ctx.genesisSessionEvidence.temporaryOf(session)?.assessment
   if (assessment === undefined || assessment.id !== id || !assessment.completed) return
   if (assessment.text !== undefined) return { value: JSON.parse(assessment.text) }
   if (assessment.route !== undefined) return { value: endpointResult(assessment.route, assessment.body) }

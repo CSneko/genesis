@@ -1,3 +1,5 @@
+import { pluginRecordOf } from '@deepseek-ai/dsh-session'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** One Loader smoke with real storage, the main Agent loop and a local AstrBot peer. @module */
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -49,7 +51,7 @@ async function boot(root: string) {
   const path = join(root, 'cordis.yml')
   await writeFile(path, JSON.stringify([
     { name: '@deepseek-ai/dsh-credentials-local', config: { path: join(root, 'credentials.yaml'), watch: false } },
-    ...['llm', 'session', 'session-projection', 'system-prompt', 'tools', 'agent', 'storage'].map(name => ({ name: `@deepseek-ai/dsh-${name}` })),
+    ...['llm', 'session', 'session-projection', 'system-prompt', 'tools', 'tool-executor-native', 'agent', 'storage'].map(name => ({ name: `@deepseek-ai/dsh-${name}` })),
     { name: '@deepseek-ai/dsh-storage-json', config: { root } },
     { name: '@deepseek-ai/dsh-storage-domain', config: { backend: 'json' } },
     { name: '@deepseek-ai/dsh-sandbox-policy', config: { mode: 'read-only', workspaceRoot: root } },
@@ -137,7 +139,7 @@ it('keeps internal replies and relationships durable, gates both sleep states, a
   expect(before.messages).toHaveLength(6)
   const audit = await ctx.sessionPersistence.open(before.messages[0]!.sessionId, 'read')
   try {
-    expect((await audit.read()).events.filter(event => event.type === 'plugin:genesis-companion/received')).toHaveLength(3)
+    expect((await audit.read()).events.filter(event => pluginRecordOf(event)?.type === 'plugin:genesis-companion/received')).toHaveLength(3)
   } finally { await audit.close() }
   // A 23-hour overnight interval contains this sampled local minute away from its boundaries.
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(Date.now())
@@ -172,7 +174,7 @@ it('keeps internal replies and relationships durable, gates both sleep states, a
       const invoke = async (args: object) => {
         const callId = ToolCallId(`companion-routing-${++calls}`)
         source.agent.session.append('tool/call', { turn: 1, step: calls, callId, name: 'genesis_message', arguments: JSON.stringify(args) })
-        const result = await ctx.tools.execute({ agent: source.agent, name: 'genesis_message', callId, arguments: args, signal })
+        const result = await executeToolFixture(ctx, { agent: source.agent, name: 'genesis_message', callId, arguments: args, signal })
         expect(result.isError).toBe(false)
         return result.value
       }

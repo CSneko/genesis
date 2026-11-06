@@ -16,7 +16,6 @@ import type { Config } from './config.ts'
 import type { LifeCore } from './core.ts'
 import { GenesisError } from './error.ts'
 import type {} from './task-source.ts'
-import { taskProjection } from './task-projection.ts'
 import { TaskQueue, taskQueueDomain, taskSessionId, taskFingerprint, type TaskSubmission, type TaskControl } from './task-queue.ts'
 import { deliverTask, flushTask } from './task-delivery.ts'
 import { taskActivity, guardStoppedTasks, stopTaskWork } from './task-execution.ts'
@@ -216,7 +215,7 @@ export async function registerTaskTool(ctx: Context, core: LifeCore, config: Con
         await deliverTask(ctx, worker, saved, signal, () => { authorize(worker) })
         await queue.delivered(id)
       } catch (error) {
-        if (ctx.sessionProjections.stateOf(worker.session, 'genesisTask')?.assignment === null) await handle?.dispose()
+        if (ctx.genesisSessionEvidence.taskOf(worker.session)?.assignment === null) await handle?.dispose()
         throw error
       }
       return { task_id: id, workspace_id: target.id, mode, state: 'submitted', delivery: 'delivered', live_state: worker.status, reused }
@@ -312,7 +311,7 @@ export async function registerTaskTool(ctx: Context, core: LifeCore, config: Con
       }
       try {
         authorize(agent)
-        const state = ctx.sessionProjections.stateOf(agent.session, 'genesisTask')
+        const state = ctx.genesisSessionEvidence.taskOf(agent.session)
         if (state === undefined) throw new GenesisError('invalid-state', 'Task projection is unavailable.')
         if (!state.inputIds.includes(controlId)) agent.followup(freezeMessage({ id: controlId, role: 'user',
           source: { kind: 'genesis-task', requester: accepted.requester, requestId, fingerprint: saved.fingerprint,
@@ -321,7 +320,7 @@ export async function registerTaskTool(ctx: Context, core: LifeCore, config: Con
             + (current.unread === '' ? '' : `\nOriginal assignment not yet admitted to a model request:\n${current.unread}`) }] }))
         await flushTask(ctx, agent)
       } catch (error) {
-        if (handle !== undefined && !ctx.sessionProjections.stateOf(agent.session, 'genesisTask')?.inputIds.includes(controlId)) {
+        if (handle !== undefined && !ctx.genesisSessionEvidence.taskOf(agent.session)?.inputIds.includes(controlId)) {
           await handle.dispose()
         }
         throw error
@@ -350,7 +349,6 @@ export async function registerTaskTool(ctx: Context, core: LifeCore, config: Con
   })
   ctx.effect(function* () {
     yield () => queue.close()
-    yield ctx.sessionProjections.register(taskProjection)
     for (const dispose of guardStoppedTasks(ctx, queue)) yield dispose
     yield async () => { lifetime.abort(); await Promise.allSettled(pending.values()) }
     yield ctx.tools.register(defineTool({

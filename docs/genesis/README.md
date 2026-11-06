@@ -12,7 +12,7 @@ Keep one life identity across Sessions and models, retain sourced candidate memo
 
 ## Run from this workspace
 
-Use Node.js 24 or newer for the default Genesis Web composition and install the workspace dependencies. Run the commands from the repository root. A complete build requires Git metadata; a source archive without `.git` cannot supply the build commit.
+Use Node.js 24.9 or newer for the default Genesis Web composition and install the workspace dependencies. Run the commands from the repository root. A complete build requires Git metadata; a source archive without `.git` cannot supply the build commit.
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts

@@ -199,7 +199,7 @@ export class TemporaryMemoryEngine {
       }
       const source = agent
       if (!this.lifeMode(source) || source.status !== 'idle') return
-      const selected = this.ctx.sessionProjections.stateOf(source.session, 'agentPreset')
+      const selected = this.ctx.get('agentPresets')?.presetForSession(source.session)
       if (this.config.awakening?.lifePreset !== undefined && selected !== undefined
         && selected !== this.config.awakening.lifePreset) return
       await source.runMaintenance(async (signal) => {
@@ -234,7 +234,7 @@ export class TemporaryMemoryEngine {
     const config = this.config.temporaryMemory
     const initial = this.store.read()
     const cursorAtStart = initial.sessions.find(item => item.sessionId === session.id)!
-    const projected = this.ctx.sessionProjections.stateOf(session, 'genesisTemporary')
+    const projected = this.ctx.genesisSessionEvidence.temporaryOf(session)
     if (projected === undefined) throw new GenesisError('invalid-state', 'Temporary-memory Session projection is unavailable.')
     if (Math.max(cursorAtStart.through, cursorAtStart.pending?.through ?? -1) > (projected.messages.at(-1)?.seq ?? -1)) throw new GenesisError('invalid-state', 'Temporary-memory progress exceeds the retained source log. Restore matching Session data.')
     const latest = projected.lastActivity || cursorAtStart.lastActivity
@@ -251,7 +251,7 @@ export class TemporaryMemoryEngine {
       if (!state.settings.enabled) return
       const cursor = state.sessions.find(item => item.sessionId === session.id)!
       if (cursor.pending === undefined) {
-        const evidence = temporaryBatch(this.ctx.sessionProjections.stateOf(session, 'genesisTemporary')!.messages, cursor.through, config.inputChars)
+        const evidence = temporaryBatch(this.ctx.genesisSessionEvidence.temporaryOf(session)!.messages, cursor.through, config.inputChars)
         if (evidence.length === 0) {
           if (cursor.due || cursor.dirty) await this.store.change((next) => {
             const item = next.sessions.find(item => item.sessionId === session.id)!; item.due = false; item.dirty = false
@@ -325,7 +325,7 @@ export class TemporaryMemoryEngine {
       if (!this.store.read().settings.enabled) return
       const cursor = this.store.read().sessions.find(item => item.sessionId === session.id)
       if (cursor === undefined || cursor.failure !== undefined) return
-      const projected = this.ctx.sessionProjections.stateOf(session, 'genesisTemporary')
+      const projected = this.ctx.genesisSessionEvidence.temporaryOf(session)
       if (projected === undefined || !temporaryBatchReady(projected.messages, cursor.through)) return
       await this.store.change((state) => {
         const item = state.sessions.find(entry => entry.sessionId === session.id)
@@ -432,7 +432,7 @@ export class TemporaryMemoryEngine {
       if (selected.length >= this.config.temporaryMemory.injectLimit || chars + size > this.config.temporaryMemory.injectChars) break
       selected.push(memory); chars += size
     }
-    const delivered = Object.keys(this.ctx.sessionProjections.stateOf(agent.session, 'genesisTemporary')?.delivered ?? {})
+    const delivered = Object.keys(this.ctx.genesisSessionEvidence.temporaryOf(agent.session)?.delivered ?? {})
     let update = temporaryContextUpdate(agent.session, selected, delivered)
     while (selected.length > 0 && update !== undefined && JSON.stringify(update).length > this.config.temporaryMemory.injectChars) {
       selected.pop(); update = temporaryContextUpdate(agent.session, selected, delivered)

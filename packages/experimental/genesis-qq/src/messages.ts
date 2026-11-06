@@ -1,3 +1,4 @@
+import type { QqEvidenceReader } from './message-projection.ts'
 /** Operator-requested text routing with platform-resolved targets and durable idempotency. @module */
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
@@ -43,13 +44,15 @@ export class QqMessenger {
    * @param store - Journal retained across transport restarts.
    * @param open - Open or resume a destination without submitting a model task.
    * @param queue - Admit a bounded operation on its destination route.
+   * @param readEvidence - Ready QQ message evidence reader.
    */
   constructor(private readonly ctx: Context, private readonly config: Config, private readonly store: QqMessageStore,
     private readonly open: (id: ConversationId, source: Agent) => Promise<MessageRoute>,
-    private readonly queue: <T>(id: ConversationId, run: () => Promise<T>) => Promise<T>) {}
+    private readonly queue: <T>(id: ConversationId, run: () => Promise<T>) => Promise<T>,
+    private readonly readEvidence: QqEvidenceReader) {}
 
   private evidence(agent: Agent) {
-    const state = this.ctx.sessionProjections.stateOf(agent.session, 'genesisQqMessages')
+    const state = this.readEvidence(agent.session)
     if (state === undefined) throw new GenesisError('invalid-state', 'QQ communication evidence is unavailable. Reload the QQ integration before sending.')
     return state
   }

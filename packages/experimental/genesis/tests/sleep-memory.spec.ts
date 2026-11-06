@@ -1,3 +1,4 @@
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 /** Sleep batch merge/split results, atomic rejection and durable maintenance recovery. @module */
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -7,7 +8,7 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { LifeEventId } from '../src/model.ts'
+import type { LifeEventId, LifeMemory } from '../src/model.ts'
 import { sleepMemoryPlan } from '../src/sleep-memory.ts'
 import { sleepDomain } from '../src/sleep-model.ts'
 import { SleepStore } from '../src/sleep-store.ts'
@@ -31,7 +32,7 @@ it('merges A/B, splits C, refuses incomplete batches and preserves results throu
   const life = await openCore(root, 'json', { sleep: {} })
   cleanup.push(() => life.close())
   const id = SessionId('sleep-memory-source')
-  const records = []
+  const records: LifeMemory[] = []
   for (const [index, content] of ['用户说喜欢乌龙茶。', '用户说午后会喝乌龙茶。', '用户说养了一只猫，也在学习钢琴。'].entries()) {
     const event = await life.core.observe({ sessionId: id, eventId: String(index), timestamp: new Date().toISOString(), kind: 'user-message' })
     records.push(await life.core.remember({ category: 'semantic', content, sourceEventIds: [event.id],
@@ -51,9 +52,10 @@ it('merges A/B, splits C, refuses incomplete batches and preserves results throu
   const before = await life.core.snapshot()
   await expect(life.core.rememberBatch([plan[0]!, { ...plan[1]!, sourceEventIds: [brandString<LifeEventId>('00000000-0000-4000-8000-000000000000')] }])).rejects.toThrow()
   expect(await life.core.snapshot()).toEqual(before)
+  await life.ctx.plugin(SessionProjectionRegistry)
   await life.ctx.plugin(AgentRegistry)
   const agent: Agent = {
-    id, ctx: life.ctx, session: Session.create(id), options: {}, status: 'idle',
+    id, ctx: life.ctx, session: Session.create(id), options: {}, model: { current: () => undefined, select() {} }, status: 'idle',
     inbox: { nextTurn: [], nextStep: [], clear() {}, append() {}, prepend() {}, replace: () => false, remove: () => false, splice: () => [] },
     send() {}, followup() {}, steer: () => ({ outcome: Promise.resolve({ status: 'rejected' as const }) }), inject() {}, cancel() {},
     runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),

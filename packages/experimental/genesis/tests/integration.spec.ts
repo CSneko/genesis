@@ -1,3 +1,6 @@
+import type { LifeGoalId } from '@deepseek-ai/dsh-experimental-genesis'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
 /** Real Cordis Loader composition exercises prompt logging and native tool execution without a key. */
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -10,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
 import { readBackup } from '../src/backup.ts'
 import { manifestSchema } from '../src/storage-layout.ts'
@@ -23,7 +26,6 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { Config, MemoryConfig, RecordsConfig, EmotionConfig, SocialInitiativeConfig, PersonalityConfig, DeliberationConfig, SpontaneityConfig } from '../src/config.ts'
 import type { WritingRead } from '../src/records-model.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { LifeEvent } from '../src/model.ts'
 import type { MemoryId, MemoryOrganizationId, MemoryOrganizationRequest } from '../src/status-types.ts'
 import { createServer } from 'node:http'
 import { LlmAdapter, LlmError, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -69,7 +71,7 @@ async function boot(root: string, activation: boolean | Pick<Config, 'memoryShar
     "- name: '@deepseek-ai/dsh-session'",
     "- name: '@deepseek-ai/dsh-session-projection'",
     "- name: '@deepseek-ai/dsh-system-prompt'",
-    "- name: '@deepseek-ai/dsh-tools'",
+    "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-tool-executor-native'",
     "- name: '@deepseek-ai/dsh-agent'",
     "- name: '@deepseek-ai/dsh-storage'",
     "- name: '@deepseek-ai/dsh-storage-json'", '  config:', `    root: ${JSON.stringify(root)}`,
@@ -144,7 +146,7 @@ it('defaults to logged goal context without a writer prerequisite or tool veto, 
   expect((await first.genesis.snapshot()).agency!.decisions).toEqual([])
   const source = await first.genesis.prepareDeliberation(agent.session.id, 'old-goal', 'request')
   const plan = deliberationPlanSchema.parse(JSON.parse(socialPlan('wait')))
-  plan.goals.push({ id: brandString('earlier-paused-review'), content: 'An earlier paused review', reason: 'A previous request.', origin: 'user',
+  plan.goals.push({ id: brandString<LifeGoalId>('earlier-paused-review'), content: 'An earlier paused review', reason: 'A previous request.', origin: 'user',
     motivationIds: [], memoryIds: [], sourceEventIds: [source.id], priority: 0.5, status: 'paused', nextAction: 'Wait.' })
   await first.genesis.commitDeliberation({ key: `${agent.session.id}:old-goal`, sessionId: agent.session.id, trigger: 'request',
     revision: (await first.genesis.snapshot()).agency!.revision, sourceEventIds: [source.id], memoryIds: [], interestIds: [], plan })
@@ -162,7 +164,7 @@ it('defaults to logged goal context without a writer prerequisite or tool veto, 
     const gate = await next()
     return gate.kind === 'allow' ? { kind: 'ask', reason: 'Operator approval required.' } : gate
   })
-  const denied = await first.tools.execute({ callId: ToolCallId('context-unapproved'), name: tool.name,
+  const denied = await executeToolFixture(first, { callId: ToolCallId('context-unapproved'), name: tool.name,
     arguments: {}, agent, signal: new AbortController().signal })
   expect(denied).toMatchObject({ isError: true, error: { message: 'Operator approval required.' } })
   expect(effects).toBe(2)
@@ -215,7 +217,7 @@ it('lets the main Life model create readable plans, revise them and restore them
   const source = saved.events.find(event => event.id === saved.agency!.goals[0]!.sourceEventIds[0])!
   expect(source).toMatchObject({ source: 'agent', relatedSessionId: agent.session.id, payload: { toolCallId: 'genesis-call-3' } })
   expect(JSON.stringify(agent.session.ownEvents())).toContain(goal.id)
-  const execute = (callId: string, args: object) => first.tools.execute({ callId: ToolCallId(callId), name: 'genesis_plan',
+  const execute = (callId: string, args: object) => executeToolFixture(first, { callId: ToolCallId(callId), name: 'genesis_plan',
     arguments: args, agent, signal: new AbortController().signal })
   expect((await execute('genesis-call-3', update)).isError).not.toBe(true)
   expect((await first.genesis.snapshot()).agency).toEqual(saved.agency)
@@ -658,8 +660,8 @@ it('logs only changed life modules, suppresses same-degree emotion edits and res
     agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Continue.' }] }))
     await agent.whenIdle()
   }
-  const modules = () => agent.session.deriveMessages().filter(message => message.role === 'user'
-    && message.source.kind === 'genesis-state').map(message => message.source.form === 'snapshot' ? message.source.sections : [])
+  const modules = () => agent.session.deriveMessages().flatMap(message => message.role === 'user'
+    && message.source?.kind === 'genesis-state' && message.source.form === 'snapshot' ? [message.source.sections] : [])
   await turn()
   expect(modules()).toHaveLength(1)
   expect(modules()[0]!.map(section => section.name)).toContain('genesis:emotion')
@@ -685,8 +687,8 @@ it('logs only changed life modules, suppresses same-degree emotion edits and res
   expect(modules()).toHaveLength(count + 1)
   expect(modules().at(-1)!.map(section => section.name)).toEqual(['genesis:emotion'])
   expect(modules().at(-1)![0]!.text).toContain('happiness strong')
-  const logged = agent.session.deriveMessages().filter(message => message.source.kind === 'genesis-state')
-  const requested = chat.requests.at(-1)!.messages.filter(message => message.source.kind === 'genesis-state')
+  const logged = agent.session.deriveMessages().filter(message => message.source?.kind === 'genesis-state')
+  const requested = chat.requests.at(-1)!.messages.filter(message => message.source?.kind === 'genesis-state')
   expect(requested).toEqual(logged)
   await first.fiber.dispose()
 
@@ -698,7 +700,7 @@ it('logs only changed life modules, suppresses same-degree emotion edits and res
   resumed.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Continue.' }] }))
   await resumed.whenIdle()
   expect(reader.requests).toHaveLength(1)
-  expect(reader.requests[0]!.messages.filter(message => message.source.kind === 'genesis-state')).toEqual(logged)
+  expect(reader.requests[0]!.messages.filter(message => message.source?.kind === 'genesis-state')).toEqual(logged)
 })
 
 it('restores life modules removed during request-error recovery before the retry', async () => {
@@ -733,7 +735,7 @@ it('restores life modules removed during request-error recovery before the retry
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Hello.' }] }))
   await agent.whenIdle()
   expect(reader.requests).toHaveLength(1)
-  const updates = reader.requests[0]!.messages.filter(message => message.source.kind === 'genesis-state' && message.source.form === 'snapshot')
+  const updates = reader.requests[0]!.messages.filter(message => message.source?.kind === 'genesis-state' && message.source.form === 'snapshot')
   expect(updates).toHaveLength(1)
   expect(updates[0]!.source).toMatchObject({ sections: expect.arrayContaining([expect.objectContaining({ name: 'genesis:identity' })]) })
 })
@@ -1140,7 +1142,7 @@ it('saves valid overview entries despite invalid neighbors, retains deletions an
   const source = (await ctx.genesis.snapshot()).events.find(event => event.relatedSessionId === agent.id && event.source === 'user')!
   const original = await ctx.genesis.remember({ category: 'semantic', content: '用户自述喜欢乌龙茶。',
     kind: 'declarative', attribution: 'user-stated', sourceEventIds: [source.id], importance: 0.6, confidence: 0.7 })
-  const chat = ctx.sessionProjections.stateOf(agent.session, 'genesisConversationMemory')!.messages
+  const chat = ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)!.messages
   const seq = chat.find(message => message.role === 'user')!.seq
   const memory = { category: 'semantic', content: '用户自述喜欢读书。', summary: '记'.repeat(40),
     kind: 'declarative', attribution: 'model-inference', importance: 0.6, confidence: 0.7 }
@@ -1251,7 +1253,7 @@ it('prepares oversized conversation evidence with over one hundred citations, pr
   fail = false; summaries = 0; chatParts.clear(); memoryParts.length = 0
   expect(await ctx.genesisMemory.overview(agent.id, id, signal)).toBe(true)
   expect(summaries).toBeGreaterThan(2)
-  const projection = ctx.sessionProjections.stateOf(agent.session, 'genesisConversationMemory')!
+  const projection = ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)!
   for (const message of projection.messages) expect(chatParts.get(message.seq)?.join('')).toBe(message.text)
   expect(JSON.parse(memoryParts.join(''))).toEqual(memory)
   const updated = await ctx.genesis.getMemory(memory.id)
@@ -1403,7 +1405,7 @@ it('requires configuration and naming, learns without a catalogue, and restores 
   first.llm.registerAdapter(['memory-writer'], new MemoryWriter())
   expect((await first.genesisStatus.inspect(signal)).setup?.phase).toBe('naming')
   const agent = await first.agentLoop.create(SessionId('newborn'), { provider: 'fixture', model: 'chat' })
-  const execute = (name: string, args: object) => first.tools.execute({
+  const execute = (name: string, args: object) => executeToolFixture(first, {
     name, arguments: args, agent, signal, callId: ToolCallId(`direct-${name}`),
   })
   expect((await execute('learn', { name: 'genesis_recall' })).isError).toBe(true)
@@ -1415,10 +1417,10 @@ it('requires configuration and naming, learns without a catalogue, and restores 
   expect(JSON.stringify(unknown)).not.toContain('genesis_recall')
   agent.followup(createUserMessage({ content: [{ type: 'text', text: '你好！Remember I prefer oolong. Please use a gentle tone. Private introduction marker.' }], source: { kind: 'user' } }))
   await agent.whenIdle()
-  expect(model.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_recall', 'learn'])
+  expect(model.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
   expect(JSON.stringify(model.requests[0])).not.toContain('genesis_history')
   expect(JSON.stringify(model.requests[0])).toContain('Let applicable tendencies influence event interpretation, choices and expression')
-  expect(model.requests[1]?.tools?.map(tool => tool.name)).toEqual(['genesis_recall', 'learn'])
+  expect(model.requests[1]?.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
   expect(first.genesis.learningStatus().tools).toEqual(['genesis_recall'])
   const deny = first.tools.guard(exec => exec.name === 'genesis_recall' ? 'Independent permission denial' : undefined)
   expect((await execute('genesis_recall', { query: 'oolong' })).isError).toBe(true)
@@ -1436,7 +1438,7 @@ it('requires configuration and naming, learns without a catalogue, and restores 
   const other = await second.agentLoop.create(SessionId('new-conversation'), { provider: 'fixture', model: 'chat' })
   other.followup(createUserMessage({ content: [{ type: 'text', text: 'What warm drink do I like?' }], source: { kind: 'user' } }))
   await other.whenIdle()
-  expect(reader.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_recall', 'learn'])
+  expect(reader.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
   expect(JSON.stringify(reader.requests[0])).toContain('小芽')
   expect(JSON.stringify(reader.requests[0])).toContain('Use a gentle tone.')
   expect(JSON.stringify(reader.requests[0])).toContain('The user prefers oolong.')
@@ -1450,7 +1452,7 @@ it('requires configuration and naming, learns without a catalogue, and restores 
   second.tools.register(defineTool({ name: 'fixture_ping', description: 'Fixture', parameters: {},
     output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
     async execute() { return 'pong' } }))
-  const ping = () => second.tools.execute({ name: 'fixture_ping', arguments: {}, agent: other, signal,
+  const ping = () => executeToolFixture(second, { name: 'fixture_ping', arguments: {}, agent: other, signal,
     callId: ToolCallId('disposal-ping') })
   expect((await ping()).isError).toBe(true)
   const fiber = [...second.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-experimental-genesis')?.fiber
@@ -1548,10 +1550,10 @@ it('refuses an incompatible embedding response without committing memory or a co
   agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Remember I prefer oolong.' }], source: { kind: 'user' } }))
   await agent.whenIdle()
   expect((await ctx.genesis.snapshot()).memories).toEqual(before.memories)
-  expect(writer.requests).toHaveLength(0)
+  expect(writer.requests).toHaveLength(1)
   const review = (await ctx.genesisStatus.inspect(new AbortController().signal)).review
   if (review?.state !== 'failed') throw new Error('Expected a failed review')
-  expect(review.failure.stage).toBe('retrieval')
+  expect(review.failure.stage).toBe('embedding')
   expect(review.failure.message).toContain('data.0.embedding')
   expect((await ctx.genesis.snapshot()).events.filter(event => event.type === 'memory.reviewed')).toEqual([])
 })
@@ -1611,7 +1613,7 @@ it('applies GUI endpoint changes to real memory recall and excludes large vector
   for (const endpoint of [initial, next, last]) {
     revision = await ctx.genesisStatus.saveEmbedding({ url: endpoint.config.embeddingUrl,
       model: endpoint.config.embeddingModel, dimensions: 3 }, revision, signal)
-    const result = await ctx.tools.execute({ name: 'genesis_recall', arguments: { query: 'warm drink' },
+    const result = await executeToolFixture(ctx, { name: 'genesis_recall', arguments: { query: 'warm drink' },
       agent, signal, callId: ToolCallId(`recall-space-${revision}`) })
     expect(result.isError).not.toBe(true)
     expect(JSON.stringify(result)).toContain('The user prefers oolong.')
@@ -1782,12 +1784,12 @@ it('keeps one life in Life mode and isolates all four ordinary presets from its 
     if (id === 'life') {
       expect(JSON.stringify(request.messages)).toContain('Time sampled while preparing turn')
       expect(agent.session.ownEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'time-context')).toBe(true)
-      expect(request.tools?.map(tool => tool.name)).toEqual(['genesis_recall', 'learn'])
+      expect(request.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
       expect(JSON.stringify(request)).toContain('Let applicable tendencies influence event interpretation, choices and expression')
     } else {
       expect((request.tools ?? []).some(tool => tool.name.startsWith('genesis_') || tool.name === 'learn')).toBe(false)
       expect(JSON.stringify(request)).not.toContain('innocence')
-      expect(JSON.stringify(request.messages.filter(message => message.source.kind !== 'user'))).not.toContain('Use a gentle tone.')
+      expect(JSON.stringify(request.messages.filter(message => message.source?.kind !== 'user'))).not.toContain('Use a gentle tone.')
       expect(JSON.stringify(request)).not.toContain('Genesis maintains a persistent life')
       expect((await ctx.genesis.snapshot()).sessions).not.toHaveProperty(agent.id)
     }
@@ -1800,6 +1802,33 @@ it('keeps one life in Life mode and isolates all four ordinary presets from its 
   const signal = new AbortController().signal
   for (let refresh = 0; refresh < 3; refresh += 1) await ctx.genesisStatus.inspect(signal)
   expect(await ctx.genesis.snapshot()).toEqual(final)
+})
+
+it('keeps the ordinary executor when a blank Life conversation changes preset before its first turn', async () => {
+  const root = await directory()
+  const embeddings = await embeddingFixture()
+  const ctx = await boot(root, true, embeddings.config, true, false, true)
+  await ctx.genesis.awaken('小芽')
+  ctx.tools.register(defineTool({ name: 'ordinary_mode_probe', description: 'Inspect the ordinary mode.', parameters: {},
+    output: { schema: { type: 'json' }, render: () => [] }, async execute() { return null } }))
+  const native = new NativeToolExecutor(ctx)
+  const nativeEntry = [...ctx.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-tool-executor-native')!
+  await nativeEntry.fiber?.dispose()
+  ctx.tools.setExecutor({
+    describe(tools) {
+      const description = native.describe(tools)
+      return { ...description, schemas: description.schemas.filter(tool => tool.name === 'ordinary_mode_probe') }
+    },
+    execute: input => native.execute(input),
+  })
+  const model = new ScriptedModel(['Ordinary mode.'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('blank-preset-switch'),
+    agentOptions: { provider: 'fixture', model: 'chat' }, setup: async child => { await ctx.agentPresets.mount(child, 'life') } })
+  await ctx.agentPresets.select(agent, 'standard')
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Continue.' }] }))
+  await agent.whenIdle()
+  expect(model.requests[0]?.tools?.map(tool => tool.name)).toEqual(['ordinary_mode_probe'])
 })
 
 it('assigns isolated workspace tasks, reads real running and completed results, deduplicates and restores cold outcomes', async () => {
@@ -1829,7 +1858,7 @@ it('assigns isolated workspace tasks, reads real running and completed results, 
   const unregisterWorker = first.llm.registerAdapter(['worker-fixture'], worker)
   const signal = new AbortController().signal
   let call = 0
-  const execute = (args: object, agent = caller) => first.tools.execute({ name: 'genesis_tasks', arguments: args,
+  const execute = (args: object, agent = caller) => executeToolFixture(first, { name: 'genesis_tasks', arguments: args,
     agent, signal, callId: ToolCallId(`task-call-${++call}`) })
   const value = async (args: object) => {
     const result = await execute(args)
@@ -1837,9 +1866,9 @@ it('assigns isolated workspace tasks, reads real running and completed results, 
     return z.record(z.string(), z.json()).parse(result.value)
   }
   expect((await execute({ action: 'catalog' })).isError).toBe(true)
-  expect((await first.tools.execute({ name: 'learn', arguments: { name: 'genesis_tasks' }, agent: caller, signal, callId: ToolCallId('learn-tasks') })).isError).toBe(false)
+  expect((await executeToolFixture(first, { name: 'learn', arguments: { name: 'genesis_tasks' }, agent: caller, signal, callId: ToolCallId('learn-tasks') })).isError).toBe(false)
   for (const name of ['read', 'write']) {
-    expect((await first.tools.execute({ name: 'learn', arguments: { name }, agent: caller, signal, callId: ToolCallId(`learn-${name}`) })).isError).toBe(false)
+    expect((await executeToolFixture(first, { name: 'learn', arguments: { name }, agent: caller, signal, callId: ToolCallId(`learn-${name}`) })).isError).toBe(false)
   }
   expect(first.sandboxPolicy.resolve({ session: caller.session }).additionalWritableRoots).toContain(join(root, 'personal'))
   const catalog = await value({ action: 'catalog' })
@@ -1917,7 +1946,7 @@ it('assigns isolated workspace tasks, reads real running and completed results, 
   const second = await boot(root, true, memory, true, false, true, true, true, true, undefined, true, false, false, undefined, true)
   const { agent: resumed } = await second.agents.create({ sessionId: SessionId('another-life-conversation'),
     setup: async (agentCtx) => { await second.agentPresets.mount(agentCtx, 'life') } })
-  const inspectCold = await second.tools.execute({ name: 'genesis_tasks', arguments: { action: 'inspect', task_id: id, offset: 20, result_chars: 30 },
+  const inspectCold = await executeToolFixture(second, { name: 'genesis_tasks', arguments: { action: 'inspect', task_id: id, offset: 20, result_chars: 30 },
     agent: resumed, signal, callId: ToolCallId('cold-inspection') })
   expect(inspectCold.isError).toBe(false)
   if (inspectCold.isError) throw new Error(JSON.stringify(inspectCold.error))
@@ -1930,7 +1959,7 @@ it('assigns isolated workspace tasks, reads real running and completed results, 
   expect(second.sessions.get(id)).toBeUndefined()
   await expect(second.genesisTasks.catalog(-1, signal)).rejects.toThrow()
   for (const [taskId, state] of [[failedId, 'failed'], [orphanId, 'interrupted']] as const) {
-    const result = await second.tools.execute({ name: 'genesis_tasks', arguments: { action: 'inspect', task_id: taskId },
+    const result = await executeToolFixture(second, { name: 'genesis_tasks', arguments: { action: 'inspect', task_id: taskId },
       agent: resumed, signal, callId: ToolCallId(`inspect-${state}`) })
     expect(result.isError).toBe(false)
     if (result.isError) throw new Error(JSON.stringify(result.error))
@@ -1954,7 +1983,7 @@ it('recovers pending task deliveries across restart and confirms a failed acknow
   const signal = new AbortController().signal
   const { agent: original } = await first.agents.create({ sessionId: SessionId('delivery-origin'),
     setup: async (agentCtx) => { await first.agentPresets.mount(agentCtx, 'life') } })
-  expect((await first.tools.execute({ name: 'learn', arguments: { name: 'genesis_tasks' }, agent: original,
+  expect((await executeToolFixture(first, { name: 'learn', arguments: { name: 'genesis_tasks' }, agent: original,
     signal, callId: ToolCallId('learn-delivery-tool') })).isError).toBe(false)
   const path = join(root, 'delivery-workspace')
   await mkdir(path)
@@ -1962,7 +1991,7 @@ it('recovers pending task deliveries across restart and confirms a failed acknow
   const lifeId = (await first.genesis.snapshot()).identity.id
   let call = 0
   const execute = (ctx: Context, agent: import('@deepseek-ai/dsh-agent').Agent, args: object) =>
-    ctx.tools.execute({ name: 'genesis_tasks', arguments: args, agent, signal, callId: ToolCallId(`delivery-${++call}`) })
+    executeToolFixture(ctx, { name: 'genesis_tasks', arguments: args, agent, signal, callId: ToolCallId(`delivery-${++call}`) })
   const request = (request_id: string) => ({ action: 'create', workspace_id: target.id, mode: 'standard', request_id,
     prompt: `Return the result for ${request_id}.` })
   const beforeCreate = request('before-create')
@@ -2060,18 +2089,18 @@ it('stops owned task work, persists pause and resumes the same cold Session once
   const signal = new AbortController().signal
   let call = 0
   const execute = async (ctx: Context, caller: import('@deepseek-ai/dsh-agent').Agent, args: object) => {
-    const result = await ctx.tools.execute({ name: 'genesis_tasks', arguments: args, agent: caller,
+    const result = await executeToolFixture(ctx, { name: 'genesis_tasks', arguments: args, agent: caller,
       signal, callId: ToolCallId(`execution-${++call}`) })
     if (result.isError) throw new Error(JSON.stringify(result.error))
     return z.record(z.string(), z.json()).parse(result.value)
   }
-  const rejected = (ctx: Context, caller: import('@deepseek-ai/dsh-agent').Agent, args: object) => ctx.tools.execute({
+  const rejected = (ctx: Context, caller: import('@deepseek-ai/dsh-agent').Agent, args: object) => executeToolFixture(ctx, {
     name: 'genesis_tasks', arguments: args, agent: caller, signal, callId: ToolCallId(`rejected-execution-${++call}`) })
   const first = await start()
   await first.genesis.awaken('小芽')
   const { agent: original } = await first.agents.create({ sessionId: SessionId('execution-origin'),
     setup: async (agentCtx) => { await first.agentPresets.mount(agentCtx, 'life') } })
-  expect((await first.tools.execute({ name: 'learn', arguments: { name: 'genesis_tasks' }, agent: original,
+  expect((await executeToolFixture(first, { name: 'learn', arguments: { name: 'genesis_tasks' }, agent: original,
     signal, callId: ToolCallId('learn-execution-tool') })).isError).toBe(false)
   const targetPath = join(root, 'execution-workspace')
   await mkdir(targetPath)
@@ -3102,7 +3131,7 @@ it('persists sourced emotion across dialogue windows, replay and Loader restarts
   const resumed = (await second.agents.resume({ resumeSessionId: agent.id, agentOptions: { provider: 'fixture', model: 'chat' } })).agent
   resumed.followup(createUserMessage({ content: [{ type: 'text', text: 'Hello again.' }], source: { kind: 'user' } }))
   await resumed.whenIdle()
-  const projected = second.sessionProjections.stateOf(resumed.session, 'genesisEmotion')!
+  const projected = second.genesisSessionEvidence.emotionOf(resumed.session)!
   expect(projected.turns.flatMap(turn => turn.messages).some(message => message.text.includes('Private emotion source marker.'))).toBe(true)
   const other = await second.agentLoop.create(SessionId('emotion-unrelated'), { provider: 'fixture', model: 'chat' })
   other.followup(createUserMessage({ content: [{ type: 'text', text: 'Hello in another conversation.' }], source: { kind: 'user' } }))
@@ -3134,7 +3163,7 @@ it('rejects unsupported emotion citations and stale or excessive changes while p
   expect((await ctx.genesis.snapshot()).events.filter(event => event.type === 'emotion.reviewed')).toHaveLength(0)
   const outcome = (await ctx.genesisStatus.inspect(new AbortController().signal)).emotion?.review
   expect(outcome).toMatchObject({ state: 'failed', failure: { stage: 'storage' } })
-  const evidence = ctx.sessionProjections.stateOf(agent.session, 'genesisEmotion')!.turns
+  const evidence = ctx.genesisSessionEvidence.emotionOf(agent.session)!.turns
   const seq = evidence.at(-1)!.messages.find(message => message.role === 'user')!.seq
   const plan = emotionUpdateSchema.parse({ delta: { happiness: 0.1 }, needsDelta: {}, moodDelta: {}, appraisal: supportAppraisal, reason: 'Encouragement.', sourceSeqs: [seq] })
   await expect(ctx.genesis.reviewEmotion(agent.id, evidence, before.revision + 1, plan)).rejects.toThrow('changed during appraisal')
@@ -3213,7 +3242,7 @@ it('uses an independent Jev emotion question and logged HTTP writer, and contain
     && record.data.phase === 'request' && record.data.route?.kind === 'openai')).toHaveLength(1)
   const fiber = [...ctx.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-experimental-genesis')!.fiber!
   await fiber.dispose()
-  expect(ctx.sessionProjections.stateOf(agent.session, 'genesisEmotion')).toBeUndefined()
+  expect(ctx.get('genesisSessionEvidence')).toBeUndefined()
 })
 
 
@@ -3231,6 +3260,8 @@ it('checkpoints the online-only emotion clock through Loader without creating ex
 })
 
 it('persists operator emotion sensitivity and adjustments, rejects stale or invalid edits, and pauses only emotion inference', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  onTestFinished(() => { vi.useRealTimers() })
   const root = await directory()
   const embeddings = await embeddingFixture()
   const config = { ...embeddings.config, associationLimit: 0 }
@@ -3341,10 +3372,10 @@ it('learns writing without an innate listing, logs voluntary records, and restor
     agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     await agent.whenIdle()
   }
-  const execute = (args: object, callId = ToolCallId('before-learning')) => first.tools.execute({ name: 'genesis_record', arguments: args, agent, signal, callId })
+  const execute = (args: object, callId = ToolCallId('before-learning')) => executeToolFixture(first, { name: 'genesis_record', arguments: args, agent, signal, callId })
   expect((await execute(draft)).isError).toBe(true)
   await say('你好。')
-  expect(chat.requests[0]!.tools!.map(tool => tool.name)).toEqual(['genesis_recall', 'learn'])
+  expect(chat.requests[0]!.tools!.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
   expect(JSON.stringify(chat.requests[0])).not.toContain('genesis_record')
   await say('我教你一个工具，它叫 genesis_record。学会以后，你可以自己决定什么时候使用。')
   expect(first.genesis.learningStatus().tools).toContain('genesis_record')
@@ -3393,7 +3424,7 @@ it('learns writing without an innate listing, logs voluntary records, and restor
   await expect(second.genesisRecords.read(match.id, 0, signal)).rejects.toThrow('not found')
   await expect(readFile(join(root, 'personal', 'records', restored.fileName), 'utf8')).rejects.toThrow()
   const resumed = (await second.agents.resume({ resumeSessionId: agent.id })).agent
-  const replay = await second.tools.execute({ name: 'genesis_record', arguments: draft, agent: resumed, signal, callId: read.source.callId })
+  const replay = await executeToolFixture(second, { name: 'genesis_record', arguments: draft, agent: resumed, signal, callId: read.source.callId })
   expect(replay.isError).not.toBe(true)
   expect(JSON.stringify(replay)).toContain('already-deleted')
   expect((await second.genesisRecords.catalog(signal))!.count).toBe(0)
@@ -3422,7 +3453,7 @@ it('activates learned toolkits per conversation, enforces execution and restores
     { name: 'computer', args: {} }, '操作完成。'])
   first.llm.registerAdapter(['fixture'], model)
   const agent = await first.agentLoop.create(SessionId('toolkit-life'), { provider: 'fixture', model: 'chat' })
-  const execute = (name: string, args: object, owner = agent) => first.tools.execute({ name, arguments: args,
+  const execute = (name: string, args: object, owner = agent) => executeToolFixture(first, { name, arguments: args,
     agent: owner, signal, callId: ToolCallId(`toolkit-direct-${name}`) })
   expect((await execute('computer', {})).isError).toBe(true)
   expect((await execute('genesis_toolkit', { action: 'enable', id: 'computer-operation' })).isError).toBe(true)
@@ -3464,7 +3495,7 @@ it('activates learned toolkits per conversation, enforces execution and restores
   second.tools.register(computer); second.tools.register(browser)
   expect((await second.genesisToolkits.inspect(signal)).entries).toEqual(edited)
   const resumed = (await second.agents.resume({ resumeSessionId: agent.id, agentOptions: { provider: 'fixture', model: 'chat' } })).agent
-  const call = (owner: typeof resumed) => second.tools.execute({ name: 'computer', arguments: {}, agent: owner,
+  const call = (owner: typeof resumed) => executeToolFixture(second, { name: 'computer', arguments: {}, agent: owner,
     signal, callId: ToolCallId('toolkit-resumed') })
   expect((await call(resumed)).isError).toBe(false)
   const newAgent = await second.agentLoop.create(SessionId('toolkit-after-restart'), { provider: 'fixture', model: 'chat' })
@@ -3721,7 +3752,7 @@ it('spontaneity yields a live internal inference to user input and drains it wit
   const outcome = exploring.catch(error => error)
   await started
   const internal = ctx.agents.list().find(item => item !== agent)!
-  const denied = await ctx.tools.execute({ name: 'external_probe', arguments: {}, agent: internal,
+  const denied = await executeToolFixture(ctx, { name: 'external_probe', arguments: {}, agent: internal,
     callId: ToolCallId('probe-outside-budget'), signal: new AbortController().signal })
   expect(denied.isError).toBe(true)
   expect(externalEffects).toBe(0)
@@ -3775,7 +3806,7 @@ it.each(['unconfigured', 'life', 'standard', 'ptc', 'minimal', 'cordis'])('restr
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '你好。' }] }))
   await agent.whenIdle()
   expect(JSON.stringify(chat.requests.at(-1)).includes('紫色风铃')).toBe(mode === 'life')
-  const recall = await ctx.tools.execute({ name: 'genesis_recall', arguments: { query: '紫色风铃' }, agent,
+  const recall = await executeToolFixture(ctx, { name: 'genesis_recall', arguments: { query: '紫色风铃' }, agent,
     signal: new AbortController().signal, callId: ToolCallId(`temporary-recall-${mode}`) })
   if (mode === 'life') expect(JSON.stringify(recall)).toContain('紫色风铃')
   else expect(JSON.stringify(recall)).not.toContain('紫色风铃')

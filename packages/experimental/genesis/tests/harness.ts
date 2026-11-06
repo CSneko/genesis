@@ -9,7 +9,7 @@ import { LifeCore } from '../src/core.ts'
 import { Config } from '../src/config.ts'
 import { lifeDomain, lifeRecordsDomain } from '../src/model.ts'
 
-export async function openCore(root: string, medium: 'json' | 'sqlite' = 'json', overrides: Partial<Config> = {}) {
+export async function openCore(root: string, medium: 'json' | 'sqlite' = 'json', overrides: Partial<Parameters<typeof Config>[0]> = {}) {
   const ctx = new Context()
   await ctx.plugin(Storage)
   const backend = medium === 'json' ? new JsonStorageBackend(root) : new SqliteStorageBackend({ path: join(root, 'life.sqlite'), journalMode: 'wal' })

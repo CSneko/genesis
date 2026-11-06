@@ -1,3 +1,4 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** Loader composition and logged speech results with isolated model and network fixtures. @module */
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -40,7 +41,7 @@ async function boot(root: string, editable = false) {
     { name: '@deepseek-ai/dsh-credentials-local', config: { path: join(root, '.credentials.yaml'), watch: false } },
     { name: '@deepseek-ai/dsh-llm' }, { name: '@deepseek-ai/dsh-session' },
     { name: '@deepseek-ai/dsh-session-projection' }, { name: '@deepseek-ai/dsh-system-prompt' },
-    { name: '@deepseek-ai/dsh-tools' }, { name: '@deepseek-ai/dsh-agent' }, { name: '@deepseek-ai/dsh-jobs-local' },
+    { name: '@deepseek-ai/dsh-tools' }, { name: '@deepseek-ai/dsh-tool-executor-native' }, { name: '@deepseek-ai/dsh-agent' }, { name: '@deepseek-ai/dsh-jobs-local' },
     { name: '@deepseek-ai/dsh-fs-local' }, { name: '@deepseek-ai/dsh-subprocess-local' },
     { name: '@deepseek-ai/dsh-sandbox-local' },
     { name: '@deepseek-ai/dsh-storage' }, { name: '@deepseek-ai/dsh-storage-json', config: { root } },
@@ -163,7 +164,7 @@ it('uses stored credentials before ambient keys, re-resolves edits and refuses m
   for await (const chunk of ctx.attachments.readFileStream(file.attachment)) chunks.push(chunk)
   expect(Buffer.concat(chunks)).toEqual(wav)
   const ref = credentialRef('GENESIS_SPEECH_FIXTURE_KEY')
-  const invoke = (id: string) => ctx.tools.execute({ callId: ToolCallId(id), name: 'genesis_speech',
+  const invoke = (id: string) => executeToolFixture(ctx, { callId: ToolCallId(id), name: 'genesis_speech',
     arguments: { text: '你好，小芽。' }, agent, signal: new AbortController().signal })
   await ctx.credentials.set(ref, 'updated-fixture-secret')
   expectedKey = 'updated-fixture-secret'
@@ -173,7 +174,7 @@ it('uses stored credentials before ambient keys, re-resolves edits and refuses m
   expect((await invoke('speech-ambient-key')).isError).toBe(false)
   expect(fetcher).toHaveBeenCalledTimes(6)
   vi.stubEnv('GENESIS_SPEECH_FIXTURE_KEY', '')
-  const refused = await ctx.tools.execute({ callId: ToolCallId('speech-missing-key'), name: 'genesis_speech',
+  const refused = await executeToolFixture(ctx, { callId: ToolCallId('speech-missing-key'), name: 'genesis_speech',
     arguments: { text: '你好' }, agent, signal: new AbortController().signal })
   expect(refused.isError).toBe(true)
   expect(fetcher).toHaveBeenCalledTimes(6)

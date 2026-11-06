@@ -50,6 +50,8 @@ The same tool also discovers an enabled [AI partner conversation](../genesis-com
 <details>
 <summary>Implementation internals</summary>
 
+QQ awaits registration of its message-evidence projection before starting the controller. Transport replacements share one ready reader; replay reconstructs source evidence without sending messages.
+
 QQ settings require no global compaction service; window policy delegates to the backend in the conversation preset. [cordis.patch.yml](cordis.patch.yml) registers settings without connecting. [controller.ts](src/controller.ts) serializes connection and credential changes, drains the old transport and restores independently versioned nonsecret settings; tokens use the existing credential provider. [runtime.ts](src/runtime.ts) owns admission, per-conversation queues, Session composition and send receipts. Genesis owns person identity, relationships and source-restricted memory. Only the pinned upstream bridge's OneBot transport executes; its standalone settings, memory, reminders and full bridge runtime are not mounted. A maintained workspace patch exports transport typings, adds forward connections, retains mention-only input and settles pending actions during disposal. The build inlines the transport and includes its MIT license, so consumers do not need the workspace patch.
 
 </details>

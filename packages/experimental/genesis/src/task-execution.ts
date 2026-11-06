@@ -68,8 +68,8 @@ export async function stopTaskWork(ctx: Context, agent: Agent | undefined, id: S
   const subagents = ctx.get('subagents')
   if (agent !== undefined && subagents !== undefined) {
     try {
-      const children = await subagents.listChildren(id, signal)
-      await subagents.drainChildren(agent, children.map(child => child.id))
+      signal.throwIfAborted()
+      await subagents.drainDescendants([agent])
     } catch (error) { failures.push(error) }
   }
   // Child completion can have queued input while its handles were being released.

@@ -28,8 +28,8 @@ export function emotionFixture(chinese = false) {
   const saveSettings = vi.fn().mockResolvedValue({ ok: true, value: 5 })
   const dictionary: Readonly<Record<string, string>> = chinese ? zh : en
   const props: ComponentProps<typeof EmotionPanel> = {
-    ...globalProps,
-    close() {}, refresh: vi.fn(), adjust, saveSettings,
+    ...globalProps, close() {},
+    refresh: vi.fn(), adjust, saveSettings,
     t: (key, params) => (dictionary[key] ?? key).replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? '')),
     useResource: (() => ({ status: 'live', value: status, failure: undefined })) as ComponentProps<typeof EmotionPanel>['useResource'],
   }

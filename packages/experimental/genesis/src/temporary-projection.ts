@@ -21,11 +21,8 @@ const PREFIX = 'genesis:temporary:'
 /** Expiry/withdrawal instruction also clears this record from the delivery projection. */
 export const TEMPORARY_REMOVED = 'This temporary memory has expired or been withdrawn. Do not use its earlier content.'
 
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisTemporary: z.infer<typeof schema> }
-}
 /** One replay fold owns evidence sanitization, context delivery and completed-importance recovery. */
-export const temporaryProjection: ProjectionDefinition<'genesisTemporary'> = {
+export const temporaryProjection: ProjectionDefinition<'genesisTemporary', z.infer<typeof schema>> = {
   key: 'genesisTemporary', stateVersion: 1, stateSchema: schema,
   init: () => ({ messages: [], lastActivity: 0, delivered: {} }),
   apply: (state, event) => {

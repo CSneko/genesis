@@ -12,7 +12,7 @@ Genesis 在会话和模型之间保持同一生命身份，保存带来源的候
 
 ## 从源码工作区运行
 
-默认 Genesis Web 组合使用 Node.js 24 或更新版本，并安装工作区依赖，以下命令在仓库根目录执行。完整构建需要 Git 元数据；缺少 `.git` 的源码归档无法提供构建提交号。
+默认 Genesis Web 组合使用 Node.js 24.9 或更新版本，并安装工作区依赖，以下命令在仓库根目录执行。完整构建需要 Git 元数据；缺少 `.git` 的源码归档无法提供构建提交号。
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts

@@ -14,9 +14,6 @@ const projectionSchema = z.strictObject({ turns: z.array(turnSchema) })
 /** Only real user input and uninterrupted assistant text; injected context is excluded. */
 export type EmotionDialogue = z.infer<typeof projectionSchema>
 
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisEmotion: EmotionDialogue }
-}
 
 /**
  * Register a restart-reconstructable window with complete-message and total-retention limits.
@@ -24,7 +21,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * @param chars - Maximum retained serialized dialogue characters.
  * @returns Pure projection; oversized current exchanges retain an explicit overflow marker.
  */
-export function emotionProjection(windowTurns: number, chars: number): ProjectionDefinition<'genesisEmotion'> {
+export function emotionProjection(windowTurns: number, chars: number): ProjectionDefinition<'genesisEmotion', EmotionDialogue> {
   const bounded = (turns: EmotionDialogue['turns']): EmotionDialogue => {
     while (turns.length > 1 && JSON.stringify({ turns }).length > chars) turns.shift()
     const current = turns.at(-1)

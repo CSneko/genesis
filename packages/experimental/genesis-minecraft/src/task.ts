@@ -1,3 +1,4 @@
+import { dispatchGameTool } from './tool-dispatch.ts'
 /** Short Jev-supervised game plans; each finite step uses the normal learned-tool executor. @module */
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
@@ -151,7 +152,7 @@ export class MinecraftTasks {
     this.calls.add(callId)
     const operation = (async () => {
       try {
-        const result = await this.ctx.tools.execute({ name: 'minecraft_act', callId, agent: task.agent, signal: task.lifetime.signal,
+        const result = await dispatchGameTool(this.ctx, { name: 'minecraft_act', callId, agent: task.agent, signal: task.lifetime.signal,
           arguments: { ...action, observationId, waitForCompletion: true } })
         const parsed = z.object({ outcome: z.enum(['completed', 'failed', 'interrupted', 'timed-out']), failure: z.string().nullable() }).safeParse(result.value)
         task.lastResult = { isError: result.isError, ...(result.value === undefined ? {} : { value: result.value }) }

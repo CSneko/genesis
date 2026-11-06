@@ -1,3 +1,9 @@
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface PrincipalMap { 'test-guest': { readonly kind: 'test-guest'; readonly guest: string } }
+}
+import type { ToolkitId } from '@deepseek-ai/dsh-experimental-genesis/types'
+import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** Real Loader, durable Sessions and authenticated OneBot sockets; only model output is scripted. */
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -13,7 +19,7 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:net'
 import { createServer as httpServer } from 'node:http'
 import { Config as QqConfig } from '../src/config.ts'
-import { QqMedia, attachmentIn } from '../src/media.ts'
+import { mediaRecordSchema, QqMedia, attachmentIn } from '../src/media.ts'
 import { sendMedia } from '../src/media-tools.ts'
 import { quoteContext } from '../src/quotes.ts'
 import { WebSocket } from 'ws'
@@ -103,7 +109,7 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
     "- name: '@deepseek-ai/dsh-workspace'",
     "- name: '@deepseek-ai/dsh-token-meter'", "- name: '@deepseek-ai/dsh-compaction-basic'", '  disabled: true',
     "- name: '@deepseek-ai/dsh-session-projection'", "- name: '@deepseek-ai/dsh-system-prompt'",
-    "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-agent'",
+    "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-tool-executor-native'", "- name: '@deepseek-ai/dsh-agent'",
     "- name: '@deepseek-ai/dsh-storage'", "- name: '@deepseek-ai/dsh-storage-json'", `  config: { root: ${JSON.stringify(root)} }`,
     "- name: '@deepseek-ai/dsh-storage-domain'", '  config: { backend: json }',
     "- name: '@deepseek-ai/dsh-sandbox-policy'", `  config: { mode: read-only, workspaceRoot: ${JSON.stringify(root)} }`,
@@ -225,10 +231,10 @@ it('loads group and private Life conversations, filters private recall, acknowle
   expect(first.ctx.agentPresets.composedPreset(agent.ctx)).toBe('life')
   expect(first.ctx.get('compaction')).toBeUndefined()
   expect(first.ctx.agentPresets.serviceFor(agent, 'compaction')).toBeDefined()
-  const recalled = await first.ctx.tools.execute({ agent, name: 'genesis_recall', callId: ToolCallId('group-secret'),
+  const recalled = await executeToolFixture(first.ctx, { agent, name: 'genesis_recall', callId: ToolCallId('group-secret'),
     arguments: { query: secret.id }, signal: new AbortController().signal })
   expect(JSON.stringify(recalled)).not.toContain(secret.content)
-  const forbidden = await first.ctx.tools.execute({ agent, name: 'genesis_self', callId: ToolCallId('group-private-state'),
+  const forbidden = await executeToolFixture(first.ctx, { agent, name: 'genesis_self', callId: ToolCallId('group-private-state'),
     arguments: {}, signal: new AbortController().signal })
   expect(forbidden.isError).toBe(true)
   first.socket.send(incoming('group', 3, 12345, '改名的小明'))
@@ -264,7 +270,7 @@ it('persists operator access rules, pauses admission and refuses stale revisions
   const signal = new AbortController().signal
   const initial = await first.ctx.genesisQqSettings.inspect(signal)
   expect(initial.mode).toBe('connected')
-  const guest = first.ctx.extend({ invocation: { peer: { principal: { kind: 'guest' } } } as RemoteInvocation })
+  const guest = first.ctx.extend({ invocation: { request: { namespace: 'fixture', method: 'inspect', args: {} }, service: 'genesis', signal, async *uplink() {}, peer: { id: brandString<PeerId>('guest'), ctx: first.ctx, principal: { kind: 'test-guest', guest: 'genesis-fixture' }, signal, interactions: 'none', async dispose() {} } } satisfies RemoteInvocation })
   await expect(guest.genesisQqSettings.inspect(signal)).rejects.toThrow('operator access')
   expect(JSON.stringify(initial)).not.toContain(token)
   const paused = { ...initial.settings, enabled: false }
@@ -296,7 +302,7 @@ it('configures QQ through settings without launch credentials, applies changes a
   expect(JSON.stringify(initial)).not.toContain(token)
   first.socket.send(incoming('private', 1))
   await receipt(first.ctx, 1)
-  const guest = first.ctx.extend({ invocation: { peer: { principal: { kind: 'guest' } } } as RemoteInvocation })
+  const guest = first.ctx.extend({ invocation: { request: { namespace: 'fixture', method: 'inspect', args: {} }, service: 'genesis', signal, async *uplink() {}, peer: { id: brandString<PeerId>('guest'), ctx: first.ctx, principal: { kind: 'test-guest', guest: 'genesis-fixture' }, signal, interactions: 'none', async dispose() {} } } satisfies RemoteInvocation })
   await expect(guest.genesisQqSettings.setToken('another-long-test-token', signal)).rejects.toThrow('operator access')
   await expect(guest.genesisQqSettings.saveConnection(initial.connection, 1, signal)).rejects.toThrow('operator access')
   await expect(first.ctx.genesisQqSettings.saveConnection(initial.connection, 0, signal)).rejects.toThrow()
@@ -346,7 +352,7 @@ it('links the configured operator name to the authenticated person in logged mod
   const personId = qqPersonId('55555')
   const route = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.personId === personId)!
   const agent = first.ctx.agents.get(route.sessionId)!
-  const section = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state'
+  const section = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
     ? event.data.source.sections : []).find(item => item.name === 'genesis:participants')!
   expect(section.text).toContain('"qq":"55555"')
   expect(section.text).not.toContain(personId)
@@ -409,7 +415,7 @@ it('recognizes operator and ordinary accounts on their first message in another 
   await receipt(ctx, 2)
   const current = () => model.requests.filter(request => request.model === 'chat').at(-1)!
   const roster = () => {
-    const message = current().messages.filter(message => message.role === 'user' && message.source.kind === 'genesis-state')
+    const message = current().messages.filter(message => message.role === 'user' && message.source?.kind === 'genesis-state')
       .flatMap(message => message.content).filter(block => block.type === 'text')
       .map(block => block.text).findLast(text => text.includes('[genesis:participants]'))!
     const text = message.split('[genesis:participants]\n')[1]!.split('\n\n[')[0]!
@@ -485,7 +491,7 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   const dm = conversations.find(item => item.kind === 'private' && item.personId === qqPersonId('12345'))!
   const operator = conversations.find(item => item.kind === 'private' && item.personId === qqPersonId('55555'))!
   const getAgent = (id: string) => first.ctx.agents.get(SessionId(id))!
-  const window = (id: string, capacity = 1000000) => first.ctx.agentPresets.serviceFor(getAgent(id), 'compaction')!.ctx.waterfall('compaction/context-window',
+  const window = (id: string, capacity = 1000000) => first.ctx.waterfall('compaction/context-window',
     { session: getAgent(id).session, modelWindow: capacity }, () => capacity)
   expect(window(dm.sessionId)).toBe(200000)
   expect(window(group.sessionId)).toBe(400000)
@@ -524,7 +530,7 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   const resumed = second.ctx.agents.get(SessionId(dm.sessionId))!
   expect(second.ctx.sessionTitle.get(resumed.session)?.title).toBe('再改名的小明')
   expect(second.ctx.workspaceRegistry.list().find(item => item.title === 'QQ')?.id).toBe(workspace.id)
-  expect(second.ctx.agentPresets.serviceFor(resumed, 'compaction')!.ctx.waterfall('compaction/context-window', { session: resumed.session, modelWindow: 1000000 }, () => 1000000)).toBe(210000)
+  expect(second.ctx.waterfall('compaction/context-window', { session: resumed.session, modelWindow: 1000000 }, () => 1000000)).toBe(210000)
 })
 
 it('reads version-one admission settings with explicit conversation defaults and saves version three', async () => {
@@ -733,16 +739,16 @@ it('selects group replies from five recent messages, keeps skipped history isola
   expect(modelText(chat)).toContain('围观消息2')
   expect(modelText(chat)).not.toContain('围观消息1')
   expect(modelText(chat)).not.toMatch(/person:[a-f0-9]{64}/u)
-  const recentContext = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state'
+  const recentContext = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
     ? event.data.source.sections : []).findLast(section => section.name === 'genesis:qq-recent')!
   expect(recentContext.text).not.toMatch(/"(?:seq|messageId|nextBeforeSeq|confidence)":/u)
-  const peopleContext = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state'
+  const peopleContext = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
     ? event.data.source.sections : []).findLast(section => section.name === 'genesis:participants')!
   expect(peopleContext.text).not.toContain('"confidence":')
-  const history = await first.ctx.tools.execute({ agent, name: 'genesis_qq_history', callId: ToolCallId('group-history'), arguments: { limit: 20 }, signal })
+  const history = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_history', callId: ToolCallId('group-history'), arguments: { limit: 20 }, signal })
   expect(history.isError).toBe(false)
   expect(JSON.stringify(history)).toContain('围观消息1')
-  const denied = await first.ctx.tools.execute({ agent, name: 'genesis_qq_history', callId: ToolCallId('other-group-history'), arguments: { group: '77777' }, signal })
+  const denied = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_history', callId: ToolCallId('other-group-history'), arguments: { group: '77777' }, signal })
   expect(denied.isError).toBe(true)
   first.model.groupReply = false
   first.socket.send(frame(7, '另一个群的消息', false, 77777))
@@ -750,12 +756,12 @@ it('selects group replies from five recent messages, keeps skipped history isola
   await receipt(first.ctx, 2)
   const privateBinding = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'private')!
   const privateAgent = first.ctx.agents.get(privateBinding.sessionId)!
-  expect(JSON.stringify(await first.ctx.tools.execute({ agent: privateAgent, name: 'genesis_qq_history',
+  expect(JSON.stringify(await executeToolFixture(first.ctx, { agent: privateAgent, name: 'genesis_qq_history',
     callId: ToolCallId('private-history'), arguments: {}, signal }))).not.toContain('围观消息')
   const web = await first.ctx.agents.create({ sessionId: SessionId('history-web'), agentOptions: { provider: 'fixture', model: 'chat' } })
   cleanup.push(() => web.dispose())
   expect(first.ctx.tools.schemas(web.agent).some(tool => tool.name === 'genesis_qq_history')).toBe(false)
-  expect((await first.ctx.tools.execute({ agent: web.agent, name: 'genesis_qq_history', callId: ToolCallId('web-denial'), arguments: {}, signal })).isError).toBe(true)
+  expect((await executeToolFixture(first.ctx, { agent: web.agent, name: 'genesis_qq_history', callId: ToolCallId('web-denial'), arguments: {}, signal })).isError).toBe(true)
   await expect.poll(async () => (await first.ctx.genesisQqSettings.inspect(signal)).pending).toBe(0)
   expect(decisions()).toHaveLength(7)
   first.model.groupDecisionFailure = true
@@ -783,7 +789,7 @@ it('selects group replies from five recent messages, keeps skipped history isola
   expect(groupRecords(restored.session).filter(row => row.kind === 'message' && row.messageId === '9')).toHaveLength(1)
   const current = await second.ctx.genesisQqSettings.inspect(signal)
   await second.ctx.genesisQqSettings.save({ ...current.settings, enabled: false }, current.revision, signal)
-  expect((await second.ctx.tools.execute({ agent: restored, name: 'genesis_qq_history', callId: ToolCallId('paused-history'), arguments: {}, signal })).isError).toBe(true)
+  expect((await executeToolFixture(second.ctx, { agent: restored, name: 'genesis_qq_history', callId: ToolCallId('paused-history'), arguments: {}, signal })).isError).toBe(true)
   await second.ctx.genesisQq.close()
   expect(second.ctx.tools.schemas(restored).some(tool => tool.name === 'genesis_qq_history')).toBe(false)
 })
@@ -805,9 +811,9 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   register(first.ctx)
   for (const name of names.slice(1)) await first.ctx.genesis.learn(name, SessionId('operator-setup'))
   const entries = [
-    { id: brandString<'GenesisToolkitId'>('public'), name: '公共工具', description: '可供任何人启用', tools: ['fixture_public', 'mcp__playwright-mcp__*'], qqAccess: 'anyone' as const },
-    { id: brandString<'GenesisToolkitId'>('operator'), name: '操作者工具', description: '仅操作者启用与执行', tools: ['fixture_operator'], qqAccess: 'operator' as const },
-    { id: brandString<'GenesisToolkitId'>('disabled'), name: '本机工具', description: 'QQ 不开放', tools: ['fixture_disabled'], qqAccess: 'disabled' as const },
+    { id: brandString<ToolkitId>('public'), name: '公共工具', description: '可供任何人启用', tools: ['fixture_public', 'mcp__playwright-mcp__*'], qqAccess: 'anyone' as const },
+    { id: brandString<ToolkitId>('operator'), name: '操作者工具', description: '仅操作者启用与执行', tools: ['fixture_operator'], qqAccess: 'operator' as const },
+    { id: brandString<ToolkitId>('disabled'), name: '本机工具', description: 'QQ 不开放', tools: ['fixture_disabled'], qqAccess: 'disabled' as const },
     ...(await first.ctx.genesisToolkits.inspect(signal)).entries.filter(entry => entry.id === 'browser-reading'),
   ]
   expect(entries[3]?.qqAccess).toBe('anyone')
@@ -816,7 +822,7 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(first.ctx, 1)
   const binding = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'group')!
   const agent = first.ctx.agents.get(binding.sessionId)!
-  const execute = (name: string, args = {}) => first.ctx.tools.execute({ agent, name, arguments: args, callId: ToolCallId(`qq-policy-${name}`), signal })
+  const execute = (name: string, args = {}) => executeToolFixture(first.ctx, { agent, name, arguments: args, callId: ToolCallId(`qq-policy-${name}`), signal })
   const chat = first.model.requests.filter(request => request.model === 'chat').at(-1)!
   expect(chat.tools?.some(tool => tool.name === 'web_search')).toBe(true)
   expect(first.ctx.genesis.learningStatus().tools).not.toContain('web_search')
@@ -864,7 +870,7 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(second.ctx, 5)
   const restored = second.ctx.agents.get(binding.sessionId)!
   expect(second.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)).toContain('fixture_operator')
-  const run = (name: string, args = {}) => second.ctx.tools.execute({ agent: restored, name, arguments: args, callId: ToolCallId(`qq-policy-restored-${name}`), signal })
+  const run = (name: string, args = {}) => executeToolFixture(second.ctx, { agent: restored, name, arguments: args, callId: ToolCallId(`qq-policy-restored-${name}`), signal })
   expect((await run('fixture_public')).isError).toBe(false)
   expect((await run(navigate, { url: 'https://example.com' })).isError).toBe(false)
   expect((await run(evaluate)).isError).toBe(true)
@@ -886,7 +892,7 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(second.ctx, 8)
   const operatorBinding = (await second.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'private')!
   const operatorAgent = second.ctx.agents.get(operatorBinding.sessionId)!
-  const operatorRun = (name: string, args = {}) => second.ctx.tools.execute({ agent: operatorAgent, name, arguments: args,
+  const operatorRun = (name: string, args = {}) => executeToolFixture(second.ctx, { agent: operatorAgent, name, arguments: args,
     callId: ToolCallId(`qq-private-${name}`), signal })
   expect((await operatorRun('genesis_toolkit', { action: 'enable', id: 'disabled' })).isError).toBe(false)
   expect((await operatorRun('fixture_disabled')).isError).toBe(false)
@@ -913,7 +919,7 @@ it('offers learned writings on QQ but executes them only for the authenticated o
   await receipt(ctx, 1)
   const binding = (await ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'group')!
   const agent = ctx.agents.get(binding.sessionId)!
-  const read = () => ctx.tools.execute({ agent, name: 'genesis_record', arguments: { action: 'types' }, callId: ToolCallId('qq-writings'), signal })
+  const read = () => executeToolFixture(ctx, { agent, name: 'genesis_record', arguments: { action: 'types' }, callId: ToolCallId('qq-writings'), signal })
   expect(advertised()).toBe(true)
   expect((await read()).isError).toBe(false)
   socket.send(incoming('group', 1202))
@@ -962,7 +968,7 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   const agent = first.ctx.agents.get(sessionId)!
   const original = agent.session.ownEvents().flatMap((event) => {
     const record = pluginRecordOf(event)
-    return record?.type === 'plugin:genesis-qq/media' ? [record.data] : []
+    return record?.type === 'plugin:genesis-qq/media' ? [mediaRecordSchema.parse(record.data)] : []
   })[0]!
 
   expect(JSON.stringify(agent.session.ownEvents())).not.toContain('base64://')
@@ -988,7 +994,7 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   expect(cross).not.toContain('cross-route-secret')
   const queuedCall = ToolCallId('queued-media-face')
   agent.session.append('tool/call', { turn: 1, step: 1, callId: queuedCall, name: 'genesis_qq_send', arguments: '{"kind":"face","faceId":"14"}' })
-  const queued = await first.ctx.tools.execute({ agent, name: 'genesis_qq_send', callId: queuedCall,
+  const queued = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_send', callId: queuedCall,
     arguments: { kind: 'face', faceId: '14' }, signal })
   expect(queued.isError).not.toBe(true)
   expect(first.sentSegments[1]).toEqual([{ type: 'face', data: { id: '14' } }])
@@ -1020,7 +1026,7 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   const voiceCall = ToolCallId('qq-send-voice')
   const voiceRequest = { kind: 'file', asVoice: true, attachmentId: voice.attachmentId }
   agent.session.append('tool/call', { turn: 1, step: 21, callId: voiceCall, name: 'genesis_qq_send', arguments: JSON.stringify(voiceRequest) })
-  const sentVoice = await first.ctx.tools.execute({ agent, name: 'genesis_qq_send', callId: voiceCall, arguments: voiceRequest, signal })
+  const sentVoice = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_send', callId: voiceCall, arguments: voiceRequest, signal })
   expect(sentVoice.isError).not.toBe(true)
   expect(first.sentSegments.at(-1)).toEqual([{ type: 'record', data: { file: `base64://${wav.toString('base64')}` } }])
   expect(JSON.stringify(agent.session.ownEvents())).not.toContain(`base64://${wav.toString('base64')}`)
@@ -1151,13 +1157,13 @@ it('reads earlier and remotely quoted images on later text turns without crossin
     && JSON.stringify(event.data).includes('Quoted attachments'))).toBe(true)
   expect(agent.session.ownEvents().flatMap((event) => {
     const row = pluginRecordOf(event)
-    return row?.type === 'plugin:genesis-qq/media' && row.data.messageId === '902' ? [row] : []
+    return row?.type === 'plugin:genesis-qq/media' && mediaRecordSchema.parse(row.data).messageId === '902' ? [row] : []
   })).toHaveLength(1)
   const capture = vi.fn(async () => 'must not be captured')
   await quoteContext(agent.session, '904', '[CQ:reply,id=905]', 'private', '12345', '11111', 1000,
     async () => ({ message_type: 'group', group_id: 67890, sender: { user_id: 12345 }, message: [{ type: 'image', data: { file: `base64://${png}` } }] }), capture)
   expect(capture).not.toHaveBeenCalled()
-  const denied = await first.ctx.tools.execute({ agent, name: 'genesis_qq_read_media', callId: ToolCallId('missing-qq-media'),
+  const denied = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_read_media', callId: ToolCallId('missing-qq-media'),
     arguments: { messageId: '905' }, signal: new AbortController().signal })
   expect(denied.isError).toBe(true)
 })
@@ -1211,7 +1217,7 @@ it('routes operator text to a cold group, deduplicates tool retries, forwards or
   expect(results[0]).toMatchObject({ total: 1, items: [{ name: '测试群', target: 'qq:group:11111:67890' }] })
   const delivery = z.object({ id: z.string(), status: z.literal('confirmed'), acknowledged: z.literal(1) }).parse(results.at(-1))
   const originalCall = agent.session.ownEvents().find(event => event.type === 'tool/call')!
-  const tampered = await first.ctx.tools.execute({ name: 'genesis_message',
+  const tampered = await executeToolFixture(first.ctx, { name: 'genesis_message',
     arguments: { action: 'send', target: 'qq:group:11111:67890', text: '替换了原始调用。' },
     agent, signal: new AbortController().signal, callId: originalCall.data.callId })
   expect(tampered.isError).toBe(true)

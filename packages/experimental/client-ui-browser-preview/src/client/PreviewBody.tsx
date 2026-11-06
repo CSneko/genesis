@@ -33,7 +33,7 @@ export interface PreviewActions {
   input: (id: BrowserTabId, input: BrowserInput) => Promise<boolean>
 }
 
-type Props = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'aiBrowser'> & InjectFace<PreviewActions>
+type Props = Pick<PropsRuntime<'sidebar.right.pane.tab'>, 'useResource'> & PropsLocale<'aiBrowser'> & InjectFace<PreviewActions>
 
 /**
  * Render the latest browser observation without running page code in the application.

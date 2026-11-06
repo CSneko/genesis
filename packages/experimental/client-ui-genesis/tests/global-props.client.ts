@@ -10,6 +10,7 @@ const useSessionStatus: GlobalStandardProps['useSessionStatus'] = selector => se
 export const globalProps: GlobalStandardProps = {
   ...allowAllAccess,
   usePanelInfo,
+  useContextMenu: unusedHook,
   useRemoteAccess: allowAllAccess.useRemoteAccess,
   useSessions: unusedHook as never,
   useSessionStatus,

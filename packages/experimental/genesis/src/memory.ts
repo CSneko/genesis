@@ -305,7 +305,7 @@ export class LifeMemoryEngine {
     const operation = this.tail.then(async () => {
       let stage: ReviewStage = 'evidence'
       try {
-        const projection = this.ctx.sessionProjections.stateOf(agent.session, 'genesisManualMemory')
+        const projection = this.ctx.genesisSessionEvidence.manualMemoryOf(agent.session)
         const reply = projection?.replies[messageId]
         if (reply === undefined || !reply.complete) throw new GenesisError('invalid-source', 'Select a completed reply with actual user conversation evidence.')
         return (await this.reviewSources(`manual:${agent.session.id}:${messageId}:${kind}`, agent,
@@ -331,7 +331,7 @@ export class LifeMemoryEngine {
       let stage: ReviewStage = 'evidence'
       try {
         z.uuid().parse(id)
-        const projection = this.ctx.sessionProjections.stateOf(agent.session, 'genesisConversationMemory')
+        const projection = this.ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)
         if (projection === undefined) throw new GenesisError('invalid-state', 'The conversation text projection is unavailable. Reload Genesis before organizing this conversation.')
         if (!projection.messages.some(message => message.role === 'user')) {
           throw new GenesisError('invalid-source', 'This conversation has no actual user chat text to organize.')
@@ -605,7 +605,7 @@ export class LifeMemoryEngine {
   }
 
   private conversation(session: Session, turn: number, current: TurnEvidence['messages']): TurnEvidence['messages'] {
-    const projection = this.ctx.sessionProjections.stateOf(session, 'genesisManualMemory')
+    const projection = this.ctx.genesisSessionEvidence.manualMemoryOf(session)
     if (projection === undefined) throw new GenesisError('invalid-state', 'The memory dialogue projection is unavailable. Reload the Genesis integration.')
     const previous = new Map<number, TurnEvidence['messages']>()
     for (const reply of Object.values(projection.replies)) {

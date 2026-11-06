@@ -8,12 +8,9 @@ import type { LifeMemory, LifeState, MemoryId } from './model.ts'
 const schema = z.object({ messages: z.array(z.object({ role: z.enum(['user', 'assistant']),
   seq: z.number().int().nonnegative(), timestamp: z.iso.datetime(), text: z.string(), participant: personSourceSchema.optional() })) })
 
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisConversationMemory: z.infer<typeof schema> }
-}
 
 /** Explicit operator review includes text messages only, never tools, reasoning or injected context. */
-export const conversationMemoryProjection: ProjectionDefinition<'genesisConversationMemory'> = {
+export const conversationMemoryProjection: ProjectionDefinition<'genesisConversationMemory', z.infer<typeof schema>> = {
   key: 'genesisConversationMemory', stateVersion: 1, stateSchema: schema,
   init: () => ({ messages: [] }),
   apply: (state, event) => {

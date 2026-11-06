@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { fireEvent, waitFor } from '@testing-library/react'
 import { SlotTestRuntime, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '../src/client/GenesisPage.tsx'
 import { mountNavigation } from '../src/client/navigation.ts'
 import { en, zh } from '../src/client/locales.ts'
 

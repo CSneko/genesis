@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 /** First-run DeepSeek prompt behavior over the shared Models join. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -162,6 +163,7 @@ function harness(options: {
     usePanelInfo, useSessionRetainInfo: () => undefined, useResource,
     useWorkspaces: unusedHook,
     ...allowAllAccess,
+    useContextMenu: contextMenuHook(),
     controller,
     useModels: bindSnapshotSelector(controller.store),
     operations,

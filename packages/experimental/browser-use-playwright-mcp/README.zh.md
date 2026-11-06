@@ -72,6 +72,8 @@ Web 中可在 `mode: persistent` 旁设置 `preview: {}`，配合单独加载的
 <details>
 <summary>实现细节 — 点击展开</summary>
 
+视频检查指引通过提示词章节提供；工具声明由选定的执行器负责。
+
 提供方解析固定版本 npm 包的可执行入口，并使用当前 Node 启动。服务进程之前可能运行临时协议探测进程。[共享运行时](../browser-use-runtime/README.zh.md)负责等待 Agent 初始化、逐 Session 串行执行与清理；[MCP 客户端](../../mcp/mcp-client/README.zh.md)负责传输、发现和结果投影。
 
 只要活动 Session 保持连接，浏览器状态就会跨轮次保留。MCP 服务器在经验证的 Session 当前工作目录中启动；Session 后续改变目录时，服务器保留启动目录。销毁会等待服务器关闭，再释放资源。launch 模式在重新加载后创建新的浏览器状态。persistent 模式从 `userDataDir` 恢复网站数据，Session 日志不包含浏览器配置目录的备份。此模式的 MCP 工作目录为 DSH 启动目录，launch 和 attach 模式则使用 Session 目录。

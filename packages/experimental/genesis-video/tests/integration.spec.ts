@@ -1,3 +1,4 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** Real Loader, logged model tool flow, real media and restart; only the model is substituted. @module */
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -40,7 +41,7 @@ async function boot(root: string) {
   await writeFile(path, JSON.stringify([
     { name: '@deepseek-ai/dsh-llm' }, { name: '@deepseek-ai/dsh-session' },
     { name: '@deepseek-ai/dsh-session-projection' }, { name: '@deepseek-ai/dsh-system-prompt' },
-    { name: '@deepseek-ai/dsh-tools' }, { name: '@deepseek-ai/dsh-agent' }, { name: '@deepseek-ai/dsh-jobs-local' },
+    { name: '@deepseek-ai/dsh-tools' }, { name: '@deepseek-ai/dsh-tool-executor-native' }, { name: '@deepseek-ai/dsh-agent' }, { name: '@deepseek-ai/dsh-jobs-local' },
     { name: '@deepseek-ai/dsh-fs-local' }, { name: '@deepseek-ai/dsh-subprocess-local' },
     { name: '@deepseek-ai/dsh-sandbox-local' },
     { name: '@deepseek-ai/dsh-storage' }, { name: '@deepseek-ai/dsh-storage-json', config: { root } },
@@ -112,7 +113,7 @@ it.skipIf(!process.env.GENESIS_VIDEO_CHROMIUM)('edits clips and resumes after re
   expect(JSON.stringify(model.requests.at(-1)?.messages) ?? JSON.stringify(agent.session.ownEvents())).toContain('Import local assets')
   let seq = 0
   const invoke = async (action: string, input: object = {}) => {
-    const result = await ctx.tools.execute({ callId: ToolCallId(`video-test-${++seq}`), name: 'genesis_video', arguments: { action, input }, agent, signal: new AbortController().signal })
+    const result = await executeToolFixture(ctx, { callId: ToolCallId(`video-test-${++seq}`), name: 'genesis_video', arguments: { action, input }, agent, signal: new AbortController().signal })
     if (result.isError) throw new Error(JSON.stringify(result.error))
     return result.value
   }
@@ -161,7 +162,7 @@ it.skipIf(!process.env.GENESIS_VIDEO_CHROMIUM)('edits clips and resumes after re
   const second = await create(next, 'video-unrelated')
   next.llm.registerAdapter(['fixture'], new Model([]))
   const call = async (action: string, input: object = {}) => {
-    const result = await next.tools.execute({ callId: ToolCallId(`video-restart-${++seq}`), name: action === 'enable' ? 'genesis_toolkit' : 'genesis_video',
+    const result = await executeToolFixture(next, { callId: ToolCallId(`video-restart-${++seq}`), name: action === 'enable' ? 'genesis_toolkit' : 'genesis_video',
       arguments: action === 'enable' ? { action: 'enable', id: 'video' } : { action, input }, agent: second, signal: new AbortController().signal })
     if (result.isError) throw new Error(JSON.stringify(result.error))
     return result.value
@@ -195,9 +196,9 @@ it.skipIf(!process.env.GENESIS_VIDEO_CHROMIUM)('edits clips and resumes after re
   await expect(call('read', { projectId: revision.projectId, revisionId: initial.revisionId })).rejects.toThrow('unreadable JSON')
   expect(await readFile(corrupted, 'utf8')).toBe('{broken')
   const ordinary = await create(next, 'video-ordinary', 'standard')
-  expect(await next.tools.execute({ callId: ToolCallId('video-denied'), name: 'genesis_video', arguments: { action: 'guide' }, agent: ordinary, signal: new AbortController().signal })).toMatchObject({ isError: true })
+  expect(await executeToolFixture(next, { callId: ToolCallId('video-denied'), name: 'genesis_video', arguments: { action: 'guide' }, agent: ordinary, signal: new AbortController().signal })).toMatchObject({ isError: true })
   setSandboxMode(second.session, 'read-only')
-  expect(await next.tools.execute({ callId: ToolCallId('video-read-only'), name: 'genesis_video', arguments: { action: 'save', input: { ...base, timeline: { clips: [] } } }, agent: second, signal: new AbortController().signal })).toMatchObject({ isError: true })
+  expect(await executeToolFixture(next, { callId: ToolCallId('video-read-only'), name: 'genesis_video', arguments: { action: 'save', input: { ...base, timeline: { clips: [] } } }, agent: second, signal: new AbortController().signal })).toMatchObject({ isError: true })
   const plugin = [...next.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-experimental-genesis-video')!
   await plugin.fiber!.dispose()
   expect(next.tools.get('genesis_video')).toBeUndefined()
@@ -211,7 +212,7 @@ it('keeps revisions bounded and damaged artifacts visible without requiring a br
   ctx.llm.registerAdapter(['fixture'], new Model([]))
   const agent = await create(ctx, 'video-artifacts')
   let seq = 0
-  const call = (name: string, args: object) => ctx.tools.execute({ callId: ToolCallId(`artifact-${++seq}`), name, arguments: args, agent, signal: new AbortController().signal })
+  const call = (name: string, args: object) => executeToolFixture(ctx, { callId: ToolCallId(`artifact-${++seq}`), name, arguments: args, agent, signal: new AbortController().signal })
   expect(await call('genesis_video', { action: 'guide' })).toMatchObject({ isError: true })
   expect(await call('learn', { name: 'genesis_video' })).toMatchObject({ isError: false })
   expect(await call('genesis_toolkit', { action: 'enable', id: 'video' })).toMatchObject({ isError: false })

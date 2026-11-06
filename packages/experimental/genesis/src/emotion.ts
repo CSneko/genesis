@@ -78,7 +78,7 @@ export class LifeEmotionEngine {
         const settings = resolveEmotion(this.config, state.emotion)
         if (!settings.enabled) return
         stage = 'evidence'
-        const projected = this.ctx.sessionProjections.stateOf(agent.session, 'genesisEmotion')
+        const projected = this.ctx.genesisSessionEvidence.emotionOf(agent.session)
         if (projected === undefined) throw new GenesisError('invalid-state', 'Emotion dialogue projection is unavailable. Reload the Genesis integration.')
         let evidence = structuredClone(projected.turns).slice(-settings.windowTurns)
         const current = evidence.at(-1)

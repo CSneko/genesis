@@ -25,10 +25,10 @@ it('plays a logged speech result through the file API and keeps download availab
   fireEvent.error(audio)
   expect(screen.getByRole('alert').textContent).toBe('playbackFailed')
   expect(screen.getByRole('link', { name: 'download' })).toBe(download)
-  view.rerender(<SpeechPlayer {...props} block={{ ...props.block, content: [
+  view.rerender(<SpeechPlayer {...props} phase="result" block={{ ...props.block, content: [
     { type: 'text', text: JSON.stringify({ attachment, path: 'https://other.invalid/voice.wav' }) },
     { type: 'file', attachment },
-  ] } as typeof props.block} />)
+  ] } as Extract<typeof props, { phase: 'result' }>['block']} />)
   expect(view.container.querySelector('audio')).toBeNull()
   expect(screen.getByRole('status').textContent).toBe('unavailable')
 })

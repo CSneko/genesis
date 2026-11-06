@@ -38,7 +38,7 @@ export async function deliverTask(ctx: Context, agent: Agent, row: TaskSubmissio
   authorize: () => void): Promise<void> {
   signal.throwIfAborted()
   if (ctx.agents.get(agent.id) !== agent) throw new GenesisError('invalid-state', 'Task Agent was disposed. Retry the same request after inspecting its Session.')
-  const state = ctx.sessionProjections.stateOf(agent.session, 'genesisTask')
+  const state = ctx.genesisSessionEvidence.taskOf(agent.session)
   if (state === undefined) throw new GenesisError('invalid-state', 'Task projection is unavailable. Reload the task integration.')
   authorize()
   if (state.assignment !== null) {

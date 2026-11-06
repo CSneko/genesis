@@ -62,7 +62,7 @@ it('retains a stale page with a visible failure and localized action status', ()
   const frame: BrowserPreviewFrame = { started: true, tabs: [], omittedTabs: 0, following: true, url: 'https://example.test/current', title: 'Current page',
     image: 'data:image/jpeg;base64,/9j/', capturedAt: '2026-10-30T00:00:00Z', error: 'capture-failed',
     actions: [{ id: '1' as BrowserActionId, tool: 'browser_click', origin: 'ai', startedAt: '2026-10-30T00:00:00Z', status: 'failed' }] }
-  const props = { select: vi.fn(async () => {}), control: vi.fn(async () => {}), t: (key: keyof typeof zh) => zh[key],
+  const props = { input: vi.fn(async () => true), select: vi.fn(async () => {}), control: vi.fn(async () => {}), t: (key: keyof typeof zh) => zh[key],
     useResource: () => ({ status: 'live', value: frame, failure: undefined }),
   } as ComponentProps<typeof PreviewBody>
   render(<PreviewBody {...props} />)
@@ -81,7 +81,7 @@ it('controls the page identity shown in each row and can follow the AI again', a
       { id: second, title: 'Second', url: 'https://example.test/second', active: false, selected: false }] }
   const select = vi.fn(async () => {})
   const control = vi.fn(async () => {})
-  const props = { select, control,
+  const props = { select, control, input: vi.fn(async () => true),
     t: (key: keyof typeof zh, params?: Record<string, string | number>) => {
       let text = zh[key]
       for (const [name, value] of Object.entries(params ?? {})) text = text.replace(`{${name}}`, String(value))

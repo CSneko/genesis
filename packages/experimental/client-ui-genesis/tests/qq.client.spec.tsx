@@ -1,3 +1,5 @@
+import type { QqDecisionEditor } from '../src/client/QqDecisionEditor.tsx'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -9,13 +11,14 @@ import { en } from '../src/client/locales.ts'
 import { globalProps } from './global-props.client.ts'
 
 afterEach(cleanup)
-const t = (key: keyof typeof en, params?: Record<string, unknown>) => en[key]
+const dictionary: Readonly<Record<string, string>> = en
+const t: ComponentProps<typeof QqDecisionEditor>['t'] = (key, params) => (dictionary[key] ?? key)
   .replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? ''))
 it('shows unknown delivery, saves explicit access rules and retains failed or stale drafts', async () => {
   const sample: QqStatus = { revision: 0, connectionRevision: 0, connection: { enabled: true, wsUrl: 'ws://127.0.0.1:3001', port: 6700, botQq: '11111', operatorQq: '12345' }, botQq: '11111', operatorQq: '12345', endpoint: 'ws://127.0.0.1:3001', tokenConfigured: true,
     mode: 'connected', failure: null, pending: 0, liveSessions: 1, omitted: 0,
     settings: { enabled: true, allowGroups: ['67890'], allowUsers: ['12345'], acceptPrivateFromAnyone: false, groupAutoReply: true, replyOnlyWhenMentioned: true, extraPrompt: '', privateContextTokens: 200000, groupContextTokens: 400000, operatorContextTokens: 500000 },
-    deliveries: [{ sessionId: brandString('qq-private'), seq: 10, timestamp: '2026-11-04T00:00:00.000Z', status: 'uncertain', parts: 2, acknowledged: 1 }] }
+    deliveries: [{ sessionId: brandString<SessionId>('qq-private'), seq: 10, timestamp: '2026-11-04T00:00:00.000Z', status: 'uncertain', parts: 2, acknowledged: 1 }] }
   const saveQq = vi.fn().mockResolvedValueOnce({ ok: false, error: new Error('conflict') }).mockResolvedValue({ ok: true, value: 2 })
   const saveConnection = vi.fn().mockResolvedValue({ ok: true, value: 1 })
   const setToken = vi.fn().mockResolvedValue({ ok: true, value: undefined })
@@ -63,9 +66,9 @@ it('edits a QQ-only decision route and distinguishes real probability, boolean a
   const setDecisionKey = vi.fn().mockResolvedValue({ ok: true, value: undefined })
   const sample: NonNullable<QqStatus['decision']> = { revision: 1, settings: { kind: 'inherit' }, keyConfigured: false,
     recent: [
-      { sessionId: brandString('qq-group'), messageId: '1', target: '67890', timestamp: '2026-11-04T09:30:00.000Z', outcome: 'reply', decision: { probability: 0.73, threshold: 0.6 } },
-      { sessionId: brandString('qq-group'), messageId: '2', target: '67890', timestamp: '2026-11-04T09:30:01.000Z', outcome: 'skip', decision: null },
-      { sessionId: brandString('qq-group'), messageId: '3', target: '67890', timestamp: '2026-11-04T09:30:02.000Z', outcome: 'failed', decision: null },
+      { sessionId: brandString<SessionId>('qq-group'), messageId: '1', target: '67890', timestamp: '2026-11-04T09:30:00.000Z', outcome: 'reply', decision: { probability: 0.73, threshold: 0.6 } },
+      { sessionId: brandString<SessionId>('qq-group'), messageId: '2', target: '67890', timestamp: '2026-11-04T09:30:01.000Z', outcome: 'skip', decision: null },
+      { sessionId: brandString<SessionId>('qq-group'), messageId: '3', target: '67890', timestamp: '2026-11-04T09:30:02.000Z', outcome: 'failed', decision: null },
     ] }
   render(<QqDecisionEditor sample={sample} writable saveDecision={saveDecision} setDecisionKey={setDecisionKey} refresh={vi.fn()} t={t} />)
   expect(screen.getByText(t('qqDecisionProbability', { probability: 73, threshold: 60 }))).toBeTruthy()

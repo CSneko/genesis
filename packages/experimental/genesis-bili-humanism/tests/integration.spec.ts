@@ -1,3 +1,4 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** Real Loader, upstream tools, SQLite ledger and durable Genesis; only network and model are substituted. */
 import { Context } from '@deepseek-ai/cordis'
 import { DatabaseSync } from 'node:sqlite'
@@ -41,7 +42,7 @@ async function boot(root: string, localAsr = false) {
   await writeFile(path, [
     "- name: '@deepseek-ai/dsh-llm'", "- name: '@deepseek-ai/dsh-session'",
     "- name: '@deepseek-ai/dsh-session-projection'", "- name: '@deepseek-ai/dsh-system-prompt'",
-    "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-agent'",
+    "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-tool-executor-native'", "- name: '@deepseek-ai/dsh-agent'",
     "- name: '@deepseek-ai/dsh-storage'", "- name: '@deepseek-ai/dsh-storage-json'", `  config: { root: ${JSON.stringify(root)} }`,
     "- name: '@deepseek-ai/dsh-storage-domain'", '  config: { backend: json }',
     "- name: '@deepseek-ai/dsh-sandbox-policy'", `  config: { mode: read-only, workspaceRoot: ${JSON.stringify(root)} }`,
@@ -167,7 +168,7 @@ it('uses one writing tool across restart without creating upstream journals or l
   for (const name of ['bili_humanism_memory', 'bili_humanism_journal', 'bili_humanism_personality', 'bili_humanism_question', 'bili_humanism_like']) {
     expect(tools).not.toContain(name)
   }
-  expect(await ctx.tools.execute({ callId: ToolCallId('blocked-journal'), name: 'bili_humanism_journal',
+  expect(await executeToolFixture(ctx, { callId: ToolCallId('blocked-journal'), name: 'bili_humanism_journal',
     arguments: { readingId: randomUUID(), json: JSON.stringify(note) }, agent,
     signal: new AbortController().signal })).toMatchObject({ isError: true })
   const db = new DatabaseSync(join(root, 'bili', 'ledger.sqlite'), { readOnly: true })
@@ -190,7 +191,7 @@ it('turns upstream JSON faults into tool errors and denies unlearned or ordinary
   await ctx.genesis.awaken('小芽')
   ctx.llm.registerAdapter(['fixture'], new Model([{ name: 'bili_humanism_read', args: { video: 'invalid' } }, '读取失败。']))
   const agent = await create(ctx, 'bili-errors')
-  const invoke = (name: string, args: object) => ctx.tools.execute({ callId: ToolCallId('bili-failure'), name,
+  const invoke = (name: string, args: object) => executeToolFixture(ctx, { callId: ToolCallId('bili-failure'), name,
     arguments: args, agent, signal: new AbortController().signal })
   expect(await invoke('bili_humanism_read', { video: bv })).toMatchObject({ isError: true })
   expect(requests).toEqual([])
@@ -212,7 +213,7 @@ it('turns upstream JSON faults into tool errors and denies unlearned or ordinary
   expect(retained.visual.error).toBe('VISUAL_ATTACHMENT_REQUIRED')
   expect(requests).toHaveLength(2)
   const ordinary = await create(ctx, 'bili-ordinary', 'standard')
-  expect(await ctx.tools.execute({ callId: ToolCallId('bili-mode-denial'), name: 'bili_humanism_read',
+  expect(await executeToolFixture(ctx, { callId: ToolCallId('bili-mode-denial'), name: 'bili_humanism_read',
     arguments: { video: bv }, agent: ordinary, signal: new AbortController().signal })).toMatchObject({ isError: true })
   const entry = [...ctx.loader.entries()].find(item => item.options.name === '@deepseek-ai/dsh-experimental-genesis-bili-humanism')!
   await entry.fiber!.dispose()
@@ -226,7 +227,7 @@ it('keeps successful frame delivery when subtitles are unconfirmed and exposes b
   const id = '00000000-0000-4000-8000-000000000001'
   ctx.llm.registerAdapter(['fixture'], new Model([{ name: 'bili_humanism_transcribe', args: { readingId: id } }, '转写已生成，接下来读取正文。']))
   const agent = await create(ctx, 'bili-asr')
-  const invoke = (name: string, args: object) => ctx.tools.execute({ callId: ToolCallId('bili-asr-check'), name,
+  const invoke = (name: string, args: object) => executeToolFixture(ctx, { callId: ToolCallId('bili-asr-check'), name,
     arguments: args, agent, signal: new AbortController().signal })
   expect(await invoke('bili_humanism_transcribe', { readingId: id })).toMatchObject({ isError: true })
   await invoke('learn', { name: 'bili_humanism_transcribe' })
@@ -266,7 +267,7 @@ it('keeps successful frame delivery when subtitles are unconfirmed and exposes b
   })
   try {
     const cancel = new AbortController()
-    const pending = ctx.tools.execute({ callId: ToolCallId('bili-asr-cancel'), name: 'bili_humanism_transcribe',
+    const pending = executeToolFixture(ctx, { callId: ToolCallId('bili-asr-cancel'), name: 'bili_humanism_transcribe',
       arguments: { readingId: id }, agent, signal: cancel.signal })
     await spawned.promise
     cancel.abort()

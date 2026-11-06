@@ -187,7 +187,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
       if (prior !== undefined) return prior
       const agent = this.ctx.agents.get(sessionId)
       if (agent === undefined || !this.options.lifeMode(agent)) throw new GenesisError('invalid-state', 'Open a life-mode conversation before awakening.')
-      const boundary = this.ctx.get('sessionProjections')?.stateOf(agent.session, 'turnBoundary')
+      const boundary = this.ctx.agents.turnBoundaryOf(agent.session)
       if (boundary === undefined) throw new GenesisError('invalid-state', 'The turn projection is unavailable.')
       if (boundary.lastTurn !== 0) throw new GenesisError('invalid-state', 'Awakening requires a blank conversation.')
       signal.throwIfAborted()

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-genesis",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.2-rc.1",
   "description": "Persistent life identity, sourced memories and observed capability history for Genesis.",
   "type": "module",
   "main": "lib/index.js",
@@ -72,7 +72,8 @@
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-jobs": "workspace:*",
-    "@deepseek-ai/dsh-subagent": "workspace:*"
+    "@deepseek-ai/dsh-subagent": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-native": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -106,7 +107,9 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-jobs": "workspace:*",
     "@deepseek-ai/dsh-subagent": "workspace:*",
-    "@deepseek-ai/dsh-jobs-local": "workspace:*"
+    "@deepseek-ai/dsh-jobs-local": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
+    "@deepseek-ai/dsh-tool-testkit": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

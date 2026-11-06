@@ -1,3 +1,4 @@
+import { dispatchGameTool } from './tool-dispatch.ts'
 /** One-shot and event-driven Minecraft programs reuse PTC confinement and dispatch every game operation through guarded tools. @module */
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
@@ -123,7 +124,7 @@ export class MinecraftScripts {
       const callId = ToolCallId(`minecraft-script-${randomUUID()}`)
       this.calls.add(callId)
       try {
-        const result = await this.ctx.tools.execute({ name, arguments: args, callId, agent, signal: owned })
+        const result = await dispatchGameTool(this.ctx, { name, arguments: args, callId, agent, signal: owned })
         const data = { name, arguments: args, isError: result.isError,
           ...(result.value === undefined ? {} : { value: result.value }), ...(result.isError ? { error: result.error } : {}) }
         this.record(agent, 'call', data)

@@ -640,6 +640,13 @@ Internal peers cannot invoke operator controls or grant tool permissions.
  */
 @Remote('begin') begin(topic: string, signal: AbortSignal): Promise<void>
 
+/** Continue one internal conversation with one more bounded exchange.
+ * @param sessionId - Conversation to continue; absent keeps the current binding.
+ * @param signal - Cancellation before command admission.
+ * @returns After admission; status reports subsequent progress.
+ */
+@Remote('continueExchange') continueExchange(sessionId: string | undefined, signal: AbortSignal): Promise<void>
+
 /** Wake one side without starting any conversation.
  * @param target - Genesis or the partner gateway schedule.
  * @param signal - Cancellation before command admission.
@@ -1511,6 +1518,14 @@ async configure(settings: SpontaneitySettings, revision: number): Promise<number
 
 /** Stop the current opportunity while retaining its confirmed progress. */
 stop(): void
+
+/**
+ * Limit private reflection declarations to its current bounded phase.
+ * @param agent - Conversation whose declarations are being rendered.
+ * @param name - Actual registered capability name.
+ * @returns Whether reflection permits advertising this capability.
+ */
+advertises(agent: Agent, name: string): boolean
 
 /** Check the live owner separately from durable Session attribution.
  *

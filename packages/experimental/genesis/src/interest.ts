@@ -59,7 +59,7 @@ export class LifeInterestEngine {
       try {
         const signal = AbortSignal.any([caller, this.lifetime.signal, AbortSignal.timeout(this.calls.timeoutMs)])
         signal.throwIfAborted()
-        const projected = this.ctx.sessionProjections.stateOf(agent.session, 'genesisInterest')
+        const projected = this.ctx.genesisSessionEvidence.interestOf(agent.session)
         if (projected === undefined) throw new GenesisError('invalid-state', 'Interest dialogue projection is unavailable. Reload Genesis.')
         let conversation = structuredClone(projected.turns).slice(-this.config.windowTurns)
         const current = conversation.at(-1)

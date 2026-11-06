@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-genesis-companion",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.2-rc.1",
   "description": "Internal OneBot partner conversations and attributed relationships for Genesis.",
   "type": "module",
   "main": "lib/index.js",
@@ -89,7 +89,9 @@
     "@deepseek-ai/dsh-credentials-local": "workspace:*",
     "@deepseek-ai/dsh-sandbox-policy": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
-    "@deepseek-ai/dsh-session-title": "workspace:*"
+    "@deepseek-ai/dsh-session-title": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
+    "@deepseek-ai/dsh-tool-testkit": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

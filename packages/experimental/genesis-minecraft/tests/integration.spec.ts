@@ -1,3 +1,4 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** Real Loader and Agent Loop; only game transport and model endpoints are substituted. */
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -87,7 +88,7 @@ async function boot(root: string, minecraft: Partial<Config> = {}, scripts = fal
       { name: '@deepseek-ai/dsh-ptc-runtime-node', config: { maxOutputBytes: 8192, maxOldGenerationSizeMb: 64, maxPendingCalls: 8 } },
       { name: '@deepseek-ai/dsh-working-directory', config: { defaultDirectory: root } },
     ] : []),
-    { name: '@deepseek-ai/dsh-tools' }, { name: '@deepseek-ai/dsh-agent' },
+    { name: '@deepseek-ai/dsh-tools' }, { name: '@deepseek-ai/dsh-tool-executor-native' }, { name: '@deepseek-ai/dsh-agent' },
     { name: '@deepseek-ai/dsh-storage' }, { name: '@deepseek-ai/dsh-storage-json', config: { root } },
     { name: '@deepseek-ai/dsh-storage-domain', config: { backend: 'json' } },
     { name: '@deepseek-ai/dsh-session-persistence-jsonl', config: { root: join(root, 'sessions'), compression: 'none' } },
@@ -161,14 +162,14 @@ it('delivers logged Jev changes, reuses knowledge routing with a different model
   expect(await ctx.genesisMinecraft.save(settings, 0, signal)).toBe(1)
   const audits: string[] = []
   ctx.on('session/event', (_session, event) => { const record = pluginRecordOf(event); if (record !== undefined) audits.push(record.type) })
-  await ctx.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
+  await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
   await vi.waitFor(() => { expect(model.requests.length).toBeGreaterThan(0) })
   expect(requests[0]?.model).toBe('minecraft-model')
   expect(JSON.stringify(model.requests[0])).toContain('Minecraft observation')
-  const look = await ctx.tools.execute({ name: 'minecraft_observe', callId: ToolCallId('observe'), arguments: {}, agent, signal })
+  const look = await executeToolFixture(ctx, { name: 'minecraft_observe', callId: ToolCallId('observe'), arguments: {}, agent, signal })
   const observation = z.object({ observation: z.object({ id: z.string() }) }).parse(look.value)
   expect(look.isError).toBe(false)
-  expect(await ctx.tools.execute({ name: 'minecraft_act', callId: ToolCallId('follow'), arguments: {
+  expect(await executeToolFixture(ctx, { name: 'minecraft_act', callId: ToolCallId('follow'), arguments: {
     action: 'follow', observationId: observation.observation.id, playerId: 'companion-uuid' }, agent, signal })).toMatchObject({ isError: false })
   const requestCount = model.requests.length
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Keep following while we chat.' }] }))
@@ -189,7 +190,7 @@ it('delivers logged Jev changes, reuses knowledge routing with a different model
   await expect(second.genesisMinecraft.save(settings, 0, signal)).rejects.toMatchObject({ details: { reason: 'conflict' } })
   const outsider = (await second.agents.create({ sessionId: SessionId('minecraft-outsider'), agentOptions: { provider: 'fixture', model: 'chat' },
     setup: async (child) => { await second.agentPresets.mount(child, 'standard') } })).agent
-  expect(await second.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('denied'), arguments: {}, agent: outsider, signal }))
+  expect(await executeToolFixture(second, { name: 'minecraft_connect', callId: ToolCallId('denied'), arguments: {}, agent: outsider, signal }))
     .toMatchObject({ isError: true })
 })
 
@@ -350,13 +351,13 @@ it('waits for skills without blocking other commands and approaches matched bloc
     setup: async (child) => { await ctx.agentPresets.mount(child, 'life') } })).agent
   const signal = new AbortController().signal
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, skillTimeoutMs: 1000 }), 0, signal)
-  await ctx.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
+  await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
   let sequence = 0
   const observation = async () => {
-    const result = await ctx.tools.execute({ name: 'minecraft_observe', callId: ToolCallId(`observe-${++sequence}`), arguments: {}, agent, signal })
+    const result = await executeToolFixture(ctx, { name: 'minecraft_observe', callId: ToolCallId(`observe-${++sequence}`), arguments: {}, agent, signal })
     return z.object({ observation: z.object({ id: z.string() }) }).parse(result.value).observation.id
   }
-  const act = (args: object, callSignal = signal) => ctx.tools.execute({ name: 'minecraft_act', callId: ToolCallId(`act-${++sequence}`), arguments: args, agent, signal: callSignal })
+  const act = (args: object, callSignal = signal) => executeToolFixture(ctx, { name: 'minecraft_act', callId: ToolCallId(`act-${++sequence}`), arguments: args, agent, signal: callSignal })
   let settled = false
   const walking = act({ action: 'goto', observationId: await observation(), x: 6, y: 64, z: 0, waitForCompletion: true })
     .then((result) => { settled = true; return result })
@@ -435,11 +436,11 @@ it('dispatches a new task immediately after monitoring failed, and stops it visi
   await ctx.genesisStatus.saveModels({ decision: { kind: 'jev', url: `http://127.0.0.1:${address.port}/v1/systemone`, model: 'knowledge', threshold: 0.5 },
     writer: { kind: 'provider', provider: 'fixture', model: 'chat' } }, 0, signal)
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, jevEnabled: true, intervalMs: 60000 }), 0, signal)
-  await ctx.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
+  await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
   await vi.waitFor(async () => { expect((await ctx.genesisMinecraft.inspect(signal)).monitor).toBe('failed') })
   expect(requests).toBe(1)
   status = 200
-  const task = (id: string) => ctx.tools.execute({ name: 'minecraft_task', callId: ToolCallId(id), agent, signal,
+  const task = (id: string) => executeToolFixture(ctx, { name: 'minecraft_task', callId: ToolCallId(id), agent, signal,
     arguments: { action: 'start', goal: 'Look toward the nearby tree', timeoutMs: 10000, steps: [{ action: 'look', x: 1, y: 65, z: 0 }] } })
   expect(await task('retry-task')).toMatchObject({ isError: false, value: { phase: 'running' } })
   await vi.waitFor(async () => { expect((await ctx.genesisMinecraft.inspect(signal)).task).toMatchObject({ phase: 'completed', completedActions: 1 }) })
@@ -521,10 +522,10 @@ it('executes a bounded Jev tree plan while chatting, supports directional motion
     writer: { kind: 'provider', provider: 'fixture', model: 'chat' } }, 0, signal)
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, jevEnabled: false,
     intervalMs: 250, notificationIntervalMs: 1000 }), 0, signal)
-  await ctx.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
+  await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
   let count = 0
-  const task = (args: object) => ctx.tools.execute({ name: 'minecraft_task', callId: ToolCallId(`task-${++count}`), arguments: args, agent, signal })
-  const observe = async () => z.object({ observation: z.object({ id: z.string() }) }).parse((await ctx.tools.execute({
+  const task = (args: object) => executeToolFixture(ctx, { name: 'minecraft_task', callId: ToolCallId(`task-${++count}`), arguments: args, agent, signal })
+  const observe = async () => z.object({ observation: z.object({ id: z.string() }) }).parse((await executeToolFixture(ctx, {
     name: 'minecraft_observe', callId: ToolCallId(`observe-${++count}`), arguments: {}, agent, signal })).value).observation.id
   const speechObservation = await observe()
   const firstTask = await task({ action: 'start', goal: 'Harvest this small tree', timeoutMs: 10000,
@@ -537,7 +538,7 @@ it('executes a bounded Jev tree plan while chatting, supports directional motion
   emitter.emit('chat', 'Companion', 'Keep going while we talk.')
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Are you still cutting the tree?' }] }))
   await vi.waitFor(() => { expect(model.requests.length).toBeGreaterThan(requestCount) })
-  expect(await ctx.tools.execute({ name: 'minecraft_act', callId: ToolCallId('chat-while-task'), agent, signal,
+  expect(await executeToolFixture(ctx, { name: 'minecraft_act', callId: ToolCallId('chat-while-task'), agent, signal,
     arguments: { action: 'chat', observationId: speechObservation, message: 'Yes, still working.' } })).toMatchObject({ isError: false })
   expect((await ctx.genesisMinecraft.inspect(signal)).task?.phase).toBe('running')
   expect(pathPending).toBe(true)
@@ -556,7 +557,7 @@ it('executes a bounded Jev tree plan while chatting, supports directional motion
 
   await task({ action: 'start', goal: 'Move west', timeoutMs: 10000, steps: [{ action: 'move', direction: 'west', distance: 2 }] })
   await vi.waitFor(() => { expect(goto).toHaveBeenCalledTimes(3) })
-  expect(await ctx.tools.execute({ name: 'minecraft_act', callId: ToolCallId('main-interrupt'), agent, signal,
+  expect(await executeToolFixture(ctx, { name: 'minecraft_act', callId: ToolCallId('main-interrupt'), agent, signal,
     arguments: { action: 'look', observationId: await observe(), x: 1, y: 65, z: 0, waitForCompletion: true } })).toMatchObject({ isError: false })
   expect((await ctx.genesisMinecraft.inspect(signal)).task).toMatchObject({ phase: 'cancelled', reason: 'replaced-by-main-model' })
 
@@ -634,11 +635,11 @@ it('verifies collection through inventory, reports partial pickup failure, and r
   await ctx.genesisStatus.saveModels({ decision: { kind: 'jev', url: `http://127.0.0.1:${address.port}/v1/systemone`, model: 'knowledge', threshold: 0.5 },
     writer: { kind: 'provider', provider: 'fixture', model: 'chat' } }, 0, signal)
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, intervalMs: 250 }), 0, signal)
-  expect(await ctx.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', username: 'Genesis' }, agent, signal }))
+  expect(await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', username: 'Genesis' }, agent, signal }))
     .toMatchObject({ isError: false })
   const connectedInventoryListeners = bot.inventory.listenerCount('updateSlot')
   let sequence = 0
-  const execute = (name: string, args: object) => ctx.tools.execute({ name, callId: ToolCallId(`collection-${++sequence}`), arguments: args, agent, signal })
+  const execute = (name: string, args: object) => executeToolFixture(ctx, { name, callId: ToolCallId(`collection-${++sequence}`), arguments: args, agent, signal })
   const observe = async () => z.object({ observation: z.object({ id: z.string(), supportedActions: z.array(z.string()),
     blocks: z.array(z.object({ name: z.string(), position: z.object({ x: z.number() }), visible: z.boolean(), withinReach: z.boolean() })) }) })
     .parse((await execute('minecraft_observe', { blockName: 'oak_log' })).value).observation
@@ -710,10 +711,10 @@ it('admits a 120-second collection request within deployment bounds and explains
   await ctx.genesisStatus.saveModels({ decision: { kind: 'jev', url: `http://127.0.0.1:${address.port}/v1/systemone`, model: 'knowledge', threshold: 0.5 },
     writer: { kind: 'provider', provider: 'fixture', model: 'chat' } }, 0, signal)
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, intervalMs: 60000 }), 0, signal)
-  expect(await ctx.tools.execute({ name: 'minecraft_connect', callId: ToolCallId('connect'), agent, signal,
+  expect(await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), agent, signal,
     arguments: { host: '127.0.0.1', username: 'Genesis' } })).toMatchObject({ isError: false })
   let sequence = 0
-  const task = (args: object) => ctx.tools.execute({ name: 'minecraft_task', callId: ToolCallId(`budget-${++sequence}`), agent, signal, arguments: args })
+  const task = (args: object) => executeToolFixture(ctx, { name: 'minecraft_task', callId: ToolCallId(`budget-${++sequence}`), agent, signal, arguments: args })
   const request = { action: 'start', goal: '再砍一棵金合欢树的木头收进背包',
     instructions: '找到附近最近的一棵金合欢树，先清掉挡路的叶子，再把树干砍下来，木头要真的进背包。',
     steps: [{ action: 'collect', blockName: 'acacia_log', count: 4, item: 'acacia_log' }], timeoutMs: 120000 }
@@ -796,7 +797,7 @@ it('runs conditional multi-step scripts through the real Node runtime, guards ea
   const signal = new AbortController().signal
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, jevEnabled: false, intervalMs: 60000 }), 0, signal)
   let sequence = 0
-  const execute = (name: string, args: object) => ctx.tools.execute({ name, callId: ToolCallId(`script-test-${++sequence}`), arguments: args, agent, signal })
+  const execute = (name: string, args: object) => executeToolFixture(ctx, { name, callId: ToolCallId(`script-test-${++sequence}`), arguments: args, agent, signal })
   expect(await execute('minecraft_connect', { host: '127.0.0.1', username: 'Genesis' })).toMatchObject({ isError: false })
   expect(await execute('minecraft_find_blocks', { blockName: 'log', visible: true, withinReach: true, blockProperties: { axis: 'y' } }))
     .toMatchObject({ isError: false, value: { blocks: [{ name: 'acacia_log' }, { name: 'acacia_log' }] } })
@@ -877,7 +878,7 @@ it('keeps event scripts idle without a lifetime deadline, retains state, uses it
   const signal = new AbortController().signal
   await ctx.genesisMinecraft.save(settingsSchema.parse({ enabled: true, vision: false, jevEnabled: false, intervalMs: 60000 }), 0, signal)
   let sequence = 0
-  const execute = (name: string, args: object) => ctx.tools.execute({ name, callId: ToolCallId(`event-test-${++sequence}`), arguments: args, agent, signal })
+  const execute = (name: string, args: object) => executeToolFixture(ctx, { name, callId: ToolCallId(`event-test-${++sequence}`), arguments: args, agent, signal })
   expect(await execute('minecraft_connect', { host: '127.0.0.1', username: 'Genesis' })).toMatchObject({ isError: false })
   const inspect = () => execute('minecraft_script', { action: 'inspect' })
   const idle = () => vi.waitFor(async () => { expect(await inspect()).toMatchObject({ value: { outcome: 'running', waitingForEvent: true } }) }, { timeout: 10000 })

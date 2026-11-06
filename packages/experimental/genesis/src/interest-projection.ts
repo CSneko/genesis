@@ -18,9 +18,6 @@ const projectionSchema = z.strictObject({ turns: z.array(turnSchema) })
 /** Exchange text and tool outcomes; tool arguments and result bodies stay in the Session log. */
 export type InterestDialogue = z.infer<typeof projectionSchema>
 
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisInterest: InterestDialogue }
-}
 
 /**
  * Retain recent complete exchanges with an explicit overflow marker.
@@ -28,7 +25,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * @param chars - Complete projection character limit.
  * @returns A deterministic Session projection restored on restart.
  */
-export function interestProjection(windowTurns: number, chars: number): ProjectionDefinition<'genesisInterest'> {
+export function interestProjection(windowTurns: number, chars: number): ProjectionDefinition<'genesisInterest', InterestDialogue> {
   const bounded = (turns: InterestDialogue['turns']): InterestDialogue => {
     while (turns.length > 1 && JSON.stringify({ turns }).length > chars) turns.shift()
     const current = turns.at(-1)

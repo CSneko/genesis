@@ -1,3 +1,5 @@
+import type { PersonId } from '@deepseek-ai/dsh-experimental-genesis/types'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -8,20 +10,23 @@ import { PeoplePanel } from '../src/client/PeoplePanel.tsx'
 import { en } from '../src/client/locales.ts'
 import { globalProps } from './global-props.client.ts'
 
+type RelationshipId = NonNullable<PersonSummary['relationship']>['id']
+type LifeEventId = PersonDetail['events'][number]['id']
+
 afterEach(cleanup)
 const t = (key: keyof typeof en, params?: Record<string, unknown>) => en[key]
   .replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? ''))
-const person: PersonSummary = { id: brandString('person:' + 'a'.repeat(64)), name: '小明', accountId: '12345', operator: false,
+const person: PersonSummary = { id: brandString<PersonId>('person:' + 'a'.repeat(64)), name: '小明', accountId: '12345', operator: false,
   updatedAt: '2026-11-04T00:00:00.000Z', evidenceCount: 1, relationship: {
-    id: brandString('1c03b9b0-ddb7-4fc1-9e70-c435eac370bd'), scope: 'person', personId: brandString('person:' + 'a'.repeat(64)), label: '小明',
+    id: brandString<RelationshipId>('1c03b9b0-ddb7-4fc1-9e70-c435eac370bd'), scope: 'person', personId: brandString<PersonId>('person:' + 'a'.repeat(64)), label: '小明',
     values: { affection: 0.2, trust: 0.5, attachment: 0, familiarity: 0.3, feltSecurity: 0.5 },
     confidence: { affection: 0.6, trust: 0, attachment: 0, familiarity: 0.5, feltSecurity: 0 },
     origins: { affection: 'model-inference', trust: 'unknown', attachment: 'unknown', familiarity: 'model-inference', feltSecurity: 'unknown' },
     updatedAt: '2026-11-04T00:00:00.000Z' } }
 it('shows sourced people, preserves failed deletion, and requires explicit confirmation before forgetting', async () => {
-  const detail: PersonDetail = { person, total: 1, nextOffset: null, events: [{ id: brandString('e47f3471-453d-4c61-beb0-54ab2695baed'),
+  const detail: PersonDetail = { person, total: 1, nextOffset: null, events: [{ id: brandString<LifeEventId>('e47f3471-453d-4c61-beb0-54ab2695baed'),
     timestamp: person.updatedAt, kind: 'appraisal', reason: '一起完成工作', summary: '共同交流让彼此更熟悉',
-    sources: [{ id: brandString('3ccceade-f826-45d4-afac-c21ed5bdc337'), sessionId: brandString('qq-private'), eventId: '2' }] }] }
+    sources: [{ id: brandString<LifeEventId>('3ccceade-f826-45d4-afac-c21ed5bdc337'), sessionId: brandString<SessionId>('qq-private'), eventId: '2' }] }] }
   const forget = vi.fn().mockResolvedValueOnce({ ok: false, error: new Error('changed') }).mockResolvedValue({ ok: true, value: undefined })
   const props = { ...globalProps, t, forget, adjust: vi.fn(), refresh: vi.fn(), openSession: vi.fn(),
     useResource: (address: string) => ({ status: 'live', value: address.includes('genesis-person/') ? detail

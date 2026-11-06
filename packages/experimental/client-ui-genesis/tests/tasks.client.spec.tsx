@@ -1,3 +1,5 @@
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -12,7 +14,7 @@ afterEach(cleanup)
 
 it('separates persisted delivery from running background work, opens the original Session and retains failed samples', () => {
   const task: ManagedTaskCatalog['items'][number] = {
-    id: brandString('task-one'), workspaceId: brandString('workspace-one'), workspaceTitle: 'My project', mode: 'standard',
+    id: brandString<SessionId>('task-one'), workspaceId: brandString<WorkspaceId>('workspace-one'), workspaceTitle: 'My project', mode: 'standard',
     delivery: 'delivered', state: 'completed', executionState: 'background', turn: 2, attempts: 2, activeWork: 1,
     readable: true, confirmed: true,
   }
@@ -21,7 +23,7 @@ it('separates persisted delivery from running background work, opens the origina
   const refresh = vi.fn()
   const dictionary: Readonly<Record<string, string>> = en
   let failed = false
-  const props: ComponentProps<typeof TasksPanel> = { ...globalProps, close: vi.fn(), openSession, refresh, t: key => dictionary[key] ?? key,
+  const props: ComponentProps<typeof TasksPanel> = { ...globalProps, close() {}, openSession, refresh, t: key => dictionary[key] ?? key,
     useResource: ((address: string) => ({ status: failed ? 'failed' : 'live',
       value: address.endsWith('offset=0') ? catalog : { ...catalog, items: [], nextOffset: null },
       failure: failed ? { code: 'FAILED', message: 'Unavailable' } : undefined })) as ComponentProps<typeof TasksPanel>['useResource'] }

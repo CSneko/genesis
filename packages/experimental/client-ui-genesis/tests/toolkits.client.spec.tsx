@@ -1,3 +1,4 @@
+import type { ToolkitId } from '@deepseek-ai/dsh-experimental-genesis/types'
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -12,7 +13,7 @@ afterEach(cleanup)
 const t = (key: keyof typeof en, params?: Record<string, unknown>) => en[key]
   .replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? ''))
 it('edits toolkit members, retains rejected drafts and fences stale saves until explicit reload', async () => {
-  const sample: ToolkitStatus = { revision: 1, entries: [{ id: brandString('computer-operation'), name: '电脑操作',
+  const sample: ToolkitStatus = { revision: 1, entries: [{ id: brandString<ToolkitId>('computer-operation'), name: '电脑操作',
     description: 'Browser and desktop', tools: ['computer', 'mcp__playwright-mcp__*'] }],
   learned: ['computer'], available: ['computer', 'mcp__playwright-mcp__browser_navigate'] }
   const save = vi.fn().mockResolvedValueOnce({ ok: false, error: new Error('Conflict') }).mockResolvedValue({ ok: true, value: 2 })

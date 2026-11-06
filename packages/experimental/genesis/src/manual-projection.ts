@@ -12,12 +12,9 @@ const projectionSchema = z.object({ turn: z.number().int().nonnegative(), users:
 /** Private source-text projection; inference still enforces the configured input budget before sending evidence. */
 export type ManualMemoryProjection = z.infer<typeof projectionSchema>
 
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisManualMemory: ManualMemoryProjection }
-}
 
 /** Logged user evidence and individual completed replies, rebuilt across restart without synchronous event reads. */
-export const manualMemoryProjection: ProjectionDefinition<'genesisManualMemory'> = {
+export const manualMemoryProjection: ProjectionDefinition<'genesisManualMemory', ManualMemoryProjection> = {
   key: 'genesisManualMemory', stateVersion: 1, stateSchema: projectionSchema,
   init: () => ({ turn: 0, users: [], replies: {} }),
   apply: (state, event) => {

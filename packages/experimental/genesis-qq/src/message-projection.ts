@@ -11,15 +11,15 @@ const schema = z.strictObject({
   speaker: z.strictObject({ source: personSourceSchema, seq: z.number().int().nonnegative().transform(SessionSeq) }).optional(),
   calls: z.record(z.string(), z.strictObject({ seq: z.number().int().nonnegative().transform(SessionSeq), arguments: z.string() })),
 })
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisQqMessages: z.infer<typeof schema> }
-}
+/** Synchronous access to prepared QQ message evidence. */
+export type QqEvidenceReader = (session: import('@deepseek-ai/dsh-session').Session) => z.infer<typeof schema>
+
 /**
  * Fold original text and execution evidence without synchronous historical reads.
  * @param config - The existing historyLimit bounds retained original-message count.
  * @returns Host-only projection; old messages outside its window cannot be forwarded.
  */
-export function qqMessageProjection(config: Pick<Config, 'historyLimit'>): ProjectionDefinition<'genesisQqMessages'> {
+export function qqMessageProjection(config: Pick<Config, 'historyLimit'>): ProjectionDefinition<'genesisQqMessages', z.infer<typeof schema>> {
   return {
     key: 'genesisQqMessages', stateVersion: 1, stateSchema: schema,
     init: () => ({ inputs: [], calls: {} }),

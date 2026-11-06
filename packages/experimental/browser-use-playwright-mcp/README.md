@@ -72,6 +72,8 @@ When configuring the system prompt's `toolOrder` for the whole process, leave br
 <details>
 <summary>Implementation internals — click to expand</summary>
 
+Video-inspection guidance is a prompt section; tool declarations are owned by the selected executor.
+
 The provider resolves its pinned npm entry and starts it under the current Node executable. A temporary protocol probe may precede the serving process. The [shared runtime](../browser-use-runtime/README.md) owns awaited Agent initialization, per-Session serialization, and cleanup; the [MCP client](../../mcp/mcp-client/README.md) owns transport, discovery, and result projection.
 
 Browser state survives turns while its live Session remains attached. The MCP server starts in the Session's validated current working directory and retains that launch directory after later Session directory changes. Disposal waits for server shutdown before releasing resources. Launch mode starts fresh browser state after reload. Persistent mode reloads website data from `userDataDir`; the Session log does not contain a browser-profile backup. Its MCP working directory is the DSH launch directory, while launch and attach modes use the Session directory.

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-genesis-minecraft",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.2-rc.1",
   "description": "Minecraft Java play and bounded Jev environment monitoring for Genesis.",
   "type": "module",
   "main": "lib/index.js",
@@ -109,7 +109,9 @@
     "@deepseek-ai/dsh-ptc-runtime-node": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*",
     "@deepseek-ai/dsh-subprocess-local": "workspace:*",
-    "@deepseek-ai/dsh-sandbox-local": "workspace:*"
+    "@deepseek-ai/dsh-sandbox-local": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
+    "@deepseek-ai/dsh-tool-testkit": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

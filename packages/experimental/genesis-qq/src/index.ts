@@ -44,7 +44,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   if (config.outboundGroups.length + config.outboundUsers.length > config.maxAllowedTargets) {
     throw new GenesisError('capacity', 'QQ outbound target count exceeds maxAllowedTargets. Reduce the outbound lists.')
   }
-  ctx.effect(() => ctx.sessionProjections.register(qqMessageProjection(config)))
+  const evidence = await ctx.sessionProjections.register(qqMessageProjection(config))
   const domain = await ctx.storageDomain.open(qqPreferencesDomain)
   let preferences: QqPreferences
   try { preferences = new QqPreferences(domain, config) } catch (error) { await domain.close(); throw error }
@@ -64,7 +64,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => inbox.close())
   await inbox.start(life.events.some(event => event.dedupKey === 'sleep:qq-inbox-initialized'))
   await ctx.genesis.recordSleep('qq-inbox-initialized', 'qq-inbox-initialized', {})
-  const runtime = new QqController(ctx, config, preferences, connection, decisions, messages, inbox)
+  const runtime = new QqController(ctx, config, preferences, connection, decisions, messages, inbox, session => evidence.stateOf(session))
   ctx.provide('genesisQq', runtime)
   ctx.inject(['genesisSleep'], scope => {
     runtime.setSleep(scope.genesisSleep)

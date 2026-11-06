@@ -1,3 +1,4 @@
+import type { QqEvidenceReader } from './message-projection.ts'
 import type { LifeSleep } from '@deepseek-ai/dsh-experimental-genesis'
 import type { QqSleepInbox } from './sleep-inbox.ts'
 /** One owner serializes QQ reconfiguration and drains the old transport before replacing it. @module */
@@ -32,9 +33,11 @@ export class QqController {
    * @param connection - Durable connection choices.
    * @param decisions - Independent group-decision settings.
    * @param messages - Cross-conversation receipt owner, retained across transport replacement.
+   * @param inbox - Persistent sleep backlog.
+   * @param evidence - Ready QQ message evidence reader.
    */
   constructor(private readonly ctx: Context, private readonly config: Config, private readonly preferences: QqPreferences,
-    private readonly connection: QqConnectionPreferences, private readonly decisions: QqDecisionPreferences, private readonly messages: QqMessageStore, private readonly inbox: QqSleepInbox) {}
+    private readonly connection: QqConnectionPreferences, private readonly decisions: QqDecisionPreferences, private readonly messages: QqMessageStore, private readonly inbox: QqSleepInbox, private readonly evidence: QqEvidenceReader) {}
 
   /** Attach the optional life-wide sleep owner across transport replacements.
    * @param sleep - Current owner; undefined detaches its callbacks.
@@ -67,7 +70,7 @@ export class QqController {
     if (this.lifetime.signal.aborted || !connection.enabled) return
     const accessToken = await this.token()
     if (this.lifetime.signal.aborted || accessToken.length < 16) return
-    const runtime = new QqRuntime(this.ctx, { ...this.config, ...connection, accessToken }, this.preferences, this.decisions, this.messages, this.inbox)
+    const runtime = new QqRuntime(this.ctx, { ...this.config, ...connection, accessToken }, this.preferences, this.decisions, this.messages, this.evidence, this.inbox)
     this.runtime = runtime
     runtime.attachSleep(this.sleep)
     try { await runtime.start(); this.failure = null }

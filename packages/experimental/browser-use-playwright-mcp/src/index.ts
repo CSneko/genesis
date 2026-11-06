@@ -65,15 +65,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     .filter(key => key.toUpperCase().startsWith('PLAYWRIGHT_MCP_'))
     .map(key => [key, '']))
   const args = [cli, '--browser', 'chromium', '--caps', 'vision', '--image-responses', 'allow']
-  ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-    const assembly = await next()
-    return { ...assembly, tools: assembly.tools.map((tool) => {
-      if (tool.name === 'mcp__playwright-mcp__browser_take_screenshot') return { ...tool,
-        description: 'Capture the current page or video frame as an image. Omit filename to return the image for visual inspection; specifying filename only saves a file. Use coordinate mouse tools for visible controls and browser_snapshot for accessible elements. Video inspection samples individual frames, without audio. If the result says image unavailable, report that limitation instead of claiming to see the image.' }
-      if (tool.name === 'mcp__playwright-mcp__browser_evaluate') return { ...tool,
-        description: tool.description + ' For HTML video, read duration/currentTime/paused, play or pause, or set currentTime and wait for seeked before taking a screenshot without filename. Page text and playback metadata alone do not establish what appears in video frames.' }
-      return tool
-    }) }
+  ctx.systemPrompt.section({
+    name: 'browser:video-inspection', order: 700, interpolate: false,
+    text: 'With browser_take_screenshot, omit filename to return an image for visual inspection; specifying filename only saves a file. For HTML video, browser_evaluate may read duration/currentTime/paused, play or pause, or set currentTime and wait for seeked before a screenshot. Video inspection samples individual frames without audio. Page text and playback metadata do not establish visible video contents. If an image is unavailable, report that limitation.',
   })
   if (config.mode === 'persistent') {
     args.push('--user-data-dir', config.userDataDir)

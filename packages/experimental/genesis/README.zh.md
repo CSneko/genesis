@@ -79,6 +79,8 @@ kind: "package-bundle"
 <a id="implementation"></a>
 ## 实现
 
+Genesis 在发布记忆、情绪、工具包和任务读取接口前等待 Session 证据投影注册完成。Life 对话使用作用域内的原生工具执行器筛选已学工具和渠道声明；提示词组装只修改文本。执行守卫独立检查学习状态和权限。
+
 任务消息投递适配 [dsh-superagent 8c32a9d 的 AgentDelivery](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/8c32a9dc5d72c033816c6a8110b37f40cf94fba4/src/app/delivery.ts)，保留稳定消息 ID 和持久化确认，采用 Harness 投影和 Genesis 权限上限。[MIT 声明](LICENSE.superagent)随本包发布。
 
 [生命核心](src/core.ts)通过既有 Storage Domain 执行原子状态变更，[运行适配](src/index.ts)负责单向会话证据与可撤销注册，[状态服务](src/status.ts)通过认证 Remote 提供有界状态查询与一次性命名。实时记忆评估状态保留安全的失败阶段、错误码与原因，可区分模型 HTTP 错误和输出未完成；进程重启后不恢复诊断。存储失败后相关核心操作停止，直到完成可信恢复。内核会在进程退出时释放写入锁，包括崩溃退出；运行中的写入方始终保有锁。锁文件会保留，不得删除或替换。新生命的成长记录为空。每个会话首次观察到的运行工具清单合并为一条基线事实，预装工具不视为后天获得或已学能力。后续声明变化和显式学习会产生带来源的成长记录。能力观察在角色学习限制之前进行，模式策略和重复状态读取不会使可用性反复切换。

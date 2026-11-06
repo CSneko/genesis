@@ -105,6 +105,18 @@ export class Spontaneity {
    * @param id - Actual Session id.
    *
    * @returns Whether owned. */
+  /**
+   * Limit private reflection declarations to its current bounded phase.
+   * @param agent - Conversation whose declarations are being rendered.
+   * @param name - Actual registered capability name.
+   * @returns Whether reflection permits advertising this capability.
+   */
+  advertises(agent: Agent, name: string): boolean {
+    if (!this.owns(agent.id)) return true
+    const allowed = this.active?.phase === 'explore' ? [...BASE_TOOLS, ...this.policy.tools] : BASE_TOOLS
+    return allowed.includes(name) && !detached(name)
+  }
+
   private owns(id: SessionId): boolean { return this.core.isSpontaneitySession(id) }
 
   /** Check the live owner separately from durable Session attribution.
@@ -221,14 +233,6 @@ export class Spontaneity {
       active.requests++
       const tokens = Math.min(call.maxTokens ?? this.policy.requestTokens, this.policy.requestTokens)
       return { ...call, maxTokens: this.reserveOutput(agent.session, tokens) }
-    }, { global: true })
-    ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
-      const result = await next()
-      if (context.agent !== undefined && this.owns(context.agent.id)) {
-        const allowed = this.active?.phase === 'explore' ? [...BASE_TOOLS, ...this.policy.tools] : BASE_TOOLS
-        result.tools = result.tools.filter(tool => allowed.includes(tool.name) && !detached(tool.name))
-      }
-      return result
     }, { global: true })
     ctx.on('session/event', (session, event) => {
       if (this.active?.agent?.session === session && event.type === 'turn/end') this.active.ended = event.data.reason.kind
@@ -363,7 +367,7 @@ export class Spontaneity {
       controller.signal.throwIfAborted()
       const available = this.store.read().thoughts.filter(thought => ['saved', 'resting'].includes(thought.status)
         && (thought.revisitAfter === null || Date.parse(thought.revisitAfter) <= Date.now()))
-      const recent = this.ctx.sessionProjections.stateOf(sourceAgent.session, 'genesisTemporary')
+      const recent = this.ctx.genesisSessionEvidence.temporaryOf(sourceAgent.session)
       if (recent === undefined) throw new GenesisError('invalid-state', 'Recent conversation evidence is unavailable. Reload Genesis before another opportunity.')
       const dialogue = recent.messages.filter(message => message.role !== 'tool')
       const selection = { thoughts: available.slice(0, this.config.queryLimit),

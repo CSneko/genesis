@@ -1,3 +1,4 @@
+import type { QqEvidenceReader } from './message-projection.ts'
 import type { LifeSleep, SleepTransition } from '@deepseek-ai/dsh-experimental-genesis'
 import type { QqSleepInbox } from './sleep-inbox.ts'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
@@ -77,8 +78,10 @@ export class QqRuntime {
    * @param preferences - Durable operator-owned route policy.
    * @param decisions - Independent group-reply model settings.
    * @param messages - Cross-conversation receipt journal retained across reconnects.
+   * @param evidence - Ready QQ message evidence reader.
+   * @param inbox - Optional persistent sleep backlog.
    */
-  constructor(private readonly ctx: Context, private readonly config: Config, private readonly preferences: QqPreferences, private readonly decisions: QqDecisionPreferences, messages: QqMessageStore, private readonly inbox?: QqSleepInbox) {
+  constructor(private readonly ctx: Context, private readonly config: Config, private readonly preferences: QqPreferences, private readonly decisions: QqDecisionPreferences, messages: QqMessageStore, evidence: QqEvidenceReader, private readonly inbox?: QqSleepInbox) {
     if (!isAbsolute(config.cwd) || config.accessToken.length < 16) {
       throw new GenesisError('invalid-state', 'QQ requires an absolute cwd and an accessToken of at least 16 characters. Configure the channel before restarting.')
     }
@@ -102,7 +105,7 @@ export class QqRuntime {
       if (account === undefined || kind !== 'group' && kind !== 'private') throw new GenesisError('invalid-source', 'Invalid QQ destination.')
       const handle = await this.conversation(id, account, kind, sourceRoute.socket)
       return { id, agent: handle.agent, kind, account }
-    }, (id, run) => this.queueMessage(id, run))
+    }, (id, run) => this.queueMessage(id, run), evidence)
     this.media = new QqMedia(ctx, config)
     this.server = new OneBotServer({ host: '127.0.0.1', port: config.port, accessToken: config.accessToken,
       botQq: Number(config.botQq), maxFrameBytes: config.maxFrameBytes, actionTimeoutMs: config.actionTimeoutMs }, ctx.logger)

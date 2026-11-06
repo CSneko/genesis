@@ -4,9 +4,8 @@
     provider: !!js process.env.GENESIS_CHAT_PROVIDER ?? 'deepseek-official'
     model: !!js process.env.GENESIS_CHAT_MODEL ?? 'deepseek-v4-flash'
 
-- id: tools
-  config:
-    mode: native
+- id: tool-executor-native
+  config: {}
 
 - id: genesis
   config:

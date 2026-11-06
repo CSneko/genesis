@@ -18,11 +18,8 @@ const schema = z.strictObject({ id: z.uuid().transform(brandString<InteractionId
   receipt: z.strictObject({ text: z.string(), seq: z.number(), timestamp: z.iso.datetime(), interrupted: z.boolean() }).nullable() })
 /** Last attributed initiative in this Session; ordinary turns retain its receipt for recovery. */
 export type InitiativeReceipt = z.infer<typeof schema>
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap { genesisInitiative: InitiativeReceipt }
-}
 /** Replay restores delivery evidence without treating idle as a per-message result. */
-export const initiativeProjection: ProjectionDefinition<'genesisInitiative'> = {
+export const initiativeProjection: ProjectionDefinition<'genesisInitiative', InitiativeReceipt> = {
   key: 'genesisInitiative', stateVersion: 2, stateSchema: schema,
   init: () => ({ id: null, currentTurn: 0, turn: 0, ended: false, receipt: null, failure: null }),
   apply: (previous, event) => {

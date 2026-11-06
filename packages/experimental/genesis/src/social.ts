@@ -342,7 +342,7 @@ export class SocialInitiative {
     const state = await this.core.snapshot()
     for (const record of state.initiative?.records ?? []) {
       if (!['dispatching', 'uncertain'].includes(record.status) || record.sessionId !== session.id) continue
-      const projected = this.ctx.sessionProjections.stateOf(session, 'genesisInitiative')
+      const projected = this.ctx.genesisSessionEvidence.initiativeOf(session)
       if (projected?.id === record.id && projected.receipt !== null) {
         await this.confirmSession(session)
         await this.settleReceipt(record, session.id, projected)

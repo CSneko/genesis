@@ -1,3 +1,4 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 /** Real browser profile durability across complete Loader and MCP process restarts. */
 import { once } from 'node:events'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -89,7 +90,7 @@ it.skipIf(process.env.DSH_BROWSER_EXECUTABLE === undefined)(
         return handle.agent
       }
       async function call(ctx: Context, owner: Agent, name: string, args: Record<string, unknown>) {
-        return ctx.tools.execute({ agent: owner, name: `mcp__playwright-mcp__${name}`,
+        return executeToolFixture(ctx, { agent: owner, name: `mcp__playwright-mcp__${name}`,
           arguments: args, callId: ToolCallId(name), signal: new AbortController().signal })
       }
       const first = await load('first')

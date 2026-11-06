@@ -11,7 +11,8 @@ import { qqPersonId, conversationSchema, personSourceSchema } from '../src/peopl
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { temporaryProjection } from '../src/temporary-projection.ts'
+import { GenesisSessionEvidence } from '../src/session-evidence.ts'
+import { Config } from '../src/config.ts'
 import { TemporaryStore } from '../src/temporary-store.ts'
 import { TemporaryMemoryEngine } from '../src/temporary.ts'
 import { temporaryDomain } from '../src/temporary-model.ts'
@@ -22,17 +23,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const dispose: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const close of dispose.splice(0).reverse()) await close() })
-function reader() {
+async function reader() {
   const ctx = new Context()
-  new SessionProjectionRegistry(ctx)
-  ctx.effect(() => ctx.sessionProjections.register(temporaryProjection))
+  await ctx.plugin(SessionProjectionRegistry)
+  ctx.provide('genesisSessionEvidence', await GenesisSessionEvidence.create(ctx, Config({ leasePath: join(tmpdir(), 'unused-life-lease') })))
   dispose.push(() => ctx.fiber.dispose())
   return ctx
 }
 
 
-it('counts Unicode characters, retains the complete threshold-crossing message and omits all tool data', () => {
-  const ctx = reader()
+it('counts Unicode characters, retains the complete threshold-crossing message and omits all tool data', async () => {
+  const ctx = await reader()
   const session = Session.create(SessionId('temporary-batches'))
   session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '鲸'.repeat(999) }] }), { surfaceOp: 'append' })
   const second = session.append('assistant/message', { turn: 1, step: 1, stream: [], message: createAssistantMessage({
@@ -41,12 +42,12 @@ it('counts Unicode characters, retains the complete threshold-crossing message a
   session.append('tool/call', { turn: 1, step: 1, callId, name: 'read_file', arguments: '{"secret-tool-arguments":true}' })
   session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, isError: false, content: [{ type: 'text', text: 'secret-tool-output' }] }) }, { surfaceOp: 'append' })
   session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '短尾批' }] }), { surfaceOp: 'append' })
-  const batch = temporaryBatch(ctx.sessionProjections.stateOf(session, 'genesisTemporary')!.messages, -1, 10000)
+  const batch = temporaryBatch(ctx.genesisSessionEvidence.temporaryOf(session)!.messages, -1, 10000)
   expect(batch.map(item => item.text)).toEqual(['鲸'.repeat(999), '🐋'.repeat(300)])
-  const tail = temporaryBatch(ctx.sessionProjections.stateOf(session, 'genesisTemporary')!.messages, second.seq, 10000)
+  const tail = temporaryBatch(ctx.genesisSessionEvidence.temporaryOf(session)!.messages, second.seq, 10000)
   expect(tail.map(item => item.text)).toEqual(['read_file', '短尾批'])
   expect(JSON.stringify([...batch, ...tail])).not.toMatch(/hidden-reasoning|secret-tool-arguments|secret-tool-output/u)
-  expect(() => temporaryBatch(ctx.sessionProjections.stateOf(session, 'genesisTemporary')!.messages, -1, 100)).toThrow(/entire message/u)
+  expect(() => temporaryBatch(ctx.genesisSessionEvidence.temporaryOf(session)!.messages, -1, 100)).toThrow(/entire message/u)
 })
 
 it('labels QQ summary evidence with logged nicknames and the verified operator name', async () => {
@@ -55,14 +56,14 @@ it('labels QQ summary evidence with logged nicknames and the verified operator n
   const life = await openCore(root)
   dispose.push(() => life.close())
   const state = await life.core.snapshot()
-  const ctx = reader()
+  const ctx = await reader()
   const session = Session.create(SessionId('temporary-names'))
   for (const [id, qq, nickname] of [['one', '12345', '小明'], ['two', '99999', '小明'], ['three', '55555', '群里昵称']]) {
     session.append('user/message', createUserMessage({ source: personSourceSchema.parse({ kind: 'genesis-person', platform: 'qq',
       personId: qqPersonId(qq!), conversationId: 'qq:group:11111:67890', accountId: qq, name: nickname, messageId: id }),
     content: [{ type: 'text', text: 'fixture dialogue' }] }), { surfaceOp: 'append' })
   }
-  const evidence = ctx.sessionProjections.stateOf(session, 'genesisTemporary')!.messages
+  const evidence = ctx.genesisSessionEvidence.temporaryOf(session)!.messages
   const named = temporaryDialogue(session, evidence, { ...state, operator: { name: '妈妈', identity: 'private fixture', revision: 1 },
     people: { version: 1, people: [], conversations: [], operatorPersonId: qqPersonId('55555') } })
   expect(named.map(row => 'speaker' in row ? row.speaker : undefined)).toEqual([
@@ -72,11 +73,11 @@ it('labels QQ summary evidence with logged nicknames and the verified operator n
   expect(JSON.stringify(named)).not.toContain('private fixture')
 })
 
-it('emits only additions, updates and removals and replays the per-record delivery ledger', () => {
-  const ctx = reader()
+it('emits only additions, updates and removals and replays the per-record delivery ledger', async () => {
+  const ctx = await reader()
   const session = Session.create(SessionId('temporary-context'))
   const updateFor = (memories: readonly import('../src/temporary-model.ts').TemporaryMemory[]) => temporaryContextUpdate(session, memories,
-    Object.keys(ctx.sessionProjections.stateOf(session, 'genesisTemporary')!.delivered))
+    Object.keys(ctx.genesisSessionEvidence.temporaryOf(session)!.delivered))
   const memory = temporaryMemorySchema.parse({ id: randomUUID(), sessionId: 'source', sourceSeqs: [1], audience: { kind: 'operator' },
     summary: '临时任务进展', days: 1, createdAt: 0, expiresAt: 86400000 })
   const update = updateFor([memory])!
@@ -98,8 +99,8 @@ it('emits only additions, updates and removals and replays the per-record delive
   expect(updateFor([changed])).toBeUndefined()
 })
 
-it('recovers the exact completed importance response without making a second model call', () => {
-  const ctx = reader()
+it('recovers the exact completed importance response without making a second model call', async () => {
+  const ctx = await reader()
   const session = Session.create(SessionId('temporary-recovery'))
   const id = brandString<import('../src/temporary-model.ts').TemporaryMemoryId>(randomUUID())
   const requestSeq = appendPluginRecord(session, 'plugin:genesis/memory-call', { version: 1, phase: 'request', role: 'decision',
