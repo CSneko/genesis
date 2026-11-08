@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:~",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "dsh-bili-humanism": "https://github.com/InariNGT-Ofiicial/dsh-bili-humanism/releases/download/v1.11.3/dsh-bili-humanism-1.11.3.tgz",
     "@deepseek-ai/dsh-timeout": "workspace:*"
   },
