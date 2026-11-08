@@ -48,7 +48,7 @@
     "@deepseek-ai/node-addon-system": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
     "koffi": "3.1.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

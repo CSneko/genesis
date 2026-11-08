@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:~",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "mineflayer": "4.39.0",
     "mineflayer-pathfinder": "2.4.5",
     "prismarine-viewer": "https://github.com/u9g/prismarine-viewer/releases/download/v1.33.0-host26.1/prismarine-viewer-1.33.0.tgz",

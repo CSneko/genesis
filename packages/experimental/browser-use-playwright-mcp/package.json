@@ -57,7 +57,7 @@
     "@playwright/mcp": "0.0.80",
     "playwright-core": "1.63.0-alpha-2026-08-31",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@deepseek-ai/dsh-util-values": "workspace:*"
   },
   "peerDependencies": {
