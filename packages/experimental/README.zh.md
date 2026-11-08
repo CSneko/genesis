@@ -41,6 +41,7 @@ kind: "package-group"
 | [`genesis-minecraft`](genesis-minecraft/README.zh.md) | Minecraft Java 版游玩与 Jev 环境监测 | — |
 | [`genesis-video`](genesis-video/README.zh.md) | Remotion 持久剪辑工程与本地沙箱渲染 | — |
 | [`genesis-speech`](genesis-speech/README.zh.md) | 可配置 CosyVoice 语音合成与自定义音色 ID | — |
+| [`genesis-mail`](genesis-mail/README.zh.md) | 持久邮箱与遵循睡眠的自主文字通信 | — |
 | [`genesis-companion`](genesis-companion/README.zh.md) | 内部 AstrBot 对话与带归属的伙伴认识 | — |
 | [`genesis-qq`](genesis-qq/README.zh.md) | QQ 文本对话与独立来源的人物关系 | — |
 | [`client-ui-genesis`](client-ui-genesis/README.zh.md) | Web 设置中的 Genesis 只读状态 | — |

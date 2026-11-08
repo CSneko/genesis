@@ -12,6 +12,12 @@ import type { RelationshipState, EmotionAppraisal } from './relationship-state.t
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
+/** Operator action guidance, stored separately from profile overlays and life history. */
+export interface PurgeSettings {
+  revision: number
+  enabled: boolean
+}
+
 /** Bounded operator-only task monitoring; prompts and caller credentials are excluded. */
 export interface ManagedTaskCatalog {
   sampledAt: string
@@ -66,6 +72,8 @@ export interface MemoryOrganizationRequest {
 
 /** Public embedding configuration; credential values never enter this projection. */
 export interface EmbeddingSettings {
+  /** False selects text retrieval; absent preserves legacy endpoint configuration. */
+  enabled?: boolean | undefined
   url: string
   model: string
   dimensions: number
@@ -81,8 +89,17 @@ export interface EndpointRoute { kind: 'jev' | 'openai'; url: string; model: str
 export interface MemoryModelsSettings {
   /** Additional auxiliary inference attempts; omission inherits the deployment setting. */
   maxRetries?: number | undefined
-  decision: ProviderRoute | (EndpointRoute & { kind: 'jev'; threshold: number })
+  /** True resolves the writer from the current DSH default model; absent preserves explicit legacy routes. */
+  writerInherit?: boolean | undefined
+  /** Select the Genesis-owned loopback decision runtime. */
+  localDecision?: boolean | undefined
+  decision: ProviderRoute | (EndpointRoute & { kind: 'jev'; threshold: number }) | (EndpointRoute & { kind: 'openai' })
   writer: ProviderRoute | (EndpointRoute & { kind: 'openai' })
+}
+/** Nonsecret progress for the operator-installed local decision service. */
+export interface LocalDecisionStatus {
+  phase: 'idle' | 'downloading' | 'starting' | 'ready' | 'failed'
+  downloadedBytes: number
 }
 /** Storage layer chosen explicitly by the operator. */
 export type MemoryKind = 'declarative' | 'non-declarative'
@@ -172,8 +189,10 @@ export interface LifeStatus {
     historyOmitted: number
     review?: ReviewOutcome
   }
-  /** Independent routes, revision and credential availability; never credential values. */
-  models?: MemoryModelsSettings & { revision: number; keys: Record<'decision' | 'writer', { configured: boolean; writable: boolean }> }
+  /** Nonsecret progress of the optional operator-managed local runtime. */
+  localDecision?: LocalDecisionStatus
+  /** Shared effective routes, saved cloud route, revision and credential availability. */
+  models?: MemoryModelsSettings & { configuredDecision?: MemoryModelsSettings['decision']; revision: number; keys: Record<'decision' | 'writer', { configured: boolean; writable: boolean }> }
   /** Persistent maintenance cursor, effective preference and bounded automatic retry state. */
   consolidation?: MemoryConsolidation & { enabled: boolean; maxFailures: number; minHabitSupport: number }
   /** Last review outcome; failures do not stop the conversation. */
@@ -227,3 +246,5 @@ export type { TemporaryMemoryId, TemporaryMemory, TemporarySettings, TemporarySt
 export type { RhythmStatus } from './rhythm-gateway.ts'
 export type { SleepStatus, SleepSettings, SleepCycle } from './sleep-model.ts'
 export type { SpontaneitySettings, SpontaneityStatus } from './spontaneity-state.ts'
+
+export type { ContactInput, LifeContact, ContactCatalog } from './contacts-model.ts'

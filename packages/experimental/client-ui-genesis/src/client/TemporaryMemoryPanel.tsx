@@ -67,23 +67,28 @@ function TemporaryEditor({ sample, writable, t, save, forget, retry, setKey, ref
         <Checkbox label={t('temporaryEnabled')} checked={draft.enabled} onChange={(enabled) => { setDraft(value => ({ ...value, enabled })) }} />
         <label>{t('temporaryIdle')}<Input type="number" min={1000} max={604800000} step={1000} required value={draft.idleMs}
           onChange={(event) => { setDraft(value => ({ ...value, idleMs: Number(event.target.value) })) }} /></label>
-        <Checkbox label={t('useProvider')} checked={route.kind === 'provider'} onChange={(provider) => {
-          setDraft(value => ({ ...value, summary: provider ? { kind: 'provider', provider: '', model: '' }
-            : { kind: 'openai', url: '', model: '', keyRef: 'GENESIS_TEMPORARY_API_KEY' } }))
+        <Checkbox label={t('inheritMemoryLlm')} checked={draft.inheritWriter === true} onChange={(inheritWriter) => {
+          setDraft(value => ({ ...value, inheritWriter }))
         }} />
-        <label>{t(route.kind === 'provider' ? 'providerId' : 'modelEndpoint')}<Input required={draft.enabled} type={route.kind === 'provider' ? 'text' : 'url'}
-          value={route.kind === 'provider' ? route.provider : route.url} onChange={(event) => {
-            setDraft(value => ({ ...value, summary: route.kind === 'provider' ? { ...route, provider: event.target.value } : { ...route, url: event.target.value, keyRef: 'GENESIS_TEMPORARY_API_KEY' } }))
-          }} /></label>
-        <label>{t('modelId')}<Input required={draft.enabled} value={route.model}
-          onChange={(event) => { setDraft(value => ({ ...value, summary: { ...route, model: event.target.value } })) }} /></label>
+        {!draft.inheritWriter ? <>
+          <Checkbox label={t('useProvider')} checked={route.kind === 'provider'} onChange={(provider) => {
+            setDraft(value => ({ ...value, summary: provider ? { kind: 'provider', provider: '', model: '' }
+              : { kind: 'openai', url: '', model: '', keyRef: 'GENESIS_TEMPORARY_API_KEY' } }))
+          }} />
+          <label>{t(route.kind === 'provider' ? 'providerId' : 'modelEndpoint')}<Input required={draft.enabled} type={route.kind === 'provider' ? 'text' : 'url'}
+            value={route.kind === 'provider' ? route.provider : route.url} onChange={(event) => {
+              setDraft(value => ({ ...value, summary: route.kind === 'provider' ? { ...route, provider: event.target.value } : { ...route, url: event.target.value, keyRef: 'GENESIS_TEMPORARY_API_KEY' } }))
+            }} /></label>
+          <label>{t('modelId')}<Input required={draft.enabled} value={route.model}
+            onChange={(event) => { setDraft(value => ({ ...value, summary: { ...route, model: event.target.value } })) }} /></label>
+        </> : null}
       </fieldset>
       <p className={css.secondary}>{t('temporaryModelHint')}</p>
       {revision !== sample.revision ? <p role="alert">{t('qqConflict')}</p> : null}
       <div className={css.actions}><Button type="submit" disabled={pending || !writable || revision !== sample.revision}>{t('temporarySave')}</Button>
         <Button variant="outline" disabled={pending} onClick={() => { setDraft(structuredClone(sample.settings)); setRevision(sample.revision); setFailure(undefined); setSaved(false) }}>{t('reloadConfiguration')}</Button></div>
     </form>
-    {route.kind === 'openai' ? <div className={css.naming}>
+    {!draft.inheritWriter && route.kind === 'openai' ? <div className={css.naming}>
       <label>{t('temporaryKey')}<Input type="password" autoComplete="new-password" value={key} disabled={pending || !writable}
         onChange={(event) => { setSecret(event.target.value) }} /></label>
       <Button disabled={pending || !writable || !key} onClick={() => { run(async (signal) => {

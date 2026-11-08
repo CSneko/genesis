@@ -14,6 +14,8 @@ Use this package to render a browser chat from recorded Session conversations, i
 
 File-mention providers receive the viewed Session ID with the closing-turn owner, so links into inherited history can address the fork itself.
 
+Assistant replies support embedded images, audio and video through `![Description](</absolute/path/to/file>)`, with download links for embedded files and failed previews. Local media appears after the reply settles; playback depends on browser codec support. This also applies to Genesis conversations in the Web profile.
+
 ## Table of Contents
 
 - [Reference previews](#reference-previews)

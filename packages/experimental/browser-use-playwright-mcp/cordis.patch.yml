@@ -1,0 +1,8 @@
+# Chrome runs independently on the Genesis server; its address is editable in Settings.
+- insert:
+    - id: browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+    - id: genesis-browser-playwright
+      name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp/connection'
+      config:
+        endpoint: http://127.0.0.1:9222

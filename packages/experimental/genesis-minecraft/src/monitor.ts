@@ -48,9 +48,19 @@ export async function judge(ctx: Context, session: Session, settings: MinecraftS
   image: { bytes: Buffer; attachment: ImageAttachmentRef } | undefined, signal: AbortSignal, responseChars: number, inputChars: number,
   questions: typeof monitorQuestions = monitorQuestions): Promise<{ urgent: number; attention: number }> {
   const inherited = ctx.genesisStatus.decisionModel()
-  if (settings.reuseKnowledge && inherited.kind !== 'jev') throw failure('knowledge-jev-required')
+  if (settings.reuseKnowledge && inherited.kind !== 'jev') {
+    if (image !== undefined) throw failure('knowledge-jev-required')
+    if (JSON.stringify(state).length + JSON.stringify(questions).length > inputChars) throw failure('input-too-large')
+    const input = { observations: state, participants: { scope: 'minecraft' } }
+    const urgent = await ctx.genesisStatus.decide(session, questions.urgent.instructions, input,
+      { true: 'The urgent condition is present.', false: 'The urgent condition is absent.' }, signal, inherited)
+    const attention = await ctx.genesisStatus.decide(session, questions.attention.instructions, input,
+      { true: 'The attention condition is present.', false: 'The attention condition is absent.' }, signal, inherited)
+    // Generative judgments provide binary signals, never measured probabilities.
+    return { urgent: urgent.update ? 1 : 0, attention: attention.update ? 1 : 0 }
+  }
   const route: Route = settings.reuseKnowledge && inherited.kind === 'jev'
-    ? { ...inherited, model: settings.jevModel, threshold: settings.threshold }
+    ? { ...inherited, threshold: settings.threshold }
     : { kind: 'jev', url: settings.jevUrl, model: settings.jevModel, keyRef: settings.jevKeyRef, threshold: settings.threshold }
   const reference = image === undefined ? undefined : randomUUID()
   // Whole-string references in the top-level array work across System One image providers.

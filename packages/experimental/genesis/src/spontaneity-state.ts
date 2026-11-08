@@ -4,6 +4,7 @@ import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { LifeId, LifeEventId } from './model.ts'
+import type { MessageTargetId } from './message-routing.ts'
 import type { DecisionId, LifeGoalId } from './agency-state.ts'
 
 /** Stable identity of a revisitable idea, independent of goals and Sessions. */
@@ -31,6 +32,7 @@ const runSchema = z.strictObject({ key: z.string().min(1).max(200), sessionId: z
   sourceEventId: sourceId, createdAt: z.number().int().nonnegative(),
   status: z.enum(['reserved', 'completed', 'interrupted', 'failed']),
   thoughtId: thoughtId.optional(), decisionId: z.uuid().transform(brandString<DecisionId>).optional(),
+  social: z.strictObject({ target: z.string().min(1).max(200).transform(brandString<MessageTargetId>), at: z.number().int().nonnegative(), status: z.enum(['reserved', 'confirmed', 'uncertain']) }).optional(),
   note: z.string().max(1000).optional(),
 })
 /** One reserved inference interval; reservation does not prove delivery or successful work. */

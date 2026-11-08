@@ -12,7 +12,7 @@ export interface ReviewEvidence { sessionId: SessionId; turn: number; userEventI
 export interface ConsolidationChange {
   id?: MemoryId
   input: MemoryInput
-  embedding: MemoryEmbedding
+  embedding?: MemoryEmbedding | undefined
   habit?: MemoryHabit
   experienceIds: MemoryId[]
 }

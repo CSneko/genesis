@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/genesis-boredom/guide.md
+/:
+  en: 35aec46221e17489
+  zh: 6d2be17f591e79c6
+/genesis-boredom-and-idle-conversation:
+  en: 414324ada580015b
+  zh: 4f0e7c0d26cf68a2
+/genesis-boredom-and-idle-conversation/change:
+  en: 5197e4ad508276c7
+  zh: a9dc928cd623cfd5
+/genesis-boredom-and-idle-conversation/migration:
+  en: 0265c1a96d4ee8c4
+  zh: d04ccf4a62604c56

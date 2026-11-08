@@ -250,3 +250,60 @@ it('keeps mixed feelings and signed mood while rejecting direct loneliness propo
   expect(() => applyAppraisal(structuredClone(state), { ...update, needsDelta: { exploration: 0.5 } },
     resolveEmotion(config, state), [], ['Another lesson.'])).toThrow('per-exchange limit')
 })
+
+
+it('evolves boredom from online engagement independently of loneliness, with bounded evidence-based adjustments', () => {
+  const config = Config({ leasePath: '/unused-boredom.lock', emotion: { boredom: { riseHalfLifeMs: 1000, fallHalfLifeMs: 1000 } } }).emotion!
+  const start = '2026-11-08T00:00:00.000Z'
+  const state = initialEmotion(config, start)
+  const idle = emotionAt(state, '2026-11-08T00:00:01.000Z')
+  expect(idle.boredom?.level).toBeCloseTo(0.5)
+  expect(emotionAt(emotionAt(state, '2026-11-08T00:00:00.500Z'), '2026-11-08T00:00:01.000Z').boredom?.level).toBeCloseTo(idle.boredom!.level)
+  const occupied = structuredClone(state)
+  occupied.boredom = { ...state.boredom!, mode: 'engaged' }
+  expect(emotionAt(occupied, '2026-11-08T00:00:01.000Z').needs).toEqual(idle.needs)
+  idle.boredom!.mode = 'engaged'
+  expect(emotionAt(idle, '2026-11-08T00:00:02.000Z').boredom?.level).toBeCloseTo(0.25)
+  idle.boredom!.mode = 'resting'
+  expect(emotionAt(idle, '2026-11-08T00:00:02.000Z').boredom?.level).toBe(0.5)
+  const update = emotionUpdateSchema.parse({ delta: {}, moodDelta: {}, needsDelta: {}, boredomDelta: -0.1,
+    sourceSeqs: [1], reason: 'An interesting discovery despite an unsuccessful attempt.',
+    appraisal: { kind: 'achievement', importance: 0.4, novelty: 0.8, expectationMatch: 0, controllability: 0.5,
+      relationshipMeaning: 'neutral', responsibility: 'self', confidence: 0.7, summary: 'An interesting attempt.' } })
+  const before = structuredClone(idle.needs)
+  applyAppraisal(idle, update, resolveEmotion(config, idle), [], ['An interesting attempt.'])
+  expect(idle.boredom?.level).toBeCloseTo(0.4)
+  expect(idle.needs).toEqual(before)
+  expect(() => applyAppraisal(idle, { ...update, boredomDelta: 1 }, resolveEmotion(config, idle), [], ['Another attempt.'])).toThrow('limit')
+  expect(emotionStateSchema.safeParse({ ...idle, boredom: { ...idle.boredom, level: 2 } }).success).toBe(false)
+})
+
+it('adds boredom to a legacy anchor and restores it without accumulating stopped time or replacing life identity', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-boredom-restart-'))
+  disposers.push(() => rm(root, { recursive: true, force: true }))
+  const first = await openCore(join(root, 'first'), 'json', { emotion: {} })
+  disposers.push(() => first.close())
+  const legacy = await first.core.snapshot()
+  delete legacy.emotion!.boredom
+  const birthState = legacy.events.find(event => event.type === 'emotion.initialized')!.payload['state']
+  if (birthState !== null && typeof birthState === 'object' && !Array.isArray(birthState)) delete birthState['boredom']
+  legacy.emotion!.updatedAt = '2020-01-01T00:00:00.000Z'
+  await first.close()
+  const primary = join(root, 'genesis.json')
+  await writeFile(primary, JSON.stringify({ unit: { name: 'genesis', version: 1 }, global: null, tables: { states: { life: legacy } } }))
+  const second = await openCore(root, 'json', { emotion: {} })
+  disposers.push(() => second.close())
+  const restored = await second.core.snapshot()
+  expect(restored.identity).toEqual(legacy.identity)
+  expect(restored.emotion?.boredom).toMatchObject({ level: 0, mode: 'idle' })
+  expect(restored.events.filter(event => event.type === 'boredom.initialized')).toHaveLength(1)
+  const damaged = structuredClone(restored)
+  delete damaged.emotion!.boredom
+  expect(stateSchema.safeParse(damaged).success).toBe(false)
+  await second.core.setBoredomMode('resting')
+  await second.close()
+  const third = await openCore(root, 'json', { emotion: {} })
+  disposers.push(() => third.close())
+  expect((await third.core.snapshot()).identity).toEqual(legacy.identity)
+  expect((await third.core.snapshot()).events.filter(event => event.type === 'boredom.initialized')).toHaveLength(1)
+})

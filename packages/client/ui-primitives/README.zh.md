@@ -11,6 +11,8 @@ kind: "package-library"
 
 使用 `dsh-client-ui-primitives`，通过共享 React UI 构建 Web 客户端控件并渲染 agent 输出。它提供标准控件、图标、锚定浮层，以及用于带 TeX 公式的 Markdown、终端输出、文件读取、差异、搜索、网页检索和 JSON 的渲染器。这些渲染器会丢弃原始 HTML、限制链接并解析 ANSI 转义序列，以处理不受信任的模型输出。组件不 import Cordis 运行时；调用方提供本地化 label，主题相关颜色使用 `--dsw-*` 设计 token。
 
+提供 `labels.media` 时，`![说明](<路径>)` 嵌入内容使用原生播放器播放 MP3、WAV、OGG/OGA、M4A、AAC、FLAC、Opus 音频，以及 MP4、WebM、OGV、MOV、M4V 视频。嵌入文件保留下载链接，包括没有预览的文件和加载失败的媒体。播放器不会自动播放；编解码支持取决于浏览器。本地媒体在消息完成后使用现有路径解析器。远程下载仍受浏览器同源规则限制。
+
 ## 目录
 
 - [使用本包](#use-this-package)

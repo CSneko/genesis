@@ -7,7 +7,11 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
+**Genesis → Mail** automatically refreshes paginated mail metadata and safe text previews, including operator-only blocked mail, independently of whether the character has read it. **Settings → Mail** owns account credentials, unrestricted/address/domain recipient policy, proactive sending and receiving-service verification; see the [mail guide](../genesis-mail/README.md). Local deletion from trash preserves text-free replay suppression and leaves server mail, Session logs, memories and backups separate.
+
 ## Summary
+
+Settings → Purge offers an optional Life action-guidance switch, off by default. Save applies it to subsequent Life model requests, including QQ, and persists in independent operator preferences, including when startup overlays supply Genesis configuration. It encourages direct answers and fewer repeated confirmations while retaining character choice and execution permissions. Failed saves retain the draft and display the reported reason; stale edits require reloading the saved settings. See [Purge behavior](../genesis/README.md#configuration).
 
 Open Genesis in the left sidebar beside Plugins and Scheduled tasks for life information, delegated tasks, memories, personality, emotion, relationship, goals, writings and message deliveries. Knowledge Base, Toolkits, QQ and Minecraft connections and proactive sending policy remain in Settings. Keys use the existing credential store. Life conversations share one life and memory; ordinary presets remain isolated. Initialize life is a manual action on the new-conversation screen or Genesis overview; after naming it opens the first Life conversation. The button disappears after successful completion. Do not show again persistently suppresses automatic configuration reminders. No network listener is added.
 
@@ -25,6 +29,10 @@ The speech tool result shows native audio playback and download controls for new
 
 <a id="use"></a>
 ## Use
+
+Model configuration has three shared entries: LLM follows DSH by default, decisions inherit the knowledge decision route, and embeddings are optional. Feature-specific custom routes remain available; existing saved overrides are retained. Without embeddings, Markdown memory content uses bounded text retrieval and memory writes retain their source references. The model setup page offers cloud configuration and explicit local quick deployment. See [model configuration](../../../docs/genesis/memory.md) for local runtime support, download sources, lifecycle and limits.
+
+Genesis → Contacts searches names, QQ numbers, email addresses and other handles. Add or edit a name, QQ, multiple email addresses, other `kind=value` accounts and notes; QQ is fixed after creation because it selects the shared relationship person ID. Deletion asks for confirmation and retains the relationship. Failed saves retain the editor draft. The operator checkbox replaces the previous operator; QQ and mail use that same selection. Meaningful QQ relationships create contacts automatically, and existing relationships are imported at startup. The AI uses the same persisted records through `genesis_contacts`; see [contact behavior](../genesis/README.md#use).
 
 Apply this package’s `cordis.patch.yml` beside the [Genesis core overlay](../genesis/README.md) to a Web or Desktop profile with the preset registry. Rebuild browser bundles before launching. The [first-awakening tutorial](../../../docs/genesis/awakening.md) enables naming and the first greeting. Life information owns naming, identity and growth; Knowledge Base owns decision/writer/embedding settings and a saved Automatic retries count, defaulting to three additional inference attempts. See [retry behavior](../../../docs/genesis/memory.md). Memories pages through stored memories newest first, searches their text, and supports creation, editing, deletion and layer conversion. Experience times, associated experience IDs and expandable prior interpretations show how a memory formed and changed. The optional Life preset becomes the deployment default; an existing saved user choice takes precedence.
 
@@ -56,7 +64,11 @@ The optional [video toolkit](../genesis-video/README.md) creates `*.genesis-remo
 
 The built-in [AI companion settings](../genesis-companion/README.md) enable an internal AstrBot connection on demand, configure its independent sleep schedule and provide manual conversation, wake and stop controls. The source link opens one persistent partner Session shared by manual exchanges and the cross-conversation tool. Bounded internal history and attributed relationship understanding remain separate from QQ. Refresh reads current progress without starting a model.
 
+Settings → Browser edits the server-side Chrome debugging address through the shared staged configuration form. Saved values survive restart and apply when the shared browser provider restarts; the current connection retains its captured address. Invalid or stale saves retain the draft. Saving does not test connectivity. See [browser setup](../../../docs/genesis/README.md#browser-control).
+
 <a id="implementation"></a>
+Genesis → Emotion displays an independent boredom meter alongside feelings, mood and needs. Its description distinguishes engagement from loneliness; existing readouts and editors retain their own fields.
+
 ## Implementation
 
 The source-workspace life preset includes an isolated automatic-compaction backend. The plugin mounts the owning package’s generated Remote contribution, registers a `genesis` resource provider and contributes localized main-page sections and configuration pages and a manual memory action on completed replies in participating Life conversations. Endpoint edits use revisioned life-owned storage; keys use the existing credential store and never enter configuration or memory. Settings failures show the affected operation and specific diagnostic, including HTTP status, validation fields or connection codes, without displaying password values or provider response bodies. Memory and emotion settings show the latest reviewed turn and completion time, including no-change outcomes; Jev decisions also show their update probability and captured threshold. Memory failures in chat and Knowledge Base show the failing stage and safe diagnostic; retry errors preserve their own cause. Retry feedback resets for a new failed turn. A failed save retains the draft; refresh and Reload configuration load the latest accepted values. The shared resource model owns fetched values and retains them after failure. Credential/settings/provider changes, conversation running-status changes, user refresh and reconnection request new samples; the ordinary Genesis status resource runs no polling timer. Aborting the resource cancels RPC and releases refresh listeners.

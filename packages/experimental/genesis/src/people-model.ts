@@ -52,7 +52,9 @@ export const conversationSchema = z.strictObject({
 })
 /** Optional versioned people projection; absence preserves existing single-operator data. */
 export const peopleStateSchema = z.strictObject({
-  version: z.literal(1), people: z.array(personSchema), conversations: z.array(conversationSchema),
+  version: z.literal(1), people: z.array(personSchema),
+  // Keep earlier Sessions for evidence ownership; the final binding for a route receives new input.
+  conversations: z.array(conversationSchema),
   operatorPersonId: personIdSchema.optional(),
 })
 /** Durable person profile and independently estimated relationship. */

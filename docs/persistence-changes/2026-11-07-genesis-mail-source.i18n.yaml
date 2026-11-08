@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-11-07-genesis-mail-source.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-07-genesis-mail-source.md
+/:
+  en: d3615653ecb30f3b
+  zh: 799590f7246ae0e6
+/2026-11-07-genesis-mail-source:
+  en: 10a467d2331c186c
+  zh: 479fabc2dca8ac41
+/2026-11-07-genesis-mail-source/summary:
+  en: 0fd1d595d120e796
+  zh: fe14cd05a970704e
+/2026-11-07-genesis-mail-source/declaration:
+  en: 7888bfbbb2f48e61
+  zh: f24cf85d5b1b6a7b
+/2026-11-07-genesis-mail-source/compatibility:
+  en: c8555d2ff0ba0c4f
+  zh: 903b448021b86cf8
+/2026-11-07-genesis-mail-source/verification:
+  en: 5845af172db271ae
+  zh: 5b935fa52f50832d
+/2026-11-07-genesis-mail-source/dev-note:
+  en: b75c8458928b72b9
+  zh: 45e76642489dcc3c

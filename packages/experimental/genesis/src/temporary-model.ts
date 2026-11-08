@@ -12,6 +12,7 @@ const id = z.uuid().transform(brandString<TemporaryMemoryId>)
 /** Configurable auxiliary summary route; secrets remain in the credential provider. */
 export const temporarySettingsSchema = z.strictObject({
   enabled: z.boolean(), idleMs: z.number().int().min(1000).max(604800000),
+  inheritWriter: z.boolean().optional(),
   summary: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('provider'), provider: z.string().trim().max(512), model: z.string().trim().max(512) }),
     z.strictObject({ kind: z.literal('openai'), url: z.url().refine((value) => {
@@ -19,7 +20,7 @@ export const temporarySettingsSchema = z.strictObject({
       return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password && !parsed.search && !parsed.hash
     }), model: z.string().trim().min(1).max(512), keyRef: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional() }),
   ]),
-}).refine(value => !value.enabled || (value.summary.model !== '' && (value.summary.kind !== 'provider' || value.summary.provider !== '')),
+}).refine(value => !value.enabled || value.inheritWriter === true || (value.summary.model !== '' && (value.summary.kind !== 'provider' || value.summary.provider !== '')),
   'Select a summary provider and model before enabling temporary memory.')
 /** Authenticated operator policy. The importance route uses the existing memory decision settings. */
 export type TemporarySettings = z.infer<typeof temporarySettingsSchema>

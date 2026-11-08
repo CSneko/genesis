@@ -9,6 +9,7 @@ import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { manifestSchema, recordTableSchema, recordValueSchema, type LifeRecordKey } from './storage-layout.ts'
 import { memorySummarySchema } from './memory-summary.ts'
+import { contactsStateSchema } from './contacts-model.ts'
 import { peopleStateSchema, personSourceSchema, qqPersonId } from './people-model.ts'
 
 /** Stable identity of one life, unrelated to Session and user identifiers. */
@@ -111,7 +112,7 @@ export const interestSchema = z.strictObject({
 })
 /** Complete atomic life snapshot. Unknown schema versions are refused, never reset. */
 export const stateSchema = z.strictObject({
-  schemaVersion: z.literal(1), identity: identitySchema, people: peopleStateSchema.optional(), emotion: emotionStateSchema.optional(), interests: z.array(interestSchema).optional(),
+  schemaVersion: z.literal(1), identity: identitySchema, contacts: contactsStateSchema.optional(), people: peopleStateSchema.optional(), emotion: emotionStateSchema.optional(), interests: z.array(interestSchema).optional(),
   agency: agencySchema.optional(),
   initiative: initiativeSchema.optional(),
   operator: operatorIdentitySchema.extend({ revision: z.number().int().positive() }).optional(),
@@ -119,10 +120,24 @@ export const stateSchema = z.strictObject({
   events: z.array(eventSchema), memories: z.array(memorySchema), growth: z.array(growthSchema),
   sessions: z.record(z.string(), z.array(capabilitySchema)), consolidation: consolidationSchema.optional(),
 }).superRefine((state, context) => {
+  if (state.contacts !== undefined) {
+    const operators = state.contacts.items.filter(contact => contact.operator)
+    if (operators.length > 1 || state.contacts.operatorConfigured && operators[0]?.personId !== state.people?.operatorPersonId) {
+      context.addIssue({ code: 'custom', message: 'Contact operator and people projection disagree' })
+    }
+    if (new Set(state.contacts.items.map(item => item.personId)).size !== state.contacts.items.length) {
+      context.addIssue({ code: 'custom', message: 'Duplicate contact person ID' })
+    }
+    for (const contact of state.contacts.items) {
+      if (!state.events.some(event => event.id === contact.sourceEventId && event.type === 'contact.saved'
+        && event.payload['personId'] === contact.personId)) {
+        context.addIssue({ code: 'custom', message: 'Contact update evidence is missing' })
+      }
+    }
+  }
   if (state.people !== undefined) {
     const people = state.people
     if (new Set(people.people.map(person => person.id)).size !== people.people.length
-      || new Set(people.conversations.map(item => item.id)).size !== people.conversations.length
       || new Set(people.conversations.map(item => item.sessionId)).size !== people.conversations.length) {
       context.addIssue({ code: 'custom', message: 'Duplicate person or conversation identity' })
     }
@@ -165,6 +180,11 @@ export const stateSchema = z.strictObject({
     reject('Emotion state and its initialization evidence must be present together')
   }
   if (state.emotion !== undefined) {
+    const initializedBoredom = state.events.some(event => event.dedupKey === 'emotion:boredom:initialized')
+    const birthState = emotionBirths[0]?.payload['state']
+    const bornWithBoredom = birthState !== null && typeof birthState === 'object' && !Array.isArray(birthState)
+      && birthState['boredom'] !== undefined
+    if ((initializedBoredom || bornWithBoredom) && state.emotion.boredom === undefined) reject('Initialized boredom state is missing')
     const initial = emotionBirths[0]?.payload['state']
     const currentBirth = initial !== null && typeof initial === 'object' && !Array.isArray(initial) && initial['version'] === 3
     const conversions = state.events.filter((event) => {

@@ -1,5 +1,6 @@
 /** Deployment-owned storage exclusion and context limits. @module */
 import z from '@deepseek-ai/schemastery'
+import type { Volatile } from '@deepseek-ai/cordis'
 import type { SleepSettings } from './sleep-model.ts'
 import type { Mood, EmotionHalfLives, MoodHalfLives, Needs } from './emotion-state.ts'
 import { QQ_BROWSER_TOOLS } from './qq-tool-policy.ts'
@@ -26,6 +27,18 @@ export interface SocialInitiativeConfig {
 }
 /** Bounded, idle-only internal thought and exploration opportunities. */
 export interface SpontaneityConfig {
+  /** Minimum boredom for recurring idle opportunities; ordinary post-chat opportunities remain available. */
+  boredomThreshold: number
+  /** Lightweight idle-state sampling interval, without an inference call. */
+  boredomCheckMs: number
+  /** Shortest delay between boredom opportunities, still subject to idleMs and daily limits. */
+  boredomMinIntervalMs: number
+  /** Longest delay between boredom opportunities; failed and empty intervals count. */
+  boredomMaxIntervalMs: number
+  /** Minimum interval between autonomous outgoing conversations across all destinations. */
+  socialCooldownMs: number
+  /** Maximum autonomous outgoing conversations in a rolling day, including uncertain sends. */
+  socialMaxPer24Hours: number
   /** Enable opportunities after completed real Life exchanges. */
   enabled: boolean
   /** Required quiet interval; new user input interrupts exploration. */
@@ -122,6 +135,43 @@ export interface TemporaryMemoryConfig {
 }
 /** Validated, resolved Genesis plugin configuration. */
 export interface Config {
+  /** Live opt-in action guidance for Life conversations; execution authorization remains independent. */
+  purge: Volatile<boolean>
+  /** Optional loopback decision deployment; installation occurs only after an operator request. */
+  localDecision: {
+    /** Existing host Ollaya executable; empty selects the pinned runtime for this host. */
+    binary: string
+    /** Nonsecret model alias for the managed endpoint. */
+    model: string
+    /** Pinned Ollaya model manifest URL. */
+    modelUrl: string
+    /** Expected SHA-256 of the model manifest; its descriptors pin every model asset. */
+    modelSha256: string
+    /** Official Linux x64 Ollaya runtime archive URL. */
+    runtimeUrl: string
+    /** Expected SHA-256 of the runtime archive before extraction. */
+    runtimeSha256: string
+    /** Official Windows x64 CPU runtime ZIP URL. */
+    windowsRuntimeUrl: string
+    /** Expected SHA-256 of the Windows x64 ZIP before extraction. */
+    windowsRuntimeSha256: string
+    /** Maximum total model asset bytes or runtime archive bytes. */
+    maxDownloadBytes: number
+    /** Complete download, verification and startup deadline. */
+    installTimeoutMs: number
+    /** Deadline for model loading and the first verified System One decision. */
+    startTimeoutMs: number
+    /** Interval between local readiness probes. */
+    pollMs: number
+    /** Grace period for terminating the owned subprocess range. */
+    graceMs: number
+    /** Deadline for each loopback readiness probe. */
+    probeTimeoutMs: number
+    /** Complete JSON response character limit for the verification probe. */
+    outputChars: number
+    /** Maximum captured diagnostic bytes per runtime stream. */
+    diagnosticBytes: number
+  }
   /** Life-wide recall across Web and QQ, or source-conversation isolation; the life overlay selects life. */
   memorySharing: 'life' | 'conversation'
   /** Short-lived cross-conversation summaries; independent of long-term memory review. */
@@ -236,6 +286,13 @@ export interface RecordsConfig {
 }
 /** Bounded post-reply emotion appraisal and deterministic recovery. */
 export interface EmotionConfig {
+  /** Online-only boredom growth and engagement recovery time scales. */
+  boredom: {
+    /** Online idle milliseconds needed to halve the remaining distance to full boredom. */
+    riseHalfLifeMs: number
+    /** Engaged milliseconds needed to halve existing boredom. */
+    fallHalfLifeMs: number
+  }
   /** Include stopped-process time in affect evolution; defaults to the existing wall-clock behavior. */
   offlineChanges: boolean
   /** Maximum mood-dependent immediate equilibrium intensity, from zero to one. */
@@ -364,7 +421,7 @@ export interface MemoryConfig {
   identityRewriteLimit: number
   /** Maximum changes in one atomic writer plan. */
   maxChanges: number
-  /** Whole-life count limit for the small prompt-resident memory layer. */
+  /** Maximum non-declarative memories selected for one prompt; stored memory count is unbounded. */
   maxImplicitMemories: number
   /** Whole-conversation preparation and final planning share these operation limits. */
   overview: {
@@ -425,7 +482,8 @@ const initialNeeds = z.object({
   autonomy: z.number().min(0).max(1).default(0.5), creativity: z.number().min(0).max(1).default(0.5),
   loneliness: z.number().min(0).max(1).default(0) })
 /** Loader schema resolves every deployment-varying bound before plugin activation. */
-export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality' | 'temporaryMemory' | 'spontaneity' | 'sleep' | 'memory'>> & Pick<Config, 'leasePath'> & { memory?: Partial<MemoryConfig> | undefined; sleep?: Partial<SleepConfig>; spontaneity?: Partial<SpontaneityConfig>; temporaryMemory?: Partial<TemporaryMemoryConfig>; personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+export const Config: z<Partial<Omit<Config, 'purge' | 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality' | 'temporaryMemory' | 'spontaneity' | 'sleep' | 'memory'>> & Pick<Config, 'leasePath'> & { purge?: boolean; memory?: Partial<MemoryConfig> | undefined; sleep?: Partial<SleepConfig>; spontaneity?: Partial<SpontaneityConfig>; temporaryMemory?: Partial<TemporaryMemoryConfig>; personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+  purge: z.boolean().default(false).volatile(),
   sleep: z.union([z.const(undefined), z.object({
     enabled: z.boolean().default(true), jitterMs: z.number().step(1).min(0).max(300000).default(300000),
     temporaryIdleMs: z.number().step(1).min(1000).max(86400000).default(600000),
@@ -447,6 +505,12 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     greetingAffection: z.number().min(0).max(1).default(0.5),
   })]),
   spontaneity: z.union([z.const(undefined), z.object({
+    boredomThreshold: z.number().min(0).max(1).default(0.35),
+    boredomCheckMs: z.number().step(1).min(1000).max(3600000).default(60000),
+    boredomMinIntervalMs: z.number().step(1).min(1000).max(86400000).default(300000),
+    boredomMaxIntervalMs: z.number().step(1).min(1000).max(86400000).default(1800000),
+    socialCooldownMs: z.number().step(1).min(1000).max(86400000).default(3600000),
+    socialMaxPer24Hours: z.number().step(1).min(1).max(1000).default(3),
     enabled: z.boolean().default(true), idleMs: z.number().step(1).min(0).max(86400000).default(60000),
     maxDurationMs: z.number().step(1).min(1000).max(3600000).default(180000),
     maxOutputTokens: z.number().step(1).min(1).max(1000000).default(32768),
@@ -483,6 +547,8 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
   awakening: z.union([z.const(undefined), z.object({
     provider: z.string().required(), model: z.string().required(), lifePreset: z.string() })]),
   emotion: z.union([z.const(undefined), z.object({
+    boredom: z.object({ riseHalfLifeMs: z.number().min(1000).max(31536000000).default(1800000),
+      fallHalfLifeMs: z.number().min(1000).max(31536000000).default(300000) }).default({}),
     offlineChanges: z.boolean().default(true), moodEmotionScale: z.number().min(0).max(1).default(0.2),
     emotionMoodInfluence: z.number().min(0).max(0.5).default(0.25),
     clockCheckpointMs: z.number().step(1).min(1000).max(3600000).default(60000),
@@ -520,6 +586,23 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
     motivationHalfLifeMs: z.number().min(1000).max(31536000000).default(86400000),
     maxStrengthDelta: z.number().min(0).max(1).default(0.2),
   })]),
+  localDecision: z.object({
+    binary: z.string().default(''), model: z.string().pattern(/^[a-z0-9][a-z0-9-]*$/).default('genesis-decision'),
+    modelUrl: z.string().default('https://ollaya.dev/v2/library/laya/manifests/multilingual'),
+    modelSha256: z.string().pattern(/^[a-f0-9]{64}$/).default('2840506e1f978aeb696a6f84af43ecc7fca95754cb63a67bafe6132532d384eb'),
+    runtimeUrl: z.string().default('https://github.com/ollaya-dev/ollaya/releases/download/v0.18.0/ollaya-linux-amd64.tar.zst'),
+    runtimeSha256: z.string().pattern(/^[a-f0-9]{64}$/).default('9d1d13cc16437a2748e1cc7af7e98cc31a5dea23a9cd82705f374abf49d7b084'),
+    windowsRuntimeUrl: z.string().default('https://github.com/ollaya-dev/ollaya/releases/download/v0.18.0/ollaya-windows-amd64.zip'),
+    windowsRuntimeSha256: z.string().pattern(/^[a-f0-9]{64}$/).default('1ae38f48800ab2d9587f062118f4f5f844943986ae56f353a7157677332fa6ae'),
+    maxDownloadBytes: z.number().step(1).min(1).default(1073741824),
+    installTimeoutMs: z.number().step(1).min(1000).max(3600000).default(1800000),
+    startTimeoutMs: z.number().step(1).min(1000).max(300000).default(120000),
+    pollMs: z.number().step(1).min(50).max(10000).default(250),
+    graceMs: z.number().step(1).min(100).max(60000).default(3000),
+    probeTimeoutMs: z.number().step(1).min(100).max(60000).default(1000),
+    outputChars: z.number().step(1).min(512).max(1000000).default(4096),
+    diagnosticBytes: z.number().step(1).min(1024).max(1000000).default(8192),
+  }).default({}),
   memorySharing: z.union(['life', 'conversation']).default('conversation'),
   leasePath: z.string().required(),
   backupPath: z.string(),
@@ -556,8 +639,8 @@ export const Config: z<Partial<Omit<Config, 'emotion' | 'interest' | 'records' |
   memory: z.union([z.const(undefined), z.object({
     windowTurns: z.number().step(1).min(1).max(12).default(4),
     decisionUrl: z.string(), decisionKeyEnv: z.string(), decisionThreshold: z.number().min(0).max(1),
-    decisionProvider: z.string().required(), decisionModel: z.string().required(),
-    writerProvider: z.string().required(), writerModel: z.string().required(),
+    decisionProvider: z.string().default(''), decisionModel: z.string().default(''),
+    writerProvider: z.string().default(''), writerModel: z.string().default(''),
     embeddingUrl: z.string().default(''), embeddingModel: z.string().default(''),
     embeddingKeyEnv: z.string(),
     embeddingDimensions: z.number().step(1).min(0).max(65536).default(0),

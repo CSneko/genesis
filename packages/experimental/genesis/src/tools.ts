@@ -1,3 +1,4 @@
+import { registerContactTool } from './contacts-tool.ts'
 /** Native Genesis tools keep outputs in the normal durable tool pipeline. @module */
 import type { TemporaryMemoryEngine } from './temporary.ts'
 import { isHumanSource, personSource } from './people-model.ts'
@@ -27,6 +28,7 @@ import { readMemory } from './memory-time.ts'
 export function registerTools(ctx: Context, core: LifeCore, config: Config,
   userEvidence: (sessionId: SessionId) => SessionEvent<'user/message'> | undefined, memory: LifeMemoryEngine | undefined,
   lifeMode: (agent: Agent | undefined) => boolean, temporary: TemporaryMemoryEngine): void {
+  registerContactTool(ctx, core)
   const output = {
     schema: { type: 'json' } as const,
     render: (_args: unknown, value: z.core.util.JSONType) => [{ type: 'text' as const, text: JSON.stringify(value) }],
@@ -55,7 +57,7 @@ export function registerTools(ctx: Context, core: LifeCore, config: Config,
             evidenceCount: item.evidence.length, sourceEventIds: item.evidence.at(-1)?.sourceEventIds ?? [] })) }),
         environment: { platform: process.platform, arch: process.arch, node: process.versions.node },
         capabilities: (state.sessions[agent.session.id] ?? [])
-          .filter(tool => learned === undefined || tool.id === 'learn' || tool.id === 'genesis_recall' || tool.id === 'genesis_plan' || learned.includes(tool.id)),
+          .filter(tool => learned === undefined || tool.id === 'learn' || tool.id === 'genesis_recall' || tool.id === 'genesis_contacts' || tool.id === 'genesis_search_contacts' || tool.id === 'genesis_plan' || learned.includes(tool.id)),
         recentEvents: state.events.slice(-config.queryLimit), growth: state.growth.slice(-config.queryLimit),
         limitations: [config.deliberation === undefined ? 'Deliberation is disabled; no autonomous goals are selected.'
           : 'You manage life plans through genesis_plan; independent wake scheduling and self-improvement are unavailable.',

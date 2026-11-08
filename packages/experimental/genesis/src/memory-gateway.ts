@@ -95,8 +95,7 @@ export class GenesisMemoryGateway extends TypertRemoteService {
   save(id: MemoryId, draft: MemoryDraft, updatedAt: string | null, signal: AbortSignal): Promise<LifeMemory> {
     return this.operation(signal, async (owned) => {
       owned.throwIfAborted()
-      const saved = memoryView(await this.ctx.genesis.editMemory(id, draft, updatedAt,
-        this.options.config.memory?.maxImplicitMemories ?? this.options.config.maxRecords))
+      const saved = memoryView(await this.ctx.genesis.editMemory(id, draft, updatedAt))
       this.options.consolidation?.kick()
       return saved
     })
@@ -226,8 +225,7 @@ export class GenesisMemoryGateway extends TypertRemoteService {
   convert(id: MemoryId, kind: MemoryKind, updatedAt: string, signal: AbortSignal): Promise<LifeMemory> {
     return this.operation(signal, async (owned) => {
       owned.throwIfAborted()
-      const converted = memoryView(await this.ctx.genesis.convertMemory(id, kind, updatedAt,
-        this.options.config.memory?.maxImplicitMemories ?? this.options.config.maxRecords))
+      const converted = memoryView(await this.ctx.genesis.convertMemory(id, kind, updatedAt))
       this.options.consolidation?.kick()
       return converted
     })

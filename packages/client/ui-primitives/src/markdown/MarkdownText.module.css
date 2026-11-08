@@ -490,3 +490,16 @@
   font-size: 12px;
   line-height: 18px;
 }
+
+.media {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.mediaPlayer {
+  max-width: 100%;
+}

@@ -20,6 +20,8 @@ With Genesis sleep enabled, private inputs wait in durable storage and replies p
 <a id="use"></a>
 ## Use
 
+Choose the operator in Genesis → Contacts. The saved legacy QQ operator binding seeds the contact role during migration; after contact selection, QQ execution, sleep admission and cross-conversation sends use the contact role. Creating a meaningful person relationship automatically creates or attaches the contact with the same person ID.
+
 From this source workspace, launch through the supported entry point, then configure the connection in Settings → QQ connection using the [QQ guide](../../../docs/genesis/qq.md):
 
 ```sh
@@ -34,7 +36,7 @@ Automatic group replies use an independently configured QQ decision model or exp
 
 The QQ guide describes bounded image/video/file reading, scoped media sends, same-conversation message quotes and genuine decision probabilities. History exposes attachment IDs separately from truncated text, and `genesis_qq_read_media` accepts an attachment ID or a locally retained message ID on later turns. Verified same-conversation quotes also admit their media. Original bytes use the attachment store; conversion requires managed subprocesses and an enforcing sandbox. QQ-only model preferences and recent probability receipts use an independent version-1 domain; keys use the existing credential service.
 
-An archived QQ Session stays paused until the operator restores it. Settings report allowed conversations blocked by archival; incoming messages cannot restore them or reserve input IDs. See [conversation restoration](../../../docs/genesis/qq.md).
+After a QQ Session is archived, the next admitted message from that user or group creates a new Session; later input and restart recovery use the latest binding. The old Session remains archived, retaining history, person relationships and message deduplication evidence. Unarchiving it does not change the current binding. Proactive sending never replaces an archived target by itself. To pause input, disable the QQ connection or remove the allowed target. See [conversation restoration](../../../docs/genesis/qq.md).
 
 Default media origins allow HTTPS subdomains through `https://*.qq.com` and explicitly include `https://multimedia.nt.qq.com.cn`; deployment overrides of `mediaOrigins` must include every intended origin explicitly. See the QQ guide for download restrictions.
 
@@ -45,6 +47,8 @@ Generated [speech](../genesis-speech/README.md) can be sent as a playable voice 
 The same tool also discovers an enabled [AI partner conversation](../genesis-companion/README.md). Its internal sends use the partner provider and may start a bounded exchange, while QQ sends retain their existing cold-target behavior and allowlists. Partner receipts remain distinct from QQ acknowledgements.
 
 <a id="implementation"></a>
+Autonomous QQ conversation uses separate `proactiveGroups` and `proactiveUsers` deployment allowlists, empty by default. Existing operator-requested outbound permissions grant no autonomous access. Only an admitted Genesis reflection can use this route, under persistent global cooldown and sending limits. Delivery reuses the text journal and platform acknowledgements; see [idle conversation](../../../docs/genesis/spontaneity.md#boredom-driven-idle-opportunities-and-conversation).
+
 ## Implementation
 
 <details>

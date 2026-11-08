@@ -9,7 +9,10 @@ export const temporaryEvidenceSchema = z.strictObject({ seq: z.number().int().no
   role: z.enum(['user', 'assistant', 'tool']), text: z.string() })
 /** Sanitized complete message; a threshold never splits one of these records. */
 export type TemporaryEvidence = z.infer<typeof temporaryEvidenceSchema>
-const route = z.object({ kind: z.literal('jev'), url: z.string(), model: z.string(), threshold: z.number() })
+const route = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('jev'), url: z.string(), model: z.string(), threshold: z.number() }),
+  z.object({ kind: z.literal('openai'), url: z.string(), model: z.string() }),
+])
 const assessment = z.object({ id: z.string(), requestSeq: z.number().int().nonnegative(),
   route: route.optional(), text: z.string().optional(), body: z.unknown().optional(), completed: z.boolean() })
 const schema = z.strictObject({ messages: z.array(temporaryEvidenceSchema), lastActivity: z.number().nonnegative(),
@@ -23,7 +26,7 @@ export const TEMPORARY_REMOVED = 'This temporary memory has expired or been with
 
 /** One replay fold owns evidence sanitization, context delivery and completed-importance recovery. */
 export const temporaryProjection: ProjectionDefinition<'genesisTemporary', z.infer<typeof schema>> = {
-  key: 'genesisTemporary', stateVersion: 1, stateSchema: schema,
+  key: 'genesisTemporary', stateVersion: 2, stateSchema: schema,
   init: () => ({ messages: [], lastActivity: 0, delivered: {} }),
   apply: (state, event) => {
     const content = event.type === 'user/message' && isHumanSource(event.data.source) ? event.data.content
@@ -58,9 +61,21 @@ export const temporaryProjection: ProjectionDefinition<'genesisTemporary', z.inf
       if (id.success) return { ...state, assessment: { id: id.data.temporaryMemoryId, requestSeq: event.seq, completed: false } }
     }
     if (record.type === 'plugin:genesis/model-http') {
-      const body = z.looseObject({ state: marker }).safeParse(data.body)
       const selected = route.safeParse(data.route)
-      if (body.success && selected.success) return { ...state, assessment: { id: body.data.state.temporaryMemoryId,
+      if (!selected.success) return state
+      let evidence: unknown
+      if (selected.data.kind === 'jev') {
+        const body = z.looseObject({ state: z.unknown() }).safeParse(data.body)
+        if (body.success) evidence = body.data.state
+      } else {
+        const body = z.object({ messages: z.array(z.object({ role: z.string(), content: z.string() })) }).safeParse(data.body)
+        const text = body.success ? body.data.messages.find(item => item.role === 'user')?.content : undefined
+        if (text !== undefined) {
+          try { evidence = JSON.parse(text) } catch (_error) { return state /* Invalid optional request JSON cannot establish a completed assessment. */ }
+        }
+      }
+      const id = marker.safeParse(evidence)
+      if (id.success) return { ...state, assessment: { id: id.data.temporaryMemoryId,
         requestSeq: event.seq, route: selected.data, completed: false } }
     }
     return state

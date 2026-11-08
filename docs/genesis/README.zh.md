@@ -40,17 +40,22 @@ pnpm dsh
 
 ### 浏览器操作
 
-工作区 Genesis Web 还通过 `config/genesis-browser.patch.yml` 加载已有的 [Playwright MCP 提供方](../../packages/experimental/browser-use-playwright-mcp/README.zh.md)。所有对话共享一个无头 Chromium 浏览器，可以访问和读取网页、点击、填写表单及截图。持久配置保存在 `$DSH_HOME/browser/playwright`，通常为 `~/.genesis-harness/browser/playwright`。首次使用时，安装仓库锁定版本的 `@playwright/mcp` 依赖所需的浏览器：
+工作区 Genesis Web 默认启用 [Playwright 浏览器组合包](../../packages/experimental/browser-use-playwright-mcp/README.zh.md)，连接在 Genesis 服务器上独立运行的专用 Chrome，默认地址为 `http://127.0.0.1:9222`。在 **设置 → 浏览器** 修改 **Chrome 调试地址** 并保存。地址从服务器访问，而不是从你的本地电脑访问；支持 HTTP(S) 和 WS(S) 调试地址。配置保存在 profile 中，重启后保留。保存不测试连通性。保存后重启 Genesis，共享提供方便会连接新地址。
+
+在已安装 Chrome 且有活动图形会话的 Linux 服务器上，安装仓库提供的用户服务：
 
 ```sh
-pnpm --filter @deepseek-ai/dsh-experimental-browser-use-playwright-mcp exec playwright-mcp install-browser chrome-for-testing --no-remove
+install -Dm644 config/systemd/genesis-chrome.service ~/.config/systemd/user/genesis-chrome.service
+systemctl --user daemon-reload
+systemctl --user enable --now genesis-chrome.service
+pnpm dsh web
 ```
 
-也可将 `GENESIS_BROWSER_EXECUTABLE` 设为 Chrome 或 Chromium 可执行文件的绝对路径。重启 DSH 即可加载共享浏览器工具。可执行文件缺失时浏览器操作会明确报错，应安装配套浏览器或修正路径后再试。
+该服务运行有窗口的 Chrome，使用独立配置目录 `~/.genesis-harness/browser/chrome` 和回环调试端口。可通过 systemd 服务覆盖配置修改 `GENESIS_CHROME_PROFILE` 或 `GENESIS_CHROME_PORT`；修改端口后同步修改 UI 地址。服务继承用户管理器的图形环境，需要可用的 X11/Xwayland 显示。Chrome 与 DSH 独立运行，停止 DSH 会保留 Chrome 和页面。Chrome 正常或异常退出后，服务都会自动重启它；需要明确停止时使用 `systemctl --user stop genesis-chrome.service`。原有 `$DSH_HOME/browser/playwright` 配置目录保留，不会自动导入 Chrome。配置目录包含敏感登录数据，备份或删除前应停止 Chrome。
 
-生命模式须通过 `learn` 学习准确工具名，例如 `mcp__playwright-mcp__browser_navigate`、`mcp__playwright-mcp__browser_snapshot`、`mcp__playwright-mcp__browser_click` 和 `mcp__playwright-mcp__browser_fill_form`。学习记录、带有效期的 Cookie 和网站本地存储在正常重启后保留。不保证恢复打开的标签页及仅限会话的网站数据。浏览器目录包含敏感登录数据，应先停止 DSH 再备份或删除。浏览器单次调用按顺序执行，不同对话的多次调用工作流仍可能交错。学会工具不代表获得外部操作授权。其他预设直接开放当前可用的浏览器工具。截图需要支持图片的模型路由，文本模型可使用页面文本快照。此提供方属于实验能力；配置和恢复限制见其 README。
+所有对话共享同一个 Chrome、页面与网站身份。工具单次调用串行执行，不同对话的多次调用工作流仍可能交错。Chrome 不可用时，浏览器操作会报告连接错误，不会启动替代浏览器。恢复 Chrome 后再试；已有连接仍不可用时重启 Genesis。此连接关闭内置 **AI 浏览器** 预览；通过服务器图形桌面的 Chrome 窗口查看网页、登录及人工接管。该服务不提供远程桌面。
 
-在右侧栏入口页选择 **AI 浏览器**，即可查看同一个持久浏览器。面板显示页面、网址和最近 AI 操作状态，打开期间约每秒更新一次。面板列出已打开的标签页，可选择预览、刷新或关闭真实页面。**跟随 AI** 可返回她的当前页面；选择预览不会改变她正在操作的标签页。预览截图和简短操作列表不会跨重启保存，也不会进入模型上下文。
+生命模式须通过 `learn` 学习准确工具名，例如 `mcp__playwright-mcp__browser_navigate`、`mcp__playwright-mcp__browser_snapshot`、`mcp__playwright-mcp__browser_click` 和 `mcp__playwright-mcp__browser_fill_form`。学会工具不代表获得外部操作授权。截图需要支持图片的模型路由，文本模型可使用页面文本快照。此连接仍通过 Playwright 操作，不保证消除网站风控。调试端口应仅监听回环地址；远程访问须使用受保护的隧道，因为该端点可以控制已登录的网站。
 
 ### GNOME Wayland 桌面控制
 

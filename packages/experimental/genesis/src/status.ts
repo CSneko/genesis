@@ -3,11 +3,13 @@ import { searchText, memoryDocument } from './search.ts'
 import { isNonDeclarative } from './personality.ts'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
-import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, TypertRemoteService, principalOf } from '@deepseek-ai/dsh-typert-protocol'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { LifeMemoryEngine } from './memory.ts'
+import type { PurgePreferences } from './purge-preferences.ts'
+import type { PurgeSettings } from './status-types.ts'
 import type { ModelPreferences } from './model-preferences.ts'
 import { catalogModels, modelCatalogUrl, modelHeaders, modelJson } from './model-endpoint.ts'
 import type { MemoryModelsSettings } from './status-types.ts'
@@ -17,7 +19,7 @@ import { auxiliaryCall } from './auxiliary-call.ts'
 import { reviewDecisionSchema } from './model-endpoint.ts'
 import { GenesisError } from './error.ts'
 import { memoryView } from './memory.ts'
-import { configuredEmbeddings } from './embedding.ts'
+import { configuredEmbeddings, optionalEmbeddings } from './embedding.ts'
 import type { EmbeddingPreferences } from './embedding-preferences.ts'
 import type { EmbeddingSettings } from './status-types.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -50,6 +52,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
    */
   constructor(ctx: Context, private readonly options: {
     config: Config
+    purge: PurgePreferences
     preferences: EmbeddingPreferences
     models: ModelPreferences
     memory: LifeMemoryEngine | undefined
@@ -61,6 +64,33 @@ export class GenesisStatusGateway extends TypertRemoteService {
     ctx.effect(() => async () => {
       this.lifetime.abort()
       await Promise.allSettled(this.operations)
+    })
+  }
+
+  /** Read the saved action-guidance switch independently of startup overlays.
+   * @param signal - Operator cancellation.
+   * @returns Effective switch and optimistic revision.
+   */
+  @Remote('inspectPurge')
+  inspectPurge(signal: AbortSignal): Promise<PurgeSettings> {
+    return this.operation(signal, async () => {
+      if (principalOf(this.ctx.invocation) !== undefined) throw new GenesisError('invalid-source', 'Purge settings require operator access.')
+      return this.options.purge.read()
+    })
+  }
+
+  /** Persist the switch without rewriting deployment configuration or life history.
+   * @param enabled - Requested action guidance.
+   * @param revision - Last displayed revision; stale edits are rejected.
+   * @param signal - Caller cancellation; admitted writes drain before teardown.
+   * @returns Saved switch and committed revision.
+   */
+  @Remote('savePurge')
+  savePurge(enabled: boolean, revision: number, signal: AbortSignal): Promise<PurgeSettings> {
+    return this.operation(signal, async () => {
+      if (principalOf(this.ctx.invocation) !== undefined) throw new GenesisError('invalid-source', 'Purge settings require operator access.')
+      await this.options.purge.save(enabled, revision)
+      return this.options.purge.read()
     })
   }
 
@@ -105,7 +135,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
   private async prepare(signal: AbortSignal): Promise<void> {
     const { awakening, memory } = this.options.config
     if (awakening === undefined || memory === undefined) throw new GenesisError('invalid-state', 'Enable awakening with memory configuration first.')
-    await this.ctx.llm.prepareCall(awakening, signal)
+    await this.ctx.llm.prepareCall(this.ctx.get('agentDefaultModel')?.currentSelection() ?? awakening, signal)
     const models = this.options.models.read().models
     for (const role of ['decision', 'writer'] as const) {
       const route = models[role]
@@ -113,11 +143,11 @@ export class GenesisStatusGateway extends TypertRemoteService {
       if (route.kind === 'provider') await this.ctx.llm.prepareCall(route, signal)
       else await modelHeaders(this.ctx, route)
     }
-    await configuredEmbeddings(this.ctx, memory, this.options.preferences.read().embedding).credential()
+    await optionalEmbeddings(this.ctx, memory, this.options.preferences.read().embedding)?.credential()
   }
 
   /**
-   * Check configured chat/reviewer/writer routes and the embedding service, then name this existing life once.
+   * Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once.
    * Credentials use the existing provider settings or account sign-in; no secrets are accepted or stored here.
    * @param name - User-chosen name, retained across Sessions and restarts.
    * @param signal - Caller cancellation; an admitted storage commit may still finish after cancellation.
@@ -131,7 +161,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
       if (!name.trim() || name.trim().length > 200) throw new GenesisError('invalid-source', 'Choose a name of 1 to 200 characters.')
       const deadline = AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)])
       await this.prepare(deadline)
-      await configuredEmbeddings(this.ctx, memory, this.options.preferences.read().embedding).embed('Memory initialization', deadline)
+      await optionalEmbeddings(this.ctx, memory, this.options.preferences.read().embedding)?.embed('Memory initialization', deadline)
       deadline.throwIfAborted()
       await this.ctx.genesis.awaken(name)
     })
@@ -146,7 +176,54 @@ export class GenesisStatusGateway extends TypertRemoteService {
    */
   @Remote('saveModels')
   async saveModels(settings: MemoryModelsSettings, revision: number, signal: AbortSignal): Promise<number> {
-    return this.operation(signal, async () => this.options.models.save(settings, revision))
+    return this.operation(signal, async () => {
+      const next = await this.options.models.save(settings, revision)
+      if (!settings.localDecision) await this.ctx.get('genesisLocalDecision')?.stop()
+      return next
+    })
+  }
+
+  /**
+   * Install and verify the optional local decision model before selecting it.
+   * @param revision - Last displayed model revision; concurrent edits refuse route publication.
+   * @param signal - Operator cancellation during download and verification.
+   * @returns New settings revision; failed installation preserves the previous selection.
+   */
+  @Remote('deployLocalDecision')
+  async deployLocalDecision(revision: number, signal: AbortSignal): Promise<number> {
+    return this.operation(signal, async (owned) => {
+      const current = this.options.models.read()
+      if (current.revision !== revision) throw new GenesisError('configuration-conflict', 'Model settings changed. Reload before deploying.')
+      const local = this.ctx.get('genesisLocalDecision')
+      if (local === undefined) throw new GenesisError('memory-provider', 'The local decision runtime is not loaded.')
+      await local.start(true, owned)
+      owned.throwIfAborted()
+      try { return await this.options.models.save({ ...current.models, decision: current.configuredDecision, localDecision: true }, revision) }
+      catch (error) {
+        if (!this.options.models.read().models.localDecision) await local.stop()
+        throw error
+      }
+    })
+  }
+
+  /**
+   * Disable the managed route before stopping or removing its private runtime.
+   * @param revision - Last displayed settings revision.
+   * @param remove - True also removes downloaded assets; cloud configuration and life data are retained.
+   * @param signal - Operator cancellation before admission.
+   * @returns New revision after route selection commits and teardown finishes.
+   */
+  @Remote('stopLocalDecision')
+  async stopLocalDecision(revision: number, remove: boolean, signal: AbortSignal): Promise<number> {
+    return this.operation(signal, async () => {
+      const current = this.options.models.read()
+      const local = this.ctx.get('genesisLocalDecision')
+      if (local === undefined) throw new GenesisError('memory-provider', 'The local decision runtime is not loaded.')
+      const next = await this.options.models.save({ ...current.models, decision: current.configuredDecision, localDecision: false }, revision)
+      if (remove) await local.uninstall()
+      else await local.stop()
+      return next
+    })
   }
 
   /**
@@ -421,10 +498,12 @@ export class GenesisStatusGateway extends TypertRemoteService {
         const route = models.models[role]
         const ref = route.kind === 'provider' ? undefined : route.keyRef
         const key = await this.ctx.get('credentials')?.describe(credentialRef(ref ?? `GENESIS_${role.toUpperCase()}_API_KEY`))
-        keys[role] = { configured: ref === undefined || (key?.configured ?? Boolean(process.env[ref]?.trim())),
+        keys[role] = { configured: (models.models.localDecision === true && role === 'decision' && this.ctx.get('genesisLocalDecision')?.status().phase === 'ready') || ref === undefined || (key?.configured ?? Boolean(process.env[ref]?.trim())),
           writable: key?.writable ?? false }
       }
-      result.models = { ...models.models, revision: models.revision, keys }
+      result.models = { ...models.models, configuredDecision: models.configuredDecision, revision: models.revision, keys }
+      const localDecision = this.ctx.get('genesisLocalDecision')
+      if (localDecision !== undefined) result.localDecision = localDecision.status()
       const { embedding, revision } = this.options.preferences.read()
       const credentials = this.ctx.get('credentials')
       const key = await credentials?.describe(credentialRef(embedding.keyRef ?? 'GENESIS_EMBEDDING_API_KEY'))

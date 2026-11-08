@@ -9,7 +9,7 @@ import { completedTemporaryAssessment } from '../src/temporary-recovery.ts'
 import { temporaryMemorySchema } from '../src/temporary-model.ts'
 import { qqPersonId, conversationSchema, personSourceSchema } from '../src/people-model.ts'
 import { Context } from '@deepseek-ai/cordis'
-import { AgentRegistry } from '@deepseek-ai/dsh-agent'
+import { AgentRegistry, type Agent } from '@deepseek-ai/dsh-agent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { GenesisSessionEvidence } from '../src/session-evidence.ts'
 import { Config } from '../src/config.ts'
@@ -99,14 +99,21 @@ it('emits only additions, updates and removals and replays the per-record delive
   expect(updateFor([changed])).toBeUndefined()
 })
 
-it('recovers the exact completed importance response without making a second model call', async () => {
+it.each(['provider', 'openai'] as const)('recovers the completed %s importance response without a second model call', async (kind) => {
   const ctx = await reader()
   const session = Session.create(SessionId('temporary-recovery'))
   const id = brandString<import('../src/temporary-model.ts').TemporaryMemoryId>(randomUUID())
-  const requestSeq = appendPluginRecord(session, 'plugin:genesis/memory-call', { version: 1, phase: 'request', role: 'decision',
-    config: { provider: 'fixture', model: 'decision' }, system: 'importance', input: JSON.stringify({ temporaryMemoryId: id, summary: '摘要' }) })
+  const input = JSON.stringify({ temporaryMemoryId: id, summary: '摘要' })
+  const requestSeq = kind === 'provider'
+    ? appendPluginRecord(session, 'plugin:genesis/memory-call', { version: 1, phase: 'request', role: 'decision',
+      config: { provider: 'fixture', model: 'decision' }, system: 'importance', input })
+    : appendPluginRecord(session, 'plugin:genesis/model-http', { version: 1, phase: 'request',
+      route: { kind: 'openai', url: 'http://127.0.0.1:1/v1/chat/completions', model: 'decision' },
+      body: { messages: [{ role: 'user', content: input }] } })
   expect(completedTemporaryAssessment(ctx, session, id)).toBeUndefined()
-  appendPluginRecord(session, 'plugin:genesis/memory-call', { version: 1, phase: 'response', requestSeq, text: '{"importance":0.8}' })
+  if (kind === 'provider') appendPluginRecord(session, 'plugin:genesis/memory-call', { version: 1, phase: 'response', requestSeq, text: '{"importance":0.8}' })
+  else appendPluginRecord(session, 'plugin:genesis/model-http', { version: 1, phase: 'response', requestSeq,
+    body: { choices: [{ finish_reason: 'stop', message: { content: '{"importance":0.8}' } }] } })
   expect(completedTemporaryAssessment(ctx, session, id)).toEqual({ value: { importance: 0.8 } })
 })
 
@@ -160,12 +167,14 @@ it('forgets expired current records and preserves QQ audiences independently of 
 })
 
 
-it.each(['life', 'conversation'] as const)('applies %s sharing to unexpired temporary keyword recall', async (memorySharing) => {
+it.each(['life', 'conversation'] as const)('applies %s sharing to recall and injects temporary summaries only into other Sessions', async (memorySharing) => {
   const root = await mkdtemp(join(tmpdir(), 'temporary-sharing-'))
   dispose.push(() => rm(root, { recursive: true, force: true }))
   const life = await openCore(root, 'json', { memorySharing })
   new AgentRegistry(life.ctx)
   dispose.push(() => life.close())
+  await life.ctx.plugin(SessionProjectionRegistry)
+  life.ctx.provide('genesisSessionEvidence', await GenesisSessionEvidence.create(life.ctx, life.config))
   await life.core.bindConversation({ id: conversationSchema.parse({ id: 'qq:group:11111:67890', sessionId: 'target-group', kind: 'group' }).id,
     sessionId: SessionId('target-group'), kind: 'group' })
   const state = await life.core.snapshot()
@@ -183,5 +192,27 @@ it.each(['life', 'conversation'] as const)('applies %s sharing to unexpired temp
   const found = await engine.search('薄荷 共同记忆', SessionId('target-group'))
   expect(found.length).toBe(memorySharing === 'life' ? 1 : 0)
   if (memorySharing === 'life') expect(found[0]).toContain(memory.summary)
+  const agentFor = (session: Session): Agent => ({
+    id: session.id, ctx: life.ctx, session, options: {}, model: { current: () => undefined, select() {} }, status: 'idle',
+    inbox: { nextTurn: [], nextStep: [], clear() {}, append() {}, prepend() {}, replace: () => false, remove: () => false, splice: () => [] },
+    send() {}, followup() {}, steer: () => ({ outcome: Promise.resolve({ status: 'rejected' as const }) }), inject() {}, cancel() {},
+    runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),
+  })
+  const source = agentFor(Session.create(memory.sessionId))
+  source.session.append('user/message', createUserMessage({ source: { kind: 'user' },
+    content: [{ type: 'text', text: '一起种过薄荷。' }] }), { surfaceOp: 'append' })
+  expect(await engine.context(source)).toBeUndefined()
+  expect(await engine.search('薄荷', source.id)).toHaveLength(1)
+  const resumedSource = agentFor(Session.create(source.id, source.session.ownEvents()))
+  expect(await engine.context(resumedSource)).toBeUndefined()
+  const target = agentFor(Session.create(SessionId('target-group')))
+  const update = await engine.context(target)
+  if (memorySharing === 'life') {
+    expect(JSON.stringify(update)).toContain(memory.summary)
+    target.session.append('user/message', update!, { surfaceOp: 'append' })
+    expect(await engine.context(target)).toBeUndefined()
+  } else {
+    expect(update).toBeUndefined()
+  }
   expect(store.read().memories[0]?.audience).toEqual({ kind: 'operator' })
 })

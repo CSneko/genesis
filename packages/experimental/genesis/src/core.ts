@@ -1,4 +1,5 @@
 /** Atomic life state, sourced memory retrieval and observed system growth. @module */
+import type { BoredomState } from './boredom.ts'
 import { searchText, memoryDocument } from './search.ts'
 import { applyDeliberation, type DeliberationCommit } from './agency.ts'
 import { applyPlanChange, type PlanChange } from './planning.ts'
@@ -32,22 +33,24 @@ import { memoryTimeText, readMemory } from './memory-time.ts'
 import { isImplicit } from './personality.ts'
 import { lifeDomain, memoryInputSchema, experienceSchema, habitSchema, stateSchema, lifeRecordsDomain } from './model.ts'
 import { memorySummarySchema } from './memory-summary.ts'
+import { contactInputSchema, type ContactInput, type ContactCatalog, type LifeContact } from './contacts-model.ts'
+import { qqPersonId } from './people-model.ts'
 import { applyPeople } from './people.ts'
 import { memoryVisible } from './memory-access.ts'
-import { conversationSchema, peopleStateSchema, personSourceSchema, type LifeConversation, type PersonId, type PersonSource } from './people-model.ts'
+import { conversationSchema, peopleStateSchema, personSourceSchema, type LifeConversation, type PersonId, type PersonSource, type LifePerson } from './people-model.ts'
 import { conversationMemories, type ConversationMemoryScope } from './conversation-memory.ts'
 import type { CapabilityId, GrowthId, LifeEvent, LifeEventId, LifeId, LifeMemory, LifeState, MemoryId, MemoryInput, MemoryEmbedding, MemoryExperience, InterestId, LifeInterest } from './model.ts'
 
 /** One independently generated, validated change committed with its review marker. */
 export type MemoryChange = { action: 'delete'; id: MemoryId }
-  | { action: 'upsert'; id?: MemoryId; input: MemoryInput; embedding: MemoryEmbedding }
+  | { action: 'upsert'; id?: MemoryId; input: MemoryInput; embedding?: MemoryEmbedding | undefined }
 
 /** Writer-selected summary with Host-derived conversation, time and source references. */
 export interface ExperienceChange {
   id?: MemoryId
   input: MemoryInput
   details: MemoryExperience
-  embedding: MemoryEmbedding
+  embedding?: MemoryEmbedding | undefined
 }
 
 /** Bounded event query, ordered by recorded time. */
@@ -97,8 +100,8 @@ function fact(state: LifeState, type: string, dedupKey: string, payload: LifeEve
   return event
 }
 function emotionRecord(state: StoredEmotionState) {
-  const { controls, offlineChanges, moodEmotionScale, emotionMoodInfluence, ...anchor } = state
-  const record = { ...anchor, ...(controls === undefined ? {} : { controls }),
+  const { controls, boredom, offlineChanges, moodEmotionScale, emotionMoodInfluence, ...anchor } = state
+  const record = { ...anchor, ...(boredom === undefined ? {} : { boredom }), ...(controls === undefined ? {} : { controls }),
     ...(offlineChanges === undefined ? {} : { offlineChanges }),
     ...(moodEmotionScale === undefined ? {} : { moodEmotionScale }),
     ...(emotionMoodInfluence === undefined ? {} : { emotionMoodInfluence }) }
@@ -116,27 +119,150 @@ function grow(state: LifeState, event: LifeEvent, title: string, description: st
  * validation and capacity refusals leave it usable. Returned data is detached.
  */
 export class LifeCore {
+  private selectContactOperator(state: LifeState, personId: PersonId, enabled: boolean): void {
+    const contacts = state.contacts!
+    contacts.operatorConfigured = true
+    const people = state.people ??= { version: 1, people: [], conversations: [] }
+    const previous = people.operatorPersonId
+    for (const contact of contacts.items) {
+      if (contact.personId === personId) contact.operator = enabled
+      else if (enabled) contact.operator = false
+    }
+    if (enabled) people.operatorPersonId = personId
+    else if (people.operatorPersonId === personId) delete people.operatorPersonId
+    if (previous !== people.operatorPersonId && state.emotion !== undefined) state.emotion.relationship = null
+    fact(state, 'contact.operator', `contact-operator:${randomUUID()}`, { personId, enabled }, 'user')
+  }
+
+  private syncPeopleContacts(state: LifeState, profiles: readonly LifePerson[]): void {
+    const contacts = state.contacts ??= { version: 1, items: [] }
+    for (const person of profiles) {
+      if (contacts.items.some(contact => contact.personId === person.id)) continue
+      if (contacts.items.length >= this.config.people.maxPeople) throw new GenesisError('capacity', 'Contact inventory is full. Increase people.maxPeople before adding a relationship.')
+      const event = fact(state, 'contact.saved', `contact-import:${person.id}:${randomUUID()}`, { personId: person.id, relationshipId: person.relationship.id }, 'system')
+      contacts.items.push({ personId: person.id, name: person.name, qq: person.accountId, emails: [], handles: [], notes: '',
+        operator: false, updatedAt: event.timestamp, sourceEventId: event.id })
+    }
+    if (!contacts.operatorConfigured) {
+      const operator = contacts.items.find(contact => contact.personId === state.people?.operatorPersonId)
+      if (operator !== undefined) {
+        operator.operator = true
+        contacts.operatorConfigured = true
+        fact(state, 'contact.operator', 'contact-operator:legacy-import', { personId: operator.personId, enabled: true }, 'system')
+      }
+    }
+  }
+
+  /** Match an email address against the operator selected in Contacts.
+   * @param address - Parsed sender address; transport authentication is checked separately.
+   * @returns Whether the current operator contact explicitly owns this address.
+   */
+  isOperatorEmail(address: string): boolean {
+    this.assertUsable()
+    return this.state().contacts?.items.some(contact => contact.operator
+      && contact.emails.some(email => email.toLowerCase() === address.toLowerCase())) === true
+  }
+
+  /**
+   * Search contacts by name, person ID or address without loading relationship evidence.
+   * @param query - Case-insensitive substring, or empty for all contacts.
+   * @param offset - Zero-based page offset.
+   * @returns A detached page bounded by queryLimit and resultChars.
+   */
+  async contacts(query: string, offset: number = 0): Promise<ContactCatalog> {
+    z.string().max(500).parse(query); z.number().int().nonnegative().parse(offset)
+    const state = await this.snapshot()
+    const text = query.trim().toLowerCase()
+    const all = (state.contacts?.items ?? []).filter(item => !text || JSON.stringify(item).toLowerCase().includes(text))
+      .sort((a, b) => a.personId.localeCompare(b.personId))
+    const items = all.slice(offset, offset + this.config.queryLimit)
+    const result = { items, total: all.length, nextOffset: offset + items.length < all.length ? offset + items.length : null }
+    while (items.length > 1 && JSON.stringify(result).length > this.config.resultChars) {
+      items.pop(); result.nextOffset = offset + items.length
+    }
+    if (JSON.stringify(result).length > this.config.resultChars) throw new GenesisError('capacity', 'Contact exceeds resultChars. Increase the response budget.')
+    return result
+  }
+
+  /**
+   * Save addresses under the same QQ-derived identity as relationship records.
+   * @param input - Complete contact replacement; an existing person ID must match the QQ account.
+   * @param evidence - Optional actual Session evidence for a model-authored update.
+   * @param operator - Explicit operator UI selection; omitted preserves authority and is unavailable to model edits.
+   * @returns The durably committed contact; repeated unchanged saves create no new event.
+   */
+  saveContact(input: ContactInput, evidence?: { sessionId: SessionId; eventId: string }, operator?: boolean): Promise<LifeContact> {
+    const parsed = contactInputSchema.parse(input)
+    return this.change((state) => {
+      const personId = qqPersonId(parsed.qq)
+      const contacts = state.contacts ??= { version: 1, items: [] }
+      const old = contacts.items.find(item => item.personId === personId)
+      const fields = { ...parsed, personId, operator: operator ?? old?.operator ?? false, emails: [...new Set(parsed.emails)],
+        handles: parsed.handles.filter((item, index, all) => all.findIndex(other => other.kind === item.kind && other.value === item.value) === index) }
+      if (old !== undefined) {
+        if (old.name === fields.name && old.qq === fields.qq && old.notes === fields.notes && old.operator === fields.operator
+          && JSON.stringify(old.emails) === JSON.stringify(fields.emails)
+          && JSON.stringify(old.handles) === JSON.stringify(fields.handles)) return old
+      }
+      if (old === undefined && contacts.items.length >= this.config.people.maxPeople) throw new GenesisError('capacity', 'Contact inventory is full. Increase people.maxPeople or remove a contact.')
+      if (evidence !== undefined && (operator !== undefined || old?.operator && JSON.stringify(old.emails) !== JSON.stringify(fields.emails))) {
+        throw new GenesisError('invalid-source', 'Change operator authority and email addresses in Contacts, not through a model tool.')
+      }
+      if (operator !== undefined) this.selectContactOperator(state, personId, operator)
+      const event = fact(state, 'contact.saved', `contact-saved:${randomUUID()}`, { personId }, evidence === undefined ? 'user' : 'agent', evidence?.sessionId, evidence?.eventId)
+      const contact = { ...fields, updatedAt: event.timestamp, sourceEventId: event.id }
+      if (old === undefined) contacts.items.push(contact)
+      else contacts.items[contacts.items.indexOf(old)] = contact
+      return contact
+    })
+  }
+
+  /**
+   * Remove current addresses while preserving relationship history and Session audit logs.
+   * @param personId - Stable person ID selected from a contact result.
+   * @param evidence - Optional logged tool call responsible for deletion.
+   * @returns Whether a contact was removed.
+   */
+  deleteContact(personId: PersonId, evidence?: { sessionId: SessionId; eventId: string }): Promise<boolean> {
+    return this.change((state) => {
+      const contacts = state.contacts
+      if (contacts === undefined || !contacts.items.some(item => item.personId === personId)) return false
+      if (evidence !== undefined && contacts.items.some(item => item.personId === personId && item.operator)) throw new GenesisError('invalid-source', 'Remove the operator contact through Contacts, not a model tool.')
+      if (contacts.items.some(item => item.personId === personId && item.operator)) this.selectContactOperator(state, personId, false)
+      contacts.items = contacts.items.filter(item => item.personId !== personId)
+      fact(state, 'contact.deleted', `contact-deleted:${randomUUID()}`, { personId }, evidence === undefined ? 'user' : 'agent', evidence?.sessionId, evidence?.eventId)
+      return true
+    })
+  }
+
   /**
    * Bind an authenticated platform route to one durable Session before accepting messages.
-   * @param conversation - Exact route and reserved Session; reuse may not silently replace it.
-   * @param operatorPersonId - Explicit deployment binding, never inferred from a name or relationship.
+   * @param conversation - Exact route and reserved Session; earlier bindings remain as history.
+   * @param operatorPersonId - Legacy deployment seed used only until Contacts owns operator selection.
+   * @param previousSessionId - Expected latest Session when the authenticated adapter rotates an archived route.
    * @returns After the route is durable; conflicting routes or operator identities are refused.
    */
-  bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void> {
+  bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId, previousSessionId?: SessionId): Promise<void> {
     const parsed = conversationSchema.parse(conversation)
     return this.change((state) => {
       const people = state.people ??= peopleStateSchema.parse({ version: 1, people: [], conversations: [] })
-      const old = people.conversations.find(item => item.id === parsed.id || item.sessionId === parsed.sessionId)
-      if (old !== undefined && JSON.stringify(old) !== JSON.stringify(parsed)) {
+      const reused = people.conversations.find(item => item.sessionId === parsed.sessionId)
+      const latest = people.conversations.findLast(item => item.id === parsed.id)
+      const old = reused ?? latest
+      if (reused !== undefined && JSON.stringify(reused) !== JSON.stringify(parsed)) {
+        throw new GenesisError('configuration-conflict', 'The QQ Session already belongs to another route.')
+      }
+      const rotating = reused === undefined && latest !== undefined && latest.sessionId === previousSessionId
+      if (old !== undefined && JSON.stringify(old) !== JSON.stringify(parsed) && !rotating) {
         throw new GenesisError('configuration-conflict', 'The QQ conversation already belongs to another Session. Restore its recorded Session before accepting messages.')
       }
-      if (operatorPersonId !== undefined && people.operatorPersonId !== undefined && people.operatorPersonId !== operatorPersonId) {
+      if (!state.contacts?.operatorConfigured && operatorPersonId !== undefined && people.operatorPersonId !== undefined && people.operatorPersonId !== operatorPersonId) {
         throw new GenesisError('configuration-conflict', 'The QQ operator binding differs from saved life data. Verify the existing operator before changing it.')
       }
-      if (operatorPersonId !== undefined) people.operatorPersonId = operatorPersonId
-      if (old === undefined) {
+      if (!state.contacts?.operatorConfigured && operatorPersonId !== undefined) people.operatorPersonId = operatorPersonId
+      if (old === undefined || rotating) {
         people.conversations.push(parsed)
-        fact(state, 'conversation.bound', `conversation:${parsed.id}`, { id: parsed.id, sessionId: parsed.sessionId, kind: parsed.kind, ...(parsed.personId === undefined ? {} : { personId: parsed.personId }) }, 'system', parsed.sessionId)
+        fact(state, 'conversation.bound', rotating ? `conversation:${parsed.id}:${parsed.sessionId}` : `conversation:${parsed.id}`, { id: parsed.id, sessionId: parsed.sessionId, kind: parsed.kind, ...(parsed.personId === undefined ? {} : { personId: parsed.personId }) }, 'system', parsed.sessionId)
       }
     })
   }
@@ -154,7 +280,7 @@ export class LifeCore {
   }
 
   /**
-   * Delete a retained profile, earlier account recognition and memories citing that person's messages, preserving audited Session evidence.
+   * Delete a retained profile, its contact details, earlier account recognition and memories citing that person's messages, preserving audited Session evidence.
    * @param personId - Explicit operator-selected identity; names cannot select a person.
    * @param updatedAt - Optional displayed profile version; changed or missing profiles refuse deletion.
    * @returns Whether a retained profile existed; raw Session logs require separate lifecycle deletion.
@@ -186,6 +312,11 @@ export class LifeCore {
       }
       for (const id of removed) unlinkExperience(state, id)
       state.memories = state.memories.filter(memory => !removed.has(memory.id))
+      if (state.contacts?.items.some(contact => contact.personId === personId)) {
+        if (state.contacts.items.some(contact => contact.personId === personId && contact.operator)) this.selectContactOperator(state, personId, false)
+        state.contacts.items = state.contacts.items.filter(contact => contact.personId !== personId)
+        fact(state, 'contact.deleted', `contact-forgotten:${randomUUID()}`, { personId }, 'user')
+      }
       people.people = people.people.filter(person => person.id !== personId)
       if (personId === people.operatorPersonId && state.emotion !== undefined) state.emotion.relationship = null
       if (old !== undefined || removed.size > 0 || sources.size > 0) fact(state, 'person.forgotten', `person-forgotten:${randomUUID()}`,
@@ -283,7 +414,7 @@ export class LifeCore {
   }
 
   /**
-   * Match an authenticated account to the configured operator; names and relationships never qualify.
+   * Match an authenticated account to the contact operator; names and relationships never qualify.
    * @param personId - Transport-verified person identity.
    * @returns Whether this exact account has the durable operator binding.
    */
@@ -465,6 +596,10 @@ export class LifeCore {
     }
     await this.change((state) => {
       fact(state, 'life.started', `start:${randomUUID()}`, {})
+      if (!state.contacts?.peopleImported) {
+        this.syncPeopleContacts(state, state.people?.people ?? [])
+        state.contacts!.peopleImported = true
+      }
       const personality = this.config.personality
       if (personality !== undefined && !state.events.some(event => event.dedupKey === 'personality:initialized')) {
         const source = fact(state, 'personality.initialized', 'personality:initialized', { kind: 'configured-initial-tendencies' })
@@ -479,7 +614,6 @@ export class LifeCore {
             sourceEventIds: [source.id], createdAt: now, updatedAt: now })
           fact(state, 'memory.created', `personality-memory:${seed.category}`, { memoryId: id })
         }
-        this.checkImplicit(state, this.config.memory?.maxImplicitMemories ?? this.config.queryLimit)
       }
       const config = this.config.emotion
       if (config !== undefined) {
@@ -503,14 +637,18 @@ export class LifeCore {
             ? resolveEmotion(config, initialEmotion(config, now)) : resolveEmotion(config, previous)
           const changed = JSON.stringify([previous.sensitivity, previous.baseline, previous.shortHalfLifeMs, previous.moodHalfLifeMs,
             previous.needsHalfLifeMs, previous.interactionHalfLifeMs,
-            previous.offlineChanges, previous.moodEmotionScale, previous.emotionMoodInfluence])
+            previous.offlineChanges, previous.moodEmotionScale, previous.emotionMoodInfluence,
+            previous.boredom?.riseHalfLifeMs, previous.boredom?.fallHalfLifeMs])
             !== JSON.stringify([desired.sensitivity, desired.baseline, desired.shortHalfLifeMs, desired.moodHalfLifeMs,
               desired.needsHalfLifeMs, desired.interactionHalfLifeMs,
-              desired.offlineChanges, desired.moodEmotionScale, desired.emotionMoodInfluence])
+              desired.offlineChanges, desired.moodEmotionScale, desired.emotionMoodInfluence,
+              config.boredom.riseHalfLifeMs, config.boredom.fallHalfLifeMs])
           const { enabled: _enabled, windowTurns: _window, maxDelta: _delta, maxMoodDelta: _mood, maxNeedsDelta: _needs,
             contextStep: _step, relationshipEnabled: _relationship, maxRelationshipDelta: _relationshipDelta,
             moodSupportTurns: _support, importantEventThreshold: _important, repetitionDiscount: _discount, ...recovery } = desired
-          state.emotion = { ...resumed, ...recovery, revision: previous.revision + (changed ? 1 : 0) }
+          const boredom = { ...(previous.boredom ?? { ...config.boredom, level: 0 }), ...config.boredom, mode: 'idle' as const }
+          state.emotion = { ...resumed, ...recovery, boredom, revision: previous.revision + (changed ? 1 : 0) }
+          if (previous.boredom === undefined) fact(state, 'boredom.initialized', 'emotion:boredom:initialized', { before: emotionRecord(previous), after: emotionRecord(state.emotion), reason: 'online-engagement-accounting' })
           if (changed) fact(state, 'emotion.configured', `emotion:configuration:${state.emotion.revision}`, {
             before: emotionRecord(previous), after: emotionRecord(state.emotion), reason: 'startup-recovery-settings' })
         }
@@ -564,7 +702,7 @@ export class LifeCore {
    * @returns Committed life event, including on replay.
    */
   recordSleep(key: string, kind: string, payload: LifeEvent['payload']): Promise<LifeEvent> {
-    return this.change((state) => fact(state, `sleep.${kind.replace(/[^a-z]/gu, '')}`, `sleep:${key}`, { ...payload, kind }, 'system'))
+    return this.change(state => fact(state, `sleep.${kind.replace(/[^a-z]/gu, '')}`, `sleep:${key}`, { ...payload, kind }, 'system'))
   }
 
   /** Initialize the independent thought store ownership marker without creating another life.
@@ -927,7 +1065,9 @@ export class LifeCore {
           sourceEventIds.push(event.id)
         }
         const references = new Map(cited.map((message, index) => [message.seq, sourceEventIds[index]!]))
+        const knownPeople = new Set(state.people?.people.map(person => person.id))
         peopleChanges = applyPeople(state, sessionId, current, update, after, settings, this.config.people, references)
+        this.syncPeopleContacts(state, state.people?.people.filter(person => !knownPeople.has(person.id)) ?? [])
       }
       after.revision += 1
       state.emotion = after
@@ -938,13 +1078,45 @@ export class LifeCore {
   }
 
   /**
+   * Record an online idle opportunity with its sampled boredom, never an invented interaction.
+   * @param sessionId - Live source conversation supplying the execution ceiling.
+   * @param key - Stable opportunity key reserved by the idle scheduler.
+   * @returns Committed source event; replay returns the same event.
+   */
+  reserveBoredomOpportunity(sessionId: SessionId, key: string): Promise<LifeEvent> {
+    return this.change((state) => {
+      if (state.emotion?.boredom === undefined) throw new GenesisError('invalid-state', 'Boredom accounting is unavailable.')
+      const sampled = emotionAt(state.emotion, new Date().toISOString())
+      state.emotion = sampled
+      return fact(state, 'boredom.opportunity', key, { boredom: sampled.boredom!, attribution: 'runtime-observation' }, 'system', sessionId)
+    })
+  }
+
+  /**
+   * Settle elapsed engagement time before changing its mode; no inference or relationship change occurs.
+   * @param mode - Runtime-observed activity, never a model claim of completed work.
+   * @returns After a changed mode and its source record commit; unchanged modes do not write.
+   */
+  setBoredomMode(mode: BoredomState['mode']): Promise<void> {
+    if (this.config.emotion === undefined) return Promise.resolve()
+    return this.change((state) => {
+      if (state.emotion?.boredom === undefined || state.emotion.boredom.mode === mode) return
+      const before = emotionAt(state.emotion, new Date().toISOString())
+      const after = structuredClone(before)
+      after.boredom!.mode = mode
+      state.emotion = after
+      fact(state, 'boredom.activity', `boredom:activity:${randomUUID()}`, { before: before.boredom!, after: after.boredom! })
+    })
+  }
+
+  /**
    * Save elapsed online affect time without changing operator revisions or creating an experience.
    * @returns After the online-only anchor is durable; storage uncertainty stops dependent operations.
    */
   checkpointEmotion(): Promise<void> {
-    if (this.config.emotion === undefined || this.state().emotion?.offlineChanges !== false) return Promise.resolve()
+    if (this.config.emotion === undefined) return Promise.resolve()
     return this.change((state) => {
-      if (state.emotion?.offlineChanges === false) state.emotion = emotionAt(state.emotion, new Date().toISOString())
+      if (state.emotion !== undefined) state.emotion = emotionAt(state.emotion, new Date().toISOString())
     })
   }
 
@@ -1174,8 +1346,15 @@ export class LifeCore {
           state.people.people.push({ id: participant.personId, platform: participant.platform, accountId: participant.accountId,
             name: participant.name, updatedAt: observation.timestamp, sourceEventIds: [event.id],
             relationship: { ...state.emotion.relationship, scope: 'person', personId: participant.personId, label: participant.name } })
+          this.syncPeopleContacts(state, state.people.people.filter(person => person.id === participant.personId))
           fact(state, 'person.migrated', `operator-person:${participant.personId}`, { personId: participant.personId,
             relationshipId: state.emotion.relationship.id, sourceEventIds: [event.id] }, 'system', observation.sessionId)
+        }
+        const contact = state.contacts?.items.find(item => item.personId === participant.personId)
+        if (contact !== undefined && contact.name !== participant.name
+          && state.events.some(source => source.id === contact.sourceEventId && source.source === 'system')) {
+          const renamed = fact(state, 'contact.saved', `contact-name:${event.id}`, { personId: participant.personId, sourceEventId: event.id }, 'system', observation.sessionId, observation.eventId)
+          contact.name = participant.name; contact.updatedAt = renamed.timestamp; contact.sourceEventId = renamed.id
         }
       }
       if (observation.tool !== undefined) {
@@ -1185,6 +1364,23 @@ export class LifeCore {
           capability.changedAt = event.timestamp
         }
       }
+      return event
+    })
+  }
+
+  /** Record an optional integration's observed state without granting tool permission.
+   * @param name - Stable integration name.
+   * @param status - Actual initialization or transport observation; initialization is recorded once.
+   * @param detail - Nonsecret evidence describing what was observed and what remains unverified.
+   * @returns Durable observation; repeated unchanged states reuse their previous event.
+   */
+  recordIntegrationState(name: string, status: 'initialized' | 'connected' | 'disconnected', detail: string): Promise<LifeEvent> {
+    return this.change((state) => {
+      const observations = state.events.filter(event => event.type === 'integration.observed' && event.payload['name'] === name)
+      const previous = status === 'initialized' ? observations.find(event => event.payload['status'] === status) : observations.at(-1)
+      if (previous?.payload['status'] === status && previous.payload['detail'] === detail) return previous
+      const event = fact(state, 'integration.observed', `integration:${name}:${randomUUID()}`, { name, status, detail })
+      grow(state, event, `${name}: ${status}`, detail)
       return event
     })
   }
@@ -1216,7 +1412,7 @@ export class LifeCore {
   scan(sessionId: SessionId, tools: readonly ToolSchema[]): Promise<void> {
     const visible = new Map(tools.map(tool => [brandString<CapabilityId>(tool.name),
       createHash('sha256').update(JSON.stringify(tool)).digest('hex')]))
-    return this.change(state => { this.scanState(state, sessionId, visible) }, state =>
+    return this.change((state) => { this.scanState(state, sessionId, visible) }, state =>
       this.sameInventory(state, sessionId, visible) ? { result: undefined } : undefined)
   }
 
@@ -1282,12 +1478,12 @@ export class LifeCore {
    * @returns Committed memories in input order; validation failures create no memories.
    */
   rememberBatch(inputs: MemoryInput[]): Promise<LifeMemory[]> {
-    const parsed = inputs.map(input => {
+    const parsed = inputs.map((input) => {
       const memory = memoryInputSchema.parse(input)
       memory.content = memoryTimeText(memory.content)
       return memory
     })
-    return this.change((state) => parsed.map(input => {
+    return this.change(state => parsed.map((input) => {
       this.checkSources(state, input.sourceEventIds)
       const previous = state.memories.find(memory => memory.content === input.content && memory.category === input.category
         && JSON.stringify(memory.sourceEventIds) === JSON.stringify(input.sourceEventIds))
@@ -1333,10 +1529,9 @@ export class LifeCore {
    * @param id - Client-allocated UUID; retaining it makes retries of a new entry idempotent.
    * @param draft - Editable candidate fields, never caller-supplied source references.
    * @param updatedAt - Observed version, or null for a new entry.
-   * @param maxImplicit - Non-declarative count budget.
    * @returns Committed candidate retaining its identity and earlier sources when edited.
    */
-  editMemory(id: MemoryId, draft: MemoryDraft, updatedAt: string | null, maxImplicit: number): Promise<LifeMemory> {
+  editMemory(id: MemoryId, draft: MemoryDraft, updatedAt: string | null): Promise<LifeMemory> {
     z.uuid().parse(id)
     const parsed = memoryInputSchema.omit({ sourceEventIds: true, attribution: true, summary: true }).required({ kind: true }).parse(draft)
     parsed.content = memoryTimeText(parsed.content)
@@ -1375,7 +1570,6 @@ export class LifeCore {
       ])]
       if (old === undefined) state.memories.push(memory)
       else state.memories[state.memories.indexOf(old)] = memory
-      this.checkImplicit(state, maxImplicit)
       queueConsolidation(state)
       if (old === undefined) fact(state, 'memory.created', `manual-write:${randomUUID()}`, { memoryId: id }, 'user')
       return memory
@@ -1410,10 +1604,9 @@ export class LifeCore {
    * @param id - Existing memory.
    * @param kind - Explicit operator choice.
    * @param updatedAt - Version observed by the editor; stale conversions are refused.
-   * @param maxImplicit - Whole-life non-declarative count budget.
    * @returns Converted memory; an idempotent same-layer request leaves history unchanged.
    */
-  convertMemory(id: MemoryId, kind: 'declarative' | 'non-declarative', updatedAt: string, maxImplicit: number): Promise<LifeMemory> {
+  convertMemory(id: MemoryId, kind: 'declarative' | 'non-declarative', updatedAt: string): Promise<LifeMemory> {
     return this.change((state) => {
       const memory = state.memories.find(item => item.id === id)
       if (memory === undefined) throw new GenesisError('invalid-source', 'This memory was removed. Refresh the memory list.')
@@ -1425,7 +1618,6 @@ export class LifeCore {
         ...(state.suppressedHabitEvidence ?? []), ...memory.habit.supportEventIds,
       ])]
       state.memories[state.memories.indexOf(memory)] = converted
-      this.checkImplicit(state, maxImplicit)
       queueConsolidation(state)
       return converted
     })
@@ -1485,13 +1677,12 @@ export class LifeCore {
    * Atomically apply an independent writer's changes and record a completed review once.
    * @param key - Stable source turn or explicit user-memory request key.
    * @param changes - Validated changes; all references must belong to this life.
-   * @param maxImplicit - Whole-life non-declarative record limit.
    * @param experience - Optional remembered event; commits atomically with the derived entries.
    * @param evidence - Completed user exchange metadata for independent habit support and durable maintenance.
    * @param scope - Optional whole-conversation selection; every supplied version and mutation is checked atomically.
    * @returns After all changes and the replay marker commit, or no-op on replay.
    */
-  reviewMemory(key: string, changes: MemoryChange[], maxImplicit: number,
+  reviewMemory(key: string, changes: MemoryChange[],
     experience?: ExperienceChange, evidence?: ReviewEvidence, scope?: ConversationMemoryScope): Promise<void> {
     return this.change((state) => {
       if (state.events.some(event => event.dedupKey === `memory-review:${key}`)) return
@@ -1557,7 +1748,6 @@ export class LifeCore {
         else state.memories[state.memories.indexOf(old)] = memory
         fact(state, old === undefined ? 'memory.created' : 'memory.updated', `memory-write:${randomUUID()}`, { memoryId: memory.id }, 'agent')
       }
-      this.checkImplicit(state, maxImplicit)
       fact(state, 'memory.reviewed', `memory-review:${key}`, { changes: changes.length + (experience === undefined ? 0 : 1),
         ...(evidence === undefined ? {} : { feedbackTurn: `${evidence.sessionId}:${evidence.turn}`, userEventIds: evidence.userEventIds }),
         ...(scope === undefined ? {} : { conversationOverview: scope.sessionId,
@@ -1593,10 +1783,9 @@ export class LifeCore {
   /**
    * Commit one bounded consolidation with an optimistic revision check and replay marker.
    * @param plan - Validated changes and the exact selected memory versions.
-   * @param maxImplicit - Whole-life prompt memory limit.
    * @returns Whether the pass committed; concurrent edits leave work pending.
    */
-  consolidate(plan: ConsolidationCommit, maxImplicit: number): Promise<boolean> {
+  consolidate(plan: ConsolidationCommit): Promise<boolean> {
     return this.change((state) => {
       const changes = plan.changes.map(change => ({ ...change,
         input: { ...change.input, content: memoryTimeText(change.input.content) },
@@ -1604,7 +1793,6 @@ export class LifeCore {
           cue: memoryTimeText(change.habit.cue), response: memoryTimeText(change.habit.response) } }),
       }))
       if (!applyConsolidation(state, { ...plan, changes })) return false
-      this.checkImplicit(state, maxImplicit)
       fact(state, 'memory.consolidated', `consolidation:${plan.revision}`, { revision: plan.revision,
         memoryIds: plan.versions.map(item => item.id), changes: plan.changes.length }, 'agent', state.consolidation?.sessionId)
       return true
@@ -1735,12 +1923,6 @@ export class LifeCore {
   private assertUsable(): void {
     if (this.failure !== undefined) throw this.failure
     if (this.stopping) throw new GenesisError('closed', 'Genesis is stopping; no new operations are accepted.')
-  }
-  private checkImplicit(state: LifeState, maxImplicit: number): void {
-    const implicit = state.memories.filter(memory => memory.kind === 'non-declarative'
-      || (memory.kind === undefined && memory.category === 'procedural')).map(({ embedding: _embedding, ...memory }) => memory)
-    if (implicit.length > maxImplicit) throw new GenesisError('capacity', 'Non-declarative memory exceeds maxImplicitMemories. Consolidate or remove entries before retrying.')
-    if (JSON.stringify(implicit).length > this.config.memoryChars) throw new GenesisError('capacity', 'Non-declarative memory exceeds memoryChars. Consolidate entries before retrying.')
   }
   private checkSources(state: LifeState, sources: LifeEventId[]): void {
     if (sources.some(id => !state.events.some(event => event.id === id))) {

@@ -34,6 +34,18 @@ export function configuredEmbeddings(ctx: Context, memory: MemoryConfig, setting
     embeddingDimensions: settings.dimensions, ...(settings.keyRef === undefined ? {} : { embeddingKeyEnv: settings.keyRef }) }, ctx.get('credentials'))
 }
 
+/**
+ * Resolve optional semantic retrieval without hiding incomplete endpoint configuration.
+ * @param ctx - Current credential provider.
+ * @param memory - Inference limits.
+ * @param settings - Current embedding preferences; disabled or wholly empty selects text mode.
+ * @returns Captured embedding transport, or undefined for Markdown/text retrieval.
+ */
+export function optionalEmbeddings(ctx: Context, memory: MemoryConfig, settings: EmbeddingSettings): MemoryEmbeddings | undefined {
+  if (settings.enabled === false || (!settings.url && !settings.model && settings.dimensions === 0)) return undefined
+  return configuredEmbeddings(ctx, memory, settings)
+}
+
 /** A deployment-bound embedding space; endpoint/model/dimensions cannot share stale vectors. */
 export class MemoryEmbeddings {
   /** Digest of the configured endpoint, model and dimensions. */

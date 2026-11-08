@@ -46,7 +46,7 @@ it('initializes sourced personality once and preserves edits and deletion across
   initial, seeds, settings, async () => { throw new Error('No embedding should run') })).rejects.toThrow('initial settings')
   const self = seeds.find(memory => memory.category === 'self')!
   await first.core.editMemory(self.id, { category: 'self', kind: 'non-declarative', content: 'I prefer careful exploration.',
-    importance: 0.8, confidence: 0.8 }, self.updatedAt, 12)
+    importance: 0.8, confidence: 0.8 }, self.updatedAt)
   await first.core.deleteMemory(style.id)
   const before = await first.core.snapshot()
   await first.close()

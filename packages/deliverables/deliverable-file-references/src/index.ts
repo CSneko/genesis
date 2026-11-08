@@ -10,7 +10,7 @@ export const inject = ['systemPrompt']
 
 /** Static Web guidance for primary outputs and existing-file references. */
 const FILE_REFERENCE_PROMPT = 'Prefer showing the primary results within your final response alongside a brief explanation. '
-  + 'Use ![Description](<path/to/image.png>) when an image supports an explanation or comparison. Use [Description](<path/to/image.png>) when referring to an image or listing files. Enclose Markdown file destinations in angle brackets, especially paths containing spaces. '
+  + 'Use ![Description](<path/to/image.png>) when an image supports an explanation or comparison. Web conversations also support ![Description](</absolute/path/audio.mp3>) and ![Description](</absolute/path/video.mp4>) for playback with a download link; other embedded files retain a download link if preview is unavailable. Only reference files that actually exist and are accessible to the Session. Use [Description](<path/to/image.png>) when referring to an image or listing files. Enclose Markdown file destinations in angle brackets, especially paths containing spaces. '
   + 'Do not call present just to list edited source files, or run commands to check whether a diff view will appear. '
   + 'Use present to publish complete deliverables, including images, Office documents, spreadsheets, and slide decks, when separate access helps the user. Hosts that support file cards can show the presented file with preview and open actions. '
   + 'Avoid repeating results already shown inline unless the separate card adds useful access. '

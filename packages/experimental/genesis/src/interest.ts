@@ -50,16 +50,16 @@ export class LifeInterestEngine {
    * Evaluate a completed exchange once; no update is also durably marked.
    * @param agent - Source conversation and inference audit Session.
    * @param turn - Turn reaching the stopping hook.
-   * @param caller - Cancellation signal; accepted writes still drain.
+   * @param caller - Optional caller cancellation; background reviews use engine lifetime and deadlines.
    * @returns After durable review, or rejects with a classified failure.
    */
-  review(agent: Agent, turn: number, caller: AbortSignal): Promise<void> {
+  review(agent: Agent, turn: number, caller?: AbortSignal): Promise<void> {
+    const projected = structuredClone(this.ctx.genesisSessionEvidence.interestOf(agent.session))
     const operation = this.tail.then(async () => {
       let stage: ReviewStage = 'evidence'
       try {
-        const signal = AbortSignal.any([caller, this.lifetime.signal, AbortSignal.timeout(this.calls.timeoutMs)])
+        const signal = AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(this.calls.timeoutMs), ...(caller === undefined ? [] : [caller])])
         signal.throwIfAborted()
-        const projected = this.ctx.genesisSessionEvidence.interestOf(agent.session)
         if (projected === undefined) throw new GenesisError('invalid-state', 'Interest dialogue projection is unavailable. Reload Genesis.')
         let conversation = structuredClone(projected.turns).slice(-this.config.windowTurns)
         const current = conversation.at(-1)
@@ -97,7 +97,7 @@ export class LifeInterestEngine {
         throw safe
       }
     })
-    this.tail = operation.then(() => {}, (_error: unknown) => { /* The stopping hook reports the failure; disposal drains the queue. */ })
+    this.tail = operation.then(() => {}, (_error: unknown) => { /* The review caller reports the failure; disposal drains the queue. */ })
     return operation
   }
 

@@ -266,10 +266,11 @@ export class TemporaryMemoryEngine {
             : { kind: 'private' as const, personId: conversation.personId! }
         const signal = AbortSignal.any([owner, AbortSignal.timeout(calls.timeoutMs)])
         stage('summary')
+        const models = this.models()
         const result = z.strictObject({ summary: z.string().trim().min(1).max(config.summaryChars) }).parse(
           await auxiliaryCall(this.ctx, session, 'writer', SUMMARY, { conversation: temporaryDialogue(session, evidence, life),
             participants: participants(life, life.operator, session.id, this.config.people.maxPeople) }, signal,
-          { ...this.models(), writer: state.settings.summary, maxRetries: 0 }, budgets))
+          { ...models, writer: state.settings.inheritWriter ? models.writer : state.settings.summary, maxRetries: 0 }, budgets))
         if (!await this.ctx.sessions.flush(session)) throw new GenesisError('storage', 'Temporary summary audit was not durably acknowledged.')
         await this.store.change((next) => {
           next.sessions.find(item => item.sessionId === session.id)!.pending = { id: brandString<TemporaryMemoryId>(randomUUID()),
@@ -416,7 +417,7 @@ export class TemporaryMemoryEngine {
       .map(({ value: memory }) => `Temporary, unverified interpretation, expires ${new Date(memory.expiresAt).toISOString()}: ${memory.summary}`)
   }
   /**
-   * Produce a bounded, privacy-filtered change message for a Life-mode request.
+   * Produce a bounded, privacy-filtered change message for a Life-mode request, excluding summaries from its own Session.
    * @param agent - Actual requesting Agent.
    * @returns Uncommitted changes and expiry removals, never a repeated full inventory.
    */
@@ -427,6 +428,7 @@ export class TemporaryMemoryEngine {
     const selected: TemporaryMemory[] = []
     let chars = 0
     for (const memory of state.settings.enabled ? state.memories.toReversed() : []) {
+      if (memory.sessionId === agent.session.id) continue
       if (memory.expiresAt <= Date.now() || !temporaryVisible(memory, life, this.config.memorySharing, agent.session.id)) continue
       const size = JSON.stringify(memory).length
       if (selected.length >= this.config.temporaryMemory.injectLimit || chars + size > this.config.temporaryMemory.injectChars) break

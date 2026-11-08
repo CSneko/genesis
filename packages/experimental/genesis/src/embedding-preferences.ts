@@ -6,14 +6,18 @@ import type { EmbeddingSettings } from './status-types.ts'
 import { GenesisError } from './error.ts'
 import { embeddingSettings } from './embedding.ts'
 
-const settingsSchema = z.strictObject({
+const configuredSchema = z.strictObject({
+  enabled: z.boolean().optional(),
   url: z.url().refine((value) => {
+    if (!URL.canParse(value)) return false
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash
   }, 'Use an HTTP(S) embedding endpoint without credentials, query parameters or a fragment.'),
   model: z.string().trim().min(1).max(512), dimensions: z.number().int().min(1).max(65536),
   keyRef: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional(),
 })
+const settingsSchema = z.union([configuredSchema, z.strictObject({ enabled: z.literal(false),
+  url: z.literal(''), model: z.literal(''), dimensions: z.literal(0) })])
 const preferenceSchema = z.strictObject({ schemaVersion: z.literal(1), revision: z.number().int().min(1), embedding: settingsSchema })
 
 /** Validated preferences have their own versioned domain; life identity and history stay in the life domain. */

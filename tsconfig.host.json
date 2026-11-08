@@ -279,6 +279,7 @@
     { "path": "./packages/experimental/genesis" },
     { "path": "./packages/experimental/genesis-qq" },
     { "path": "./packages/experimental/genesis-companion" },
+    { "path": "./packages/experimental/genesis-mail" },
     { "path": "./packages/experimental/genesis-minecraft" },
     { "path": "./packages/experimental/genesis-speech" },
     { "path": "./packages/experimental/genesis-video" },

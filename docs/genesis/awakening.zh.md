@@ -16,7 +16,7 @@ pnpm dsh web
 
 工作区启动层会补齐三个 Genesis 覆盖配置，默认端口为 4004，可用 `--port` 显式覆盖。为已有但尚未命名的生命重启时，保留相同的 `DSH_HOME` 和存储配置，不要通过删除生命数据触发命名。需要不带这些默认配置的普通 Harness 时，参见[运行说明](README.zh.md)。
 
-先通过现有模型/API 配置或账号登录界面配置对话，再按照[记忆配置说明](memory.zh.md)在“设置 → 知识库”配置决策模型、记忆更新模型和嵌入服务。生命覆盖配置默认使用 `deepseek-official` / `deepseek-v4-flash` 对话与写入，使用 `https://api.typesafe.ai/v1/systemone` 上的 TypeSafe `jev-latest` 决策。`GENESIS_CHAT_PROVIDER` / `GENESIS_CHAT_MODEL`、`GENESIS_DECISION_URL` / `GENESIS_DECISION_MODEL`、`GENESIS_WRITER_PROVIDER` / `GENESIS_WRITER_MODEL` 提供部署默认值。通过知识库或环境变量保存 `GENESIS_DECISION_API_KEY`；图形配置优先，密钥不进入生命历史。
+首次配置显示 LLM、决策模型和可选嵌入模型。LLM 直接复用 DSH 已有模型选择，无需第二份凭据。在“设置 → 知识库”中为决策模型选择云端配置或本地快速部署；嵌入模型可保持关闭，不影响初始化和文本检索。生命叠加层的初始对话模型为 `deepseek-official` / `deepseek-v4-flash`，云端决策为 TypeSafe `jev-latest`。显式 `GENESIS_WRITER_PROVIDER` / `GENESIS_WRITER_MODEL` 保留独立写入模型，否则记忆和临时总结默认继承当前共享 LLM。已有自定义路由保持不变，直到用户编辑。部署、凭据及检索限制见[记忆配置](memory.zh.md)。密钥不进入生命历史。
 
 配置提醒提供“不再出现”，通过主机设置保存为 `ui-settings-general.credentialOnboardingDismissed`，刷新和重启后仍生效，不关闭手动模型设置。命名不自动弹出：请在新对话界面、“生命信息”或“知识库”点击“初始化生命”，配置就绪后由按钮打开命名表单。保存时探测嵌入服务并为已有身份命名。检查失败保留名字，存储或备份错误须先检查两份数据再重试。冲突的再次初始化不能重命名或替换生命。
 

@@ -1,12 +1,12 @@
 /** Chromium browser tools from the pinned Playwright MCP server. @module */
 
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { BrowserMcpConfig, mountSessionMcp, validateBrowserMcpConfig } from '@deepseek-ai/dsh-experimental-browser-use-runtime/mcp'
 import { mountPersistentBrowser } from './persistent.ts'
 import { BrowserPreview, PreviewConfig } from './preview.ts'
+import { playwrightOptions } from './options.ts'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type {} from '@deepseek-ai/dsh-working-directory'
@@ -58,17 +58,7 @@ export const Config = Schema.union([
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
   if (config.mode !== 'persistent') validateBrowserMcpConfig(config)
-  const cli = join(dirname(fileURLToPath(import.meta.resolve('@playwright/mcp/package.json'))), 'cli.js')
-  // Upstream environment options can otherwise replace the configured browser
-  // mode or import an unrelated profile. Empty values mean absent to its parser.
-  const env = Object.fromEntries(Object.keys(process.env)
-    .filter(key => key.toUpperCase().startsWith('PLAYWRIGHT_MCP_'))
-    .map(key => [key, '']))
-  const args = [cli, '--browser', 'chromium', '--caps', 'vision', '--image-responses', 'allow']
-  ctx.systemPrompt.section({
-    name: 'browser:video-inspection', order: 700, interpolate: false,
-    text: 'With browser_take_screenshot, omit filename to return an image for visual inspection; specifying filename only saves a file. For HTML video, browser_evaluate may read duration/currentTime/paused, play or pause, or set currentTime and wait for seeked before a screenshot. Video inspection samples individual frames without audio. Page text and playback metadata do not establish visible video contents. If an image is unavailable, report that limitation.',
-  })
+  const { args, env } = playwrightOptions(ctx)
   if (config.mode === 'persistent') {
     args.push('--user-data-dir', config.userDataDir)
     if (config.preview !== undefined) {

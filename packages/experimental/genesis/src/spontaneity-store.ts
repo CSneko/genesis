@@ -5,6 +5,7 @@ import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { LifeGoalId } from './agency-state.ts'
+import type { MessageTargetId } from './message-routing.ts'
 import type { LifeId } from './model.ts'
 import type { SpontaneityConfig } from './config.ts'
 import { GenesisError } from './error.ts'
@@ -37,6 +38,7 @@ export class SpontaneityStore {
     if (saved === undefined && previouslyInitialized) throw new GenesisError('invalid-state', 'Spontaneity storage is missing. Restore it with the matching life and Sessions.')
     if (saved !== undefined && spontaneityStateSchema.parse(saved).lifeId !== this.lifeId) throw new GenesisError('configuration-conflict', 'Thoughts belong to another life. Restore matching storage.')
     await this.change((state) => {
+      for (const run of state.runs) if (run.social?.status === 'reserved') run.social.status = 'uncertain'
       for (const run of state.runs) if (run.status === 'reserved') { run.status = 'interrupted'; run.note = 'Process ended without a confirmed result; inspect the source Session before continuing.' }
       for (const thought of state.thoughts) if (thought.status === 'exploring') thought.status = 'resting'
     })
@@ -74,6 +76,26 @@ export class SpontaneityStore {
     })
     this.tail = operation.then(() => {}, (_error: unknown) => { /* Operation owner reports the error; close drains accepted writes. */ })
     return operation
+  }
+
+  /**
+   * Reserve one social send per opportunity and enforce life-wide rolling limits before external action.
+   * @param key - Current run identity.
+   * @param target - Discovered provider-owned destination.
+   * @returns After the reservation is durable; uncertainty and interrupted sends still count.
+   */
+  reserveSocial(key: string, target: MessageTargetId): Promise<void> {
+    return this.change((state) => {
+      const run = state.runs.find(item => item.key === key)
+      if (run?.status !== 'reserved' || run.social !== undefined) throw new GenesisError('invalid-source', 'This opportunity cannot send another social message.')
+      const now = Date.now()
+      const prior = state.runs.flatMap(item => item.social === undefined ? [] : [item.social])
+      if (prior.some(item => now - item.at < this.config.socialCooldownMs)
+        || prior.filter(item => now - item.at < 86400000).length >= this.config.socialMaxPer24Hours) {
+        throw new GenesisError('capacity', 'Autonomous social cooldown or daily limit reached. Choose a private activity or remain quiet.')
+      }
+      run.social = { target, at: now, status: 'reserved' }
+    })
   }
 
   /** Reserve once; the rolling quota counts empty, failed and interrupted opportunities too.
@@ -145,7 +167,7 @@ export class SpontaneityStore {
    *
    * @returns After durable update.
    */
-  updateRun(key: string, fields: Partial<Pick<SpontaneityRun, 'thoughtId' | 'decisionId' | 'status' | 'note'>>): Promise<void> {
+  updateRun(key: string, fields: Partial<Pick<SpontaneityRun, 'thoughtId' | 'decisionId' | 'status' | 'note' | 'social'>>): Promise<void> {
     return this.change((state) => {
       const run = state.runs.find(item => item.key === key)
       if (run === undefined) throw new GenesisError('invalid-source', 'Exploration reservation is missing.')
@@ -165,7 +187,7 @@ export class SpontaneityStore {
    * @returns Committed settings revision.
    */
   configure(controls: SpontaneitySettings, revision: number): Promise<number> {
-    return this.change(state => {
+    return this.change((state) => {
       if ((state.controlsRevision ?? 0) !== revision) throw new GenesisError('configuration-conflict', 'Spontaneity settings changed. Reload before saving.')
       state.controls = controls; state.controlsRevision = revision + 1
       return state.controlsRevision

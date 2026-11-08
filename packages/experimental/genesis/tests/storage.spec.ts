@@ -35,7 +35,7 @@ it('converts a legacy snapshot without changing identity, evidence, memory order
   const first = await setup(root)
   const source = (await first.core.snapshot()).events[0]!
   await first.core.reviewMemory('legacy', [{ action: 'upsert', input: { category: 'semantic', content: 'Legacy tea preference', importance: 0.9,
-    confidence: 0.7, sourceEventIds: [source.id] }, embedding: { space: 'fixture', vector: [1, 2] } }], 20)
+    confidence: 0.7, sourceEventIds: [source.id] }, embedding: { space: 'fixture', vector: [1, 2] } }])
   const memory = (await first.core.snapshot()).memories.find(item => item.content === 'Legacy tea preference')!
   await first.close()
   const legacy = await readBackup(join(root, 'life.lock.backup.json'))
@@ -64,7 +64,7 @@ it('writes only changed records and deletes superseded text, vectors and version
   const fixture = await setup(root)
   const source = (await fixture.core.snapshot()).events[0]!
   await fixture.core.reviewMemory('private', [{ action: 'upsert', input: { category: 'semantic', content: 'Unique private memory', importance: 0.9,
-    confidence: 0.7, sourceEventIds: [source.id] }, embedding: { space: 'fixture', vector: [1, 2] } }], 20)
+    confidence: 0.7, sourceEventIds: [source.id] }, embedding: { space: 'fixture', vector: [1, 2] } }])
   const memory = (await fixture.core.snapshot()).memories.find(item => item.content === 'Unique private memory')!
   const vectorRef = manifestSchema.parse(fixture.domain.table('states').get('life')).records.find(ref => ref.table === 'embeddings')!
   await fixture.core.updateMemory(memory.id, { category: 'semantic', content: 'Corrected private memory', importance: 0.9,

@@ -31,7 +31,12 @@
     },
     "./types": {
       "types": "./lib/types/preview-types.d.ts"
-    }
+    },
+    "./connection": {
+      "types": "./lib/types/connection.d.ts",
+      "default": "./lib/connection.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
     "locale/*.json",
@@ -40,7 +45,10 @@
     "lib/typert.host.js",
     "lib/typert.remote-client.js",
     "lib/typert.host.d.ts",
-    "lib/typert.remote-client.d.ts"
+    "lib/typert.remote-client.d.ts",
+    "lib/connection.js",
+    "lib/chunks/*.js",
+    "cordis.patch.yml"
   ],
   "license": "MIT",
   "dependencies": {
@@ -84,5 +92,10 @@
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-attachment-local": "workspace:*",
     "@deepseek-ai/dsh-llm-deepseek-api-key": "workspace:*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   }
 }

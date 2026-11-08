@@ -20,7 +20,13 @@ pnpm dsh web --patch packages/experimental/genesis/cordis.spontaneity.patch.yml
 
 The patch sets `genesis.config.spontaneity: {}`. Explicit compositions can omit it to disable the module; workspace Web can pause it in the Thoughts page. [Sleep](sleep.md) pauses autonomous opportunities, including during temporary wakefulness. Composition can be inspected by appending `--dump-config`; that does not run a model. Keep the same `DSH_HOME` to preserve this life and its thoughts.
 
-After a real operator Life exchange, the quiet interval offers one opportunity. Ordinary modes and QQ channels do not trigger it. The process must remain running; there is no independent periodic wake-up or offline exploration. The same source event cannot trigger another opportunity after restart. Empty and failed opportunities count toward the rolling daily quota.
+After a real operator Life exchange, the quiet interval offers one opportunity. Ordinary modes and QQ channels do not trigger it. The process must remain running; boredom checks can provide subsequent idle opportunities, without offline exploration or cold-Session wakes. The same source event cannot trigger another opportunity after restart. Empty and failed opportunities count toward the rolling daily quota.
+
+## Boredom-driven idle opportunities and conversation
+
+With emotion and spontaneity enabled, a lightweight timer checks boredom every `boredomCheckMs` (default 60000), without inference. When awake, without user work or pending input, and above `boredomThreshold` (default 0.35), another opportunity is available without new user input. Higher boredom shortens the interval within `boredomMinIntervalMs` (default 300000), `boredomMaxIntervalMs` (default 1800000) and `idleMs`. Empty, failed and interrupted runs count toward the existing daily budget. Source events and receipts persist; no opportunity is created without a live operator Life conversation and model route, and cold conversations are not awakened.
+
+During internal reflection, `genesis_socialize` discovers explicitly approved live destinations and can send one original brief message. QQ exposes only separate deployment allowlists `proactiveGroups` and `proactiveUsers`, both empty by default; `outboundGroups`, `outboundUsers` and familiarity grant no autonomous permission. Each opportunity reserves at most one send, with life-wide `socialCooldownMs` (default 3600000) and `socialMaxPer24Hours` (default 3) across targets. Durable reservation precedes the existing QQ text delivery and acknowledgement flow. Uncertain outcomes count toward limits and never replay after restart. Only an admitted internal reflection can execute this tool; ordinary chats and cold Sessions cannot borrow that permission. Private history is not automatically forwarded and works are not published automatically.
 
 ## Choose and revisit
 
@@ -36,7 +42,7 @@ The host selects saved and resting thoughts whose revisit time has arrived. A re
 
 Each opportunity owns a separate Life Session using the existing Agent loop, the source conversation's last logged main-model route, and its sandbox ceiling intersected with deployment policy. It is not attached to the user's workspace conversation list and does not send its assistant text to Web chat or QQ. Its persisted Session remains available for operator inspection. Files can be saved in the personal directory, and learned `genesis_record` can keep writing. Saving a thought or artifact does not automatically publish or send it.
 
-Tool learning, toolkit activation, sandbox authorization and operator stops remain effective. Reflection permits only thought, recall and plan tools. Exploration additionally permits the configured exact inline tools; defaults are `read`, `write`, `edit`, `genesis_record` and `genesis_toolkit`. Unlearned tools remain unavailable. Delegation, jobs, messaging, scheduling and PTC execution are excluded; browser tools require an explicit deployment allowlist and their existing learning and toolkit activation.
+Tool learning, toolkit activation, sandbox authorization and operator stops remain effective. Reflection permits thought, recall, plan and restricted social initiation tools. Exploration additionally permits the configured exact inline tools; defaults are `read`, `write`, `edit`, `genesis_record` and `genesis_toolkit`. Unlearned tools remain unavailable. Exploration excludes delegation, jobs, messaging, scheduling and PTC execution; browser tools require an explicit deployment allowlist and their existing learning and toolkit activation.
 
 | Setting | Default | Effect |
 | --- | --- | --- |

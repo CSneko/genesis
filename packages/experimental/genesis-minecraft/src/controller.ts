@@ -259,7 +259,7 @@ export class MinecraftController {
   startTask(request: MinecraftTaskRequest, agent: Agent): Promise<MinecraftTaskStatus> {
     return this.serialize(async () => {
       if (!this.owns(agent) || this.runtime.status().connection !== 'connected') throw failure('task-connection-required')
-      if (this.preferences.read().settings.reuseKnowledge && this.ctx.genesisStatus.decisionModel().kind !== 'jev') throw failure('knowledge-jev-required')
+      if (this.preferences.read().settings.reuseKnowledge && this.preferences.read().settings.vision && this.ctx.genesisStatus.decisionModel().kind !== 'jev') throw failure('knowledge-jev-required')
       const status = this.tasks.start(request, agent)
       this.scripts.stop()
       this.runtime.stop(); this.notificationsPaused = false

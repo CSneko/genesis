@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Agents receive the same file-link and result-delivery instructions in Web and SDK sessions. Use this guidance when a host can expose links or delivered files. It adds one fixed system-prompt paragraph; hosts retain responsibility for file access and rendering.
 
+The guidance also describes Web reply embeddings for audio, video and downloadable files using `![Description](</absolute/path/to/file>)`. Referenced files must exist and be accessible to the Session; browser codec support determines playback.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

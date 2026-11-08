@@ -20,11 +20,11 @@ import type { Config, MemoryConfig } from './config.ts'
 import type { LifeCore, MemoryChange, MemoryQuery, ExperienceChange } from './core.ts'
 import { reviewFailure } from './status-error.ts'
 import { GenesisError } from './error.ts'
-import { cosine, configuredEmbeddings, embeddingSettings } from './embedding.ts'
+import { cosine, optionalEmbeddings, embeddingSettings } from './embedding.ts'
 import { memoryInputSchema, type LifeMemory, type MemoryEmbedding, type MemoryId, type LifeEventId } from './model.ts'
 import { memorySummarySchema, MEMORY_SUMMARY_GUIDANCE, SUMMARY_PROMPT, boundedMemoryText } from './memory-summary.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { memoryVisible, memoryViewFor } from './memory-access.ts'
+import { memoryVisible, memoryViewFor, memoryFromSession } from './memory-access.ts'
 import { participants, dialogueForModel, hasRoleReferences, RELABEL_PROMPT, relabelPlan, type MemoryRelabel } from './participants.ts'
 import { operatorIdentitySchema, type OperatorIdentity } from './model.ts'
 import { memoryTimeText, readMemory } from './memory-time.ts'
@@ -191,13 +191,14 @@ export class LifeMemoryEngine {
   }
 
   private async search(query: MemoryQuery, caller?: AbortSignal,
-    embeddings?: ReturnType<typeof configuredEmbeddings>, automatic = false): Promise<LifeMemory[]> {
+    embeddings?: NonNullable<ReturnType<typeof optionalEmbeddings>> | null, automatic = false): Promise<LifeMemory[]> {
     const signal = this.signal(caller, automatic ? this.config.associationTimeoutMs : this.config.timeoutMs)
     if (!query.text.trim() || query.text.length > this.config.inputChars) {
       throw new GenesisError('capacity', 'Recall query is empty or exceeds memory.inputChars. Narrow the query.')
     }
     const state = await this.core.snapshot()
     const eligible = state.memories.filter(memory => memoryVisible(state, memory, this.limits.memorySharing, query.sessionId)
+      && (!automatic || query.sessionId === undefined || !memoryFromSession(state, memory, query.sessionId))
       && (query.category === undefined || memory.category === query.category)
       && (query.after === undefined || memory.createdAt >= query.after)
       && (query.before === undefined || memory.createdAt <= query.before))
@@ -207,20 +208,22 @@ export class LifeMemoryEngine {
     const ids = new Set(state.memories.map(memory => memory.id))
     for (const id of this.cache.keys()) if (!ids.has(id)) this.cache.delete(id)
     try {
-      const provider = embeddings ?? configuredEmbeddings(this.ctx, this.config, this.readEmbedding())
-      const needle = await provider.embed(query.text, signal)
-      for (const memory of eligible) {
-        signal.throwIfAborted()
-        let embedding = memory.embedding
-        if (embedding?.space !== provider.space || embedding.vector.length !== needle.vector.length) {
-          const cached = this.cache.get(memory.id)
-          if (cached?.content === memory.content && cached.embedding.space === provider.space) embedding = cached.embedding
-          else if (automatic) continue
-          else embedding = await provider.embed(memory.content, signal)
-          this.cache.set(memory.id, { content: memory.content, embedding })
+      const provider = embeddings === undefined ? optionalEmbeddings(this.ctx, this.config, this.readEmbedding()) : embeddings
+      if (provider != null) {
+        const needle = await provider.embed(query.text, signal)
+        for (const memory of eligible) {
+          signal.throwIfAborted()
+          let embedding = memory.embedding
+          if (embedding?.space !== provider.space || embedding.vector.length !== needle.vector.length) {
+            const cached = this.cache.get(memory.id)
+            if (cached?.content === memory.content && cached.embedding.space === provider.space) embedding = cached.embedding
+            else if (automatic) continue
+            else embedding = await provider.embed(memory.content, signal)
+            this.cache.set(memory.id, { content: memory.content, embedding })
+          }
+          const score = cosine(needle, embedding)
+          if (score >= this.config.minSimilarity) semantic.push({ memory, score })
         }
-        const score = cosine(needle, embedding)
-        if (score >= this.config.minSimilarity) semantic.push({ memory, score })
       }
     } catch (error) {
       caller?.throwIfAborted()
@@ -247,7 +250,8 @@ export class LifeMemoryEngine {
     const associated = ranked.flatMap(({ memory }) => [memory, ...(memory.experience === undefined ? []
       : state.memories.filter(item => item.experienceIds?.includes(memory.id)).map(memoryView))])
     for (const memory of associated) {
-      if (!memoryVisible(state, memory, this.limits.memorySharing, query.sessionId)) continue
+      if (!memoryVisible(state, memory, this.limits.memorySharing, query.sessionId)
+        || (automatic && query.sessionId !== undefined && memoryFromSession(state, memory, query.sessionId))) continue
       if (result.some(item => item.id === memory.id)) continue
       if ((query.category !== undefined && memory.category !== query.category)
         || (query.after !== undefined && memory.createdAt < query.after)
@@ -263,10 +267,10 @@ export class LifeMemoryEngine {
    * Review the current exchange with bounded completed earlier turns from the same Session.
    * @param agent - Calling agent; its durable log supplies the evidence.
    * @param turn - Current turn number.
-   * @param signal - Caller cancellation; failure is surfaced to the turn owner.
+   * @param signal - Optional caller cancellation; omitted for background reviews owned by this engine.
    * @returns After a no-update decision or all writer changes are durably committed once.
    */
-  review(agent: Agent, turn: number, signal: AbortSignal): Promise<void> {
+  async review(agent: Agent, turn: number, signal?: AbortSignal): Promise<void> {
     const evidence = this.turns.get(agent.session.id)
     if (evidence === undefined || evidence.turn !== turn) return Promise.resolve()
     if (evidence.overflow) {
@@ -288,7 +292,7 @@ export class LifeMemoryEngine {
       }
     })
     this.tail = operation.then(() => {}, (_error: unknown) => {
-      // The awaited turn hook reports the error; retain FIFO settlement for teardown.
+      // The review caller reports the error; retain FIFO settlement for teardown.
     })
     return operation
   }
@@ -391,7 +395,7 @@ export class LifeMemoryEngine {
       let stage: ReviewStage = 'configuration'
       try {
         const models = this.readModels()
-        const embeddings = configuredEmbeddings(this.ctx, this.config, this.readEmbedding())
+        const embeddings = optionalEmbeddings(this.ctx, this.config, this.readEmbedding())
         const memories: LifeMemory[] = []
         const limits = { maxChanges: this.config.maxChanges, minHabitSupport: this.config.consolidation.minHabitSupport }
         const input = () => ({ purpose: 'consolidation', memories: memories.map(memoryView),
@@ -413,13 +417,13 @@ export class LifeMemoryEngine {
           const raw = await this.generate(session, 'writer', `${CONSOLIDATION_PROMPT} ${MEMORY_SUMMARY_GUIDANCE}`, input(), signal, models)
           changes = await consolidationChanges(raw, state, memories, this.config, async (text) => {
             stage = 'embedding'
-            return embeddings.embed(text, signal)
+            return await embeddings?.embed(text, signal)
           })
         }
         signal.throwIfAborted()
         stage = 'storage'
         return await this.core.consolidate({ revision: work.revision,
-          versions: memories.map(({ id, updatedAt }) => ({ id, updatedAt })), changes }, this.config.maxImplicitMemories)
+          versions: memories.map(({ id, updatedAt }) => ({ id, updatedAt })), changes })
       } catch (error) {
         caller.throwIfAborted()
         this.lifetime.signal.throwIfAborted()
@@ -467,7 +471,7 @@ export class LifeMemoryEngine {
         if (JSON.stringify(input).length > this.config.inputChars / 2) throw new GenesisError('capacity', 'Selected memories exceed the organization input budget. Select fewer records or increase memory.inputChars; no source was omitted.')
         stage = 'configuration'
         const models = this.readModels()
-        const embeddings = configuredEmbeddings(this.ctx, this.config, this.readEmbedding())
+        const embeddings = optionalEmbeddings(this.ctx, this.config, this.readEmbedding())
         const handle = await this.ctx.agents.withoutInitiator(() => this.ctx.agents.create({
           sessionId: SessionId(`genesis-organization-${randomUUID()}`), signal,
         }))
@@ -495,7 +499,7 @@ export class LifeMemoryEngine {
             sources, parsed.targetCount, maxResults, this.limits.timeZone)
           const changes = []
           stage = 'embedding'
-          for (const item of plan) changes.push({ ...item, embedding: await embeddings.embed(item.input.content, signal) })
+          for (const item of plan) changes.push({ ...item, embedding: await embeddings?.embed(item.input.content, signal) })
           signal.throwIfAborted()
           stage = 'storage'
           return (await this.core.organizeMemories(parsed, changes, handle.agent.id)).map(memoryView)
@@ -530,7 +534,7 @@ export class LifeMemoryEngine {
         if (legacy.length > 0) {
           stage = 'configuration'
           const models = this.readModels()
-          const embeddings = configuredEmbeddings(this.ctx, this.config, this.readEmbedding())
+          const embeddings = optionalEmbeddings(this.ctx, this.config, this.readEmbedding())
           const names = participants(state, parsed)
           const handle = await this.ctx.agents.withoutInitiator(() => this.ctx.agents.create({
             sessionId: SessionId(`genesis-identity-${randomUUID()}`), signal: this.signal(caller),
@@ -561,7 +565,7 @@ export class LifeMemoryEngine {
                 if (old === undefined) throw new GenesisError('invalid-source', 'Identity writer returned a memory outside its request.')
                 if (old.content === memory.content && JSON.stringify(old.habit) === JSON.stringify(memory.habit)
                   && JSON.stringify(old.experience?.topics) === JSON.stringify(memory.experience?.topics)) continue
-                changes.push({ id: memory.id, content: memory.content, embedding: await embeddings.embed(memory.content, signal),
+                changes.push({ id: memory.id, content: memory.content, embedding: await embeddings?.embed(memory.content, signal),
                   ...(memory.habit === undefined ? {} : { habit: { cue: memory.habit.cue, response: memory.habit.response } }),
                   ...(memory.experience === undefined ? {} : { topics: memory.experience.topics }) })
               }
@@ -640,7 +644,7 @@ export class LifeMemoryEngine {
     progress('configuration')
     const models = this.readModels()
     progress('embedding')
-    const embeddings = configuredEmbeddings(this.ctx, config, this.readEmbedding())
+    const embeddings = optionalEmbeddings(this.ctx, config, this.readEmbedding())
     const conversation = dialogueForModel(sources, state)
     const names = participants(state, state.operator, agent.id, this.limits.queryLimit)
     progress('decision')
@@ -650,13 +654,13 @@ export class LifeMemoryEngine {
     if (!decision.update) {
       signal.throwIfAborted()
       progress('storage')
-      await this.core.reviewMemory(key, [], config.maxImplicitMemories)
+      await this.core.reviewMemory(key, [])
       return { updated: false, ...(decision.decision === undefined ? {} : { decision: decision.decision }) }
     }
     const text = conversation.map(message => message.text).join('\n')
     progress('retrieval')
     const matches = target === 'conversation' ? conversationMemories(state, agent.id).map(memoryView)
-      : await this.search({ text, sessionId: agent.id, limit: this.limits.queryLimit, chars: config.inputChars / 2 }, signal, embeddings)
+      : await this.search({ text, sessionId: agent.id, limit: this.limits.queryLimit, chars: config.inputChars / 2 }, signal, embeddings ?? null)
     const latestTime = sources.reduce((latest, source) => Math.max(latest, Date.parse(source.timestamp)), -Infinity)
     const recentExperiences = state.memories.filter(memory => memory.experience?.sessionId === agent.id
       && latestTime - Date.parse(memory.experience.endedAt) >= 0
@@ -758,7 +762,7 @@ export class LifeMemoryEngine {
     })
     progress('embedding')
     const experience = experienceDraft === undefined ? undefined : { ...experienceDraft,
-      embedding: await embeddings.embed(experienceDraft.input.content, signal) }
+      embedding: await embeddings?.embed(experienceDraft.input.content, signal) }
     type DraftChange = Extract<MemoryChange, { action: 'delete' }> | Omit<Extract<MemoryChange, { action: 'upsert' }>, 'embedding'>
     let changes: MemoryChange[] = []
     const schema = target === 'conversation' ? conversationChangeSchema(config.overview.maxReferences) : changeSchema
@@ -809,7 +813,7 @@ export class LifeMemoryEngine {
       })
       if (accepted === undefined) continue
       progress('embedding')
-      changes.push(accepted.action === 'delete' ? accepted : { ...accepted, embedding: await embeddings.embed(accepted.input.content, signal) })
+      changes.push(accepted.action === 'delete' ? accepted : { ...accepted, embedding: await embeddings?.embed(accepted.input.content, signal) })
     }
     // A rejected replacement may be the only destination for information in a planned deletion.
     if (rejected !== undefined) {
@@ -819,7 +823,7 @@ export class LifeMemoryEngine {
     }
     signal.throwIfAborted()
     progress('storage')
-    await this.core.reviewMemory(key, changes, config.maxImplicitMemories, experience, target === 'conversation' ? undefined : {
+    await this.core.reviewMemory(key, changes, experience, target === 'conversation' ? undefined : {
       sessionId: agent.id, turn, userEventIds: [...sourceFacts.entries()]
         .filter(([seq, source]) => currentSeqs.includes(seq) && source.role === 'user').map(([, source]) => source.id),
     }, target === 'conversation' ? { sessionId: agent.id, versions: candidates.map(({ id, updatedAt }) => ({ id, updatedAt })) } : undefined)

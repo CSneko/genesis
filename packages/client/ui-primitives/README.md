@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use `dsh-client-ui-primitives` to build web-client controls and render agent output with shared React UI. It includes standard controls, icons, anchored overlays, and renderers for Markdown with TeX, terminal output, file reads, diffs, search, web retrieval, and JSON. The renderers handle untrusted model output by dropping raw HTML, restricting links, and parsing ANSI escape sequences. The components import no Cordis runtime; callers supply localized labels, and theme-facing colors use `--dsw-*` design tokens.
 
+When `labels.media` is supplied, `![Description](<path>)` embeddings use native audio controls for MP3, WAV, OGG/OGA, M4A, AAC, FLAC and Opus, and video controls for MP4, WebM, OGV, MOV and M4V. Embedded files retain a download link, including files without a preview and failed media loads. Playback does not start automatically; codec support depends on the browser. Local media uses the existing path resolver after the message settles. Remote downloads remain subject to browser origin rules.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

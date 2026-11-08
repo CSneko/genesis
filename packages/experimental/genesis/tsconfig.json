@@ -85,6 +85,9 @@
     },
     {
       "path": "../../core/tool-executor-native"
+    },
+    {
+      "path": "../../subprocess/subprocess"
     }
   ]
 }

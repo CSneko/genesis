@@ -1,6 +1,6 @@
 ---
 description: "通过 Playwright MCP 操作 Chromium，支持隔离、附加或共享持久浏览器状态。"
-kind: "package-reference"
+kind: "package-bundle"
 ---
 
 # @deepseek-ai/dsh-experimental-browser-use-playwright-mcp
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-通过 Playwright MCP 的上游工具检查网页并操作 Chromium。提供方在 Session 创建或恢复完成前初始化其 MCP 连接，并跨轮次保留连接。可以启动独立浏览器、让一个 Session 接入已有浏览器，或让多个 Session 共享持久配置目录。本包以实验状态发布，仅在显式挂载后启用。
+通过 Playwright MCP 的上游工具检查网页并操作 Chromium。可以启动独立浏览器、让一个 Session 接入已有浏览器，或让多个 Session 共享托管或外部 Chrome。源码 Genesis Web 默认包含此实验组合包；普通 Harness profile 保留原有组合。
 
 ## 目录
 
@@ -25,7 +25,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-在创建或恢复 Session 前，将以下条目挂载到已提供 Agent、工具、系统提示词和工作目录服务的 profile 组合中。launch 和 attach 模式不会接管已经活动的 Session；persistent 模式在提供方启动后发布共享工具。浏览器安装遵循上游运行时；使用 `executablePath` 选择已有 Chromium 安装。
+组合包添加浏览器提供方和 `./connection` 适配器，默认连接独立管理的 Chrome，地址为 `http://127.0.0.1:9222`。可通过 `dsh plugin --profile <name> add @deepseek-ai/dsh-experimental-browser-use-playwright-mcp` 加入其他 profile，通过对应的 `remove` 命令移除。组合包默认配置位于可编辑的 profile 配置之下。Genesis 在“设置 → 浏览器”中提供地址编辑。`endpoint` 接受 HTTP(S) 或 WS(S) 地址，重启后保留，由提供方读取并保持到重启；保存不改变当前连接，也不探测连通性。所有 Session 共享一个 MCP 连接与浏览器状态，工具单次调用串行执行。提供方卸载只断开连接，不关闭外部 Chrome。Chrome 不可用时浏览器操作失败，不会启动其他浏览器。此适配器不提供持久模式预览。参见[服务器配置](../../../docs/genesis/README.zh.md#浏览器操作)。
+
+根插件仍支持下面显式的 launch、attach 和 persistent 配置。在创建或恢复 Session 前，将以下条目挂载到已提供 Agent、工具、系统提示词和工作目录服务的 profile 组合中。launch 和 attach 模式不会接管已经活动的 Session；persistent 模式在提供方启动后发布共享工具。浏览器安装遵循上游运行时；使用 `executablePath` 选择已有 Chromium 安装。
 
 ```yaml
 - name: '@deepseek-ai/dsh-browser-use'
@@ -115,8 +117,8 @@ Web 中可在 `mode: persistent` 旁设置 `preview: {}`，配合单独加载的
 本集成保留固定版本服务器的浏览器与工具限制。
 
 - 仅支持 Chromium；不可选择 Firefox 或 WebKit。
-- MCP 启动失败在 persistent 模式中拒绝提供方激活，在其他模式中拒绝 Session 创建或恢复。连接不会自动重连。修复原因后重新加载提供方；launch/attach 模式还须新建或恢复 Session。
-- 连接独占仅在此提供方实例内有效。其他进程与浏览器用户仍可修改相同页面。
+- MCP 启动失败在 persistent 模式与 `./connection` 适配器中拒绝提供方激活，在根插件 launch/attach 模式中拒绝 Session 创建或恢复。连接不会自动重连。修复原因后重新加载提供方；launch/attach 模式还须新建或恢复 Session。
+- 根插件 attach 模式的连接独占仅在此提供方实例内有效。其他进程与浏览器用户仍可修改相同页面。
 - launch 和 attach 模式的共享资源服务器目录可以显示继承的服务器名称，但不会授予对其他 Session 浏览器的访问权限。
 - 取消不会撤销已发送给浏览器的导航、点击或其他操作。
 - 工具 schema 跟随固定的实验依赖版本，不承诺 DSH 稳定性。

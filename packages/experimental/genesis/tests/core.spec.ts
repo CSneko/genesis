@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { randomUUID } from 'node:crypto'
+import { behaviorMemories } from '../src/personality.ts'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -229,26 +231,26 @@ it('keeps a local backup and refuses rebirth after the primary store disappears'
   expect(await readFile(join(root, 'life.lock.backup.json'), 'utf8')).toBe(backup)
 })
 
-it('commits review changes once, invalidates corrected vectors and refuses oversized implicit memory atomically', async () => {
+it('commits review changes once and invalidates corrected vectors without a stored implicit-memory count limit', async () => {
   const { core } = await setup(await directory())
   const born = (await core.snapshot()).events[0]!
   const input = { content: 'Oolong preference', category: 'semantic' as const, kind: 'declarative' as const,
     importance: 0.8, confidence: 0.8, sourceEventIds: [born.id] }
   const embedding = { space: 'fixture', vector: [1, 0] }
-  await core.reviewMemory('first', [{ action: 'upsert', input, embedding }], 1)
+  await core.reviewMemory('first', [{ action: 'upsert', input, embedding }])
   const committed = await core.snapshot()
-  await core.reviewMemory('first', [{ action: 'upsert', input, embedding }], 1)
+  await core.reviewMemory('first', [{ action: 'upsert', input, embedding }])
   expect(await core.snapshot()).toEqual(committed)
   const saved = committed.memories.find(memory => memory.content === input.content)!
   const { kind: _kind, ...implicit } = input
-  await expect(core.reviewMemory('too-many', [
+  await core.reviewMemory('multiple-habits', [
     { action: 'upsert', input: { ...implicit, kind: 'non-declarative', content: 'First habit' }, embedding },
     { action: 'upsert', input: { ...implicit, kind: 'non-declarative', content: 'Second habit' }, embedding },
-  ], 1)).rejects.toMatchObject({ code: 'capacity' })
-  expect(await core.snapshot()).toEqual(committed)
+  ])
+  expect((await core.snapshot()).memories.filter(memory => memory.kind === 'non-declarative')).toHaveLength(2)
   await core.updateMemory(saved.id, { ...input, content: 'Corrected preference' })
   expect((await core.getMemory(saved.id))?.embedding).toBeUndefined()
-  await core.reviewMemory('delete', [{ action: 'delete', id: saved.id }], 1)
+  await core.reviewMemory('delete', [{ action: 'delete', id: saved.id }])
   expect(await core.getMemory(saved.id)).toBeUndefined()
 })
 
@@ -301,8 +303,23 @@ it('edits short summaries independently, bounds Unicode length and invalidates a
   expect(removed.summary).toBeUndefined()
   const again = await restored.core.setMemorySummary(memory.id, '待确认的饮茶偏好', removed.updatedAt)
   const edited = await restored.core.editMemory(memory.id, { content: 'Updated full memory.', category: 'semantic',
-    kind: 'declarative', confidence: 0.4, importance: 0.6 }, again.updatedAt, 4)
+    kind: 'declarative', confidence: 0.4, importance: 0.6 }, again.updatedAt)
   expect(edited.summary).toBeUndefined()
+})
+
+it('saves manual non-declarative memories beyond prompt budgets and restores them after restart', async () => {
+  const root = await directory()
+  const first = await setup(root, 'json', { memoryChars: 256, queryLimit: 1 })
+  for (let index = 0; index < 14; index++) {
+    await first.core.editMemory(brandString<MemoryId>(randomUUID()), { category: 'procedural', kind: 'non-declarative',
+      content: `Habit ${index}: ${'A detailed conditional habit. '.repeat(12)}`, importance: 0.7, confidence: 0.8 }, null)
+  }
+  const before = await first.core.snapshot()
+  expect(before.memories.filter(memory => memory.kind === 'non-declarative')).toHaveLength(14)
+  expect(behaviorMemories(before, first.config, new Date()).length).toBeLessThanOrEqual(1)
+  await first.close()
+  const restored = await setup(root, 'json', { memoryChars: 256, queryLimit: 1 })
+  expect((await restored.core.snapshot()).memories).toEqual(before.memories)
 })
 
 it('directly edits and converts operator memories without adding history, fences stale edits and restores current content', async () => {
@@ -311,26 +328,24 @@ it('directly edits and converts operator memories without adding history, fences
   const id = brandString<MemoryId>('e8133924-9acf-4f86-8246-d169a14f200a')
   const draft = { content: 'I prefer oolong.', category: 'semantic' as const, kind: 'declarative' as const,
     importance: 0.7, confidence: 0.8 }
-  const created = await first.core.editMemory(id, draft, null, 1)
+  const created = await first.core.editMemory(id, draft, null)
   expect(created.attribution).toBe('user-stated')
   expect(created.sourceEventIds).toHaveLength(1)
   const initial = await first.core.snapshot()
   expect(initial.events.find(event => event.id === created.sourceEventIds[0])).toMatchObject({ source: 'user', payload: { kind: 'manual-memory-entry' } })
-  expect(await first.core.editMemory(id, draft, null, 1)).toEqual(created)
+  expect(await first.core.editMemory(id, draft, null)).toEqual(created)
   expect(await first.core.snapshot()).toEqual(initial)
-  const converted = await first.core.convertMemory(id, 'non-declarative', created.updatedAt, 1)
+  const converted = await first.core.convertMemory(id, 'non-declarative', created.updatedAt)
   expect(converted).toMatchObject({ id, content: created.content, sourceEventIds: created.sourceEventIds, kind: 'non-declarative' })
   expect(converted.updatedAt).not.toBe(created.updatedAt)
   expect(converted.history).toBeUndefined()
   expect((await first.core.snapshot()).events).toEqual(initial.events)
   const before = await first.core.snapshot()
-  await expect(first.core.editMemory(id, { ...draft, content: 'Stale text' }, created.updatedAt, 1)).rejects.toMatchObject({ code: 'configuration-conflict' })
+  await expect(first.core.editMemory(id, { ...draft, content: 'Stale text' }, created.updatedAt)).rejects.toMatchObject({ code: 'configuration-conflict' })
   await expect(first.core.deleteMemory(id, created.updatedAt)).rejects.toMatchObject({ code: 'configuration-conflict' })
-  const other = brandString<MemoryId>('98ed39b4-f484-4002-b6b4-ce4ae4a23af4')
-  await expect(first.core.editMemory(other, { ...draft, kind: 'non-declarative' }, null, 1)).rejects.toMatchObject({ code: 'capacity' })
   expect(await first.core.snapshot()).toEqual(before)
   const content = 'I now prefer green tea. 说明年龄，说明年纪，模型版本 2026-10。'
-  const edited = await first.core.editMemory(id, { ...draft, content }, converted.updatedAt, 1)
+  const edited = await first.core.editMemory(id, { ...draft, content }, converted.updatedAt)
   expect(edited.content).toBe(content)
   expect(edited.sourceEventIds).toEqual(created.sourceEventIds)
   expect(edited.history).toBeUndefined()
@@ -350,7 +365,7 @@ it('removes experience links on explicit deletion and refuses invalid version da
   const { core, domain } = await setup(await directory())
   const source = await core.observe({ sessionId, eventId: 'experience-source', timestamp: new Date().toISOString(), kind: 'user-message' })
   const input = { category: 'semantic' as const, content: 'Oolong preference', importance: 0.5, confidence: 0.8, sourceEventIds: [source.id] }
-  await core.reviewMemory('experience', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }], 4,
+  await core.reviewMemory('experience', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }],
     { input: { ...input, category: 'episodic', content: 'We talked about tea.' },
       details: { sessionId, startedAt: source.timestamp, endedAt: source.timestamp, topics: ['tea'] },
       embedding: { space: 'fixture', vector: [1, 0] } })
@@ -361,7 +376,7 @@ it('removes experience links on explicit deletion and refuses invalid version da
   const budget = JSON.stringify(knowledge).length + 1
   expect(JSON.stringify(await core.retrieve({ text: knowledge.id, limit: 5, chars: budget })).length).toBeLessThanOrEqual(budget)
   const write = vi.spyOn(domain.table('states'), 'put')
-  await expect(core.reviewMemory('invalid-experience', [], 4, { input: { ...input, category: 'episodic' },
+  await expect(core.reviewMemory('invalid-experience', [], { input: { ...input, category: 'episodic' },
     details: { sessionId, startedAt: '2026-02-01T00:00:00.000Z', endedAt: '2026-01-01T00:00:00.000Z', topics: [] },
     embedding: { space: 'fixture', vector: [1, 0] } })).rejects.toThrow('Experience starts after it ends')
   expect(write).not.toHaveBeenCalled()
@@ -376,7 +391,7 @@ it('restores queued consolidation, fences operator edits, and commits each revis
   const source = await first.core.observe({ sessionId, eventId: 'habit-user', kind: 'user-message', timestamp: new Date().toISOString() })
   const input = { category: 'semantic' as const, kind: 'declarative' as const, attribution: 'model-inference' as const,
     content: 'The user prefers concise greetings.', importance: 0.7, confidence: 0.7, sourceEventIds: [source.id] }
-  await first.core.reviewMemory('habit-turn', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }], 4,
+  await first.core.reviewMemory('habit-turn', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }],
     undefined, { sessionId, turn: 1, userEventIds: [source.id] })
   await first.core.setConsolidation(false)
   const pending = await first.core.snapshot()
@@ -387,12 +402,12 @@ it('restores queued consolidation, fences operator edits, and commits each revis
   const plan = { revision: pending.consolidation!.revision, versions: [{ id: memory.id, updatedAt: memory.updatedAt }],
     changes: [{ id: memory.id, input: { ...input, content: 'A concise greeting is preferred.' },
       embedding: { space: 'fixture', vector: [1, 0] }, experienceIds: [] }] }
-  await second.core.editMemory(memory.id, { category: input.category, importance: input.importance, confidence: input.confidence, content: 'An operator correction.', kind: 'declarative' }, memory.updatedAt, 4)
-  expect(await second.core.consolidate(plan, 4)).toBe(false)
+  await second.core.editMemory(memory.id, { category: input.category, importance: input.importance, confidence: input.confidence, content: 'An operator correction.', kind: 'declarative' }, memory.updatedAt)
+  expect(await second.core.consolidate(plan)).toBe(false)
   const current = await second.core.snapshot()
   const empty = { revision: current.consolidation!.revision, versions: [], changes: [] }
-  expect(await second.core.consolidate(empty, 4)).toBe(true)
-  expect(await second.core.consolidate(empty, 4)).toBe(false)
+  expect(await second.core.consolidate(empty)).toBe(true)
+  expect(await second.core.consolidate(empty)).toBe(false)
   await second.close()
   const third = await setup(root)
   expect((await third.core.snapshot()).consolidation).toMatchObject({ completed: empty.revision, enabled: false })
@@ -408,7 +423,7 @@ it('counts independent user turns rather than saved copies or assistant repetiti
   const input = { category: 'semantic' as const, content: 'A brief greeting is preferred.', importance: 0.7,
     confidence: 0.7, sourceEventIds: [user.id, assistant.id] }
   for (const key of ['automatic', 'manual-one', 'manual-two']) {
-    await core.reviewMemory(key, [], 4, undefined, { sessionId, turn: 1, userEventIds: [user.id] })
+    await core.reviewMemory(key, [], undefined, { sessionId, turn: 1, userEventIds: [user.id] })
   }
   const memory = await core.remember(input)
   const state = await core.snapshot()

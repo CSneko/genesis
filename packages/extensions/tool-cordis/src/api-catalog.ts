@@ -1588,9 +1588,33 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'One life owner. Writes serialize components and replace one manifest, so facts and state commit together. Storage failures poison this instance until reload; validation and capacity refusals leave it usable. Returned data is detached.',
     methods: [
       {
+        signature: 'isOperatorEmail(address: string): boolean',
+        description: 'Match an email address against the operator selected in Contacts.',
+        parameters: [{ name: 'address', description: 'Parsed sender address; transport authentication is checked separately.' }],
+        returns: 'Whether the current operator contact explicitly owns this address.',
+      },
+      {
+        signature: 'async contacts(query: string, offset: number = 0): Promise<ContactCatalog>',
+        description: 'Search contacts by name, person ID or address without loading relationship evidence.',
+        parameters: [{ name: 'query', description: 'Case-insensitive substring, or empty for all contacts.' }, { name: 'offset', description: 'Zero-based page offset.' }],
+        returns: 'A detached page bounded by queryLimit and resultChars.',
+      },
+      {
+        signature: 'saveContact(input: ContactInput, evidence?: { sessionId: SessionId; eventId: string }, operator?: boolean): Promise<LifeContact>',
+        description: 'Save addresses under the same QQ-derived identity as relationship records.',
+        parameters: [{ name: 'input', description: 'Complete contact replacement; an existing person ID must match the QQ account.' }, { name: 'evidence', description: 'Optional actual Session evidence for a model-authored update.' }, { name: 'operator', description: 'Explicit operator UI selection; omitted preserves authority and is unavailable to model edits.' }],
+        returns: 'The durably committed contact; repeated unchanged saves create no new event.',
+      },
+      {
+        signature: 'deleteContact(personId: PersonId, evidence?: { sessionId: SessionId; eventId: string }): Promise<boolean>',
+        description: 'Remove current addresses while preserving relationship history and Session audit logs.',
+        parameters: [{ name: 'personId', description: 'Stable person ID selected from a contact result.' }, { name: 'evidence', description: 'Optional logged tool call responsible for deletion.' }],
+        returns: 'Whether a contact was removed.',
+      },
+      {
         signature: 'bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>',
         description: 'Bind an authenticated platform route to one durable Session before accepting messages.',
-        parameters: [{ name: 'conversation', description: 'Exact route and reserved Session; reuse may not silently replace it.' }, { name: 'operatorPersonId', description: 'Explicit deployment binding, never inferred from a name or relationship.' }],
+        parameters: [{ name: 'conversation', description: 'Exact route and reserved Session; reuse may not silently replace it.' }, { name: 'operatorPersonId', description: 'Legacy deployment seed used only until Contacts owns operator selection.' }],
         returns: 'After the route is durable; conflicting routes or operator identities are refused.',
       },
       {
@@ -1601,7 +1625,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'forgetPerson(personId: PersonId, updatedAt?: string): Promise<boolean>',
-        description: 'Delete a retained profile, earlier account recognition and memories citing that person\'s messages, preserving audited Session evidence.',
+        description: 'Delete a retained profile, its contact details, earlier account recognition and memories citing that person\'s messages, preserving audited Session evidence.',
         parameters: [{ name: 'personId', description: 'Explicit operator-selected identity; names cannot select a person.' }, { name: 'updatedAt', description: 'Optional displayed profile version; changed or missing profiles refuse deletion.' }],
         returns: 'Whether a retained profile existed; raw Session logs require separate lifecycle deletion.',
       },
@@ -1637,7 +1661,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'isOperatorPerson(personId: PersonId): boolean',
-        description: 'Match an authenticated account to the configured operator; names and relationships never qualify.',
+        description: 'Match an authenticated account to the contact operator; names and relationships never qualify.',
         parameters: [{ name: 'personId', description: 'Transport-verified person identity.' }],
         returns: 'Whether this exact account has the durable operator binding.',
       },
@@ -1780,6 +1804,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'After durable commit; replay is a no-op and storage uncertainty stops dependent operations.',
       },
       {
+        signature: 'reserveBoredomOpportunity(sessionId: SessionId, key: string): Promise<LifeEvent>',
+        description: 'Record an online idle opportunity with its sampled boredom, never an invented interaction.',
+        parameters: [{ name: 'sessionId', description: 'Live source conversation supplying the execution ceiling.' }, { name: 'key', description: 'Stable opportunity key reserved by the idle scheduler.' }],
+        returns: 'Committed source event; replay returns the same event.',
+      },
+      {
+        signature: 'setBoredomMode(mode: BoredomState[\'mode\']): Promise<void>',
+        description: 'Settle elapsed engagement time before changing its mode; no inference or relationship change occurs.',
+        parameters: [{ name: 'mode', description: 'Runtime-observed activity, never a model claim of completed work.' }],
+        returns: 'After a changed mode and its source record commit; unchanged modes do not write.',
+      },
+      {
         signature: 'checkpointEmotion(): Promise<void>',
         description: 'Save elapsed online affect time without changing operator revisions or creating an experience.',
         parameters: [],
@@ -1850,6 +1886,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Append an attributed fact once, identified by Session plus durable sequence.',
         parameters: [{ name: 'observation', description: 'Actual Session event metadata, never a model assertion.' }],
         returns: 'Committed fact, including the original fact for duplicate delivery.',
+      },
+      {
+        signature: 'recordIntegrationState(name: string, status: \'initialized\' | \'connected\' | \'disconnected\', detail: string): Promise<LifeEvent>',
+        description: 'Record an optional integration\'s observed state without granting tool permission.',
+        parameters: [{ name: 'name', description: 'Stable integration name.' }, { name: 'status', description: 'Actual initialization or transport observation; initialization is recorded once.' }, { name: 'detail', description: 'Nonsecret evidence describing what was observed and what remains unverified.' }],
+        returns: 'Durable observation; repeated unchanged states reuse their previous event.',
       },
       {
         signature: 'bind(sessionId: SessionId, source: string, tools?: readonly ToolSchema[]): Promise<void>',
@@ -2048,6 +2090,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'genesisContacts',
+    summary: 'Contact operations use the life owner\'s atomic persistence and writer lease.',
+    description: 'Contact operations use the life owner\'s atomic persistence and writer lease.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(query: string, offset: number, signal: AbortSignal): Promise<ContactCatalog>',
+        description: 'Search names and addresses.',
+        parameters: [{ name: 'query', description: 'Case-insensitive substring, empty for all.' }, { name: 'offset', description: 'Zero-based page offset.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'Bounded current contacts and continuation offset.',
+      },
+      {
+        signature: '@Remote(\'save\') save(input: ContactInput, operator: boolean, signal: AbortSignal): Promise<void>',
+        description: 'Replace a contact\'s editable fields.',
+        parameters: [{ name: 'input', description: 'Complete name, QQ, email addresses, other handles and notes.' }, { name: 'operator', description: 'Whether this person is the single operator; selecting replaces the previous operator.' }, { name: 'signal', description: 'Cancellation before admission; admitted writes drain on disposal.' }],
+        returns: 'After the life transaction commits.',
+      },
+      {
+        signature: '@Remote(\'erase\') erase(id: PersonId, signal: AbortSignal): Promise<void>',
+        description: 'Remove current contact details without deleting the person\'s relationship.',
+        parameters: [{ name: 'id', description: 'Exact person ID selected from the contact catalogue.' }, { name: 'signal', description: 'Cancellation before admission.' }],
+        returns: 'After deletion commits, including an already absent contact.',
+      },
+    ],
+  },
+  {
     key: 'genesisDeliberation',
     summary: 'Life-wide FIFO for inference, with per-Agent admitted execution and cancellation ownership.',
     description: 'Life-wide FIFO for inference, with per-Agent admitted execution and cancellation ownership.',
@@ -2159,6 +2226,55 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Save policy for subsequent opportunities and admission; previously admitted assistant turns may finish.',
         parameters: [{ name: 'settings', description: 'Complete policy, validated at this wire boundary.' }, { name: 'revision', description: 'Displayed settings revision.' }, { name: 'signal', description: 'Caller cancellation; an admitted storage commit drains.' }],
         returns: 'Committed revision; failures preserve the operator draft.',
+      },
+    ],
+  },
+  {
+    key: 'genesisMail',
+    summary: 'Operator reads never mark mail as read by the character.',
+    description: 'Operator reads never mark mail as read by the character.',
+    methods: [
+      {
+        signature: '@Remote(\'inspect\') inspect(folder: string, query: string, offset: number, signal: AbortSignal): Promise<MailStatus>',
+        description: 'Read metadata and independent attention states.',
+        parameters: [{ name: 'folder', description: 'Folder filter or all.' }, { name: 'query', description: 'Literal search.' }, { name: 'offset', description: 'Page position.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Bounded current mailbox sample.',
+      },
+      {
+        signature: '@Remote(\'detail\') detail(id: MailId, signal: AbortSignal): Promise<MailMessage>',
+        description: 'Read retained text without changing character attention.',
+        parameters: [{ name: 'id', description: 'Exact local mail ID.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Current message.',
+      },
+      {
+        signature: '@Remote(\'save\') save(settings: MailSettings, revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Persist account and policy choices.',
+        parameters: [{ name: 'settings', description: 'Complete nonsecret draft.' }, { name: 'revision', description: 'Displayed revision.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Committed revision.',
+      },
+      {
+        signature: '@Remote(\'setPassword\') setPassword(value: string | undefined, revision: number, signal: AbortSignal): Promise<void>',
+        description: 'Store/remove the account application password.',
+        parameters: [{ name: 'value', description: 'Password or undefined for removal.' }, { name: 'revision', description: 'Displayed settings revision.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After credential confirmation.',
+      },
+      {
+        signature: '@Remote(\'sync\') sync(signal: AbortSignal): Promise<void>',
+        description: 'Fetch a bounded batch without waiting for model processing.',
+        parameters: [{ name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'After sync; background processing is independently visible.',
+      },
+      {
+        signature: '@Remote(\'organize\') organize(id: MailId, action: \'archive\' | \'trash\' | \'restore\', signal: AbortSignal): Promise<void>',
+        description: 'Move mail locally; no remote deletion or character read is implied.',
+        parameters: [{ name: 'id', description: 'Exact mail ID.' }, { name: 'action', description: 'Local folder operation.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After durable organization.',
+      },
+      {
+        signature: '@Remote(\'erase\') erase(id: MailId, signal: AbortSignal): Promise<void>',
+        description: 'Permanently remove a trashed local copy while retaining text-free deduplication.',
+        parameters: [{ name: 'id', description: 'Exact trashed message.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'After local deletion; server mail and Session logs remain separate.',
       },
     ],
   },
@@ -2654,6 +2770,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Committed revision.',
       },
       {
+        signature: 'isExploring(): boolean',
+        description: 'Read actual exploration activity; reflection alone does not satisfy engagement.',
+        parameters: [],
+        returns: 'Whether a selected private activity is running.',
+      },
+      {
+        signature: 'registerConversation(provider: IdleConversationProvider): () => void',
+        description: 'Register an optional transport with an explicit autonomous destination policy.',
+        parameters: [{ name: 'provider', description: 'Runtime-owned directory and durable sender.' }],
+        returns: 'Lifecycle-owned removal; duplicate names fail visibly.',
+      },
+      {
+        signature: 'admitsSocial(agent: Agent): boolean',
+        description: 'Verify a live social operation separately from its persisted Session marker.',
+        parameters: [{ name: 'agent', description: 'Exact runtime instance.' }],
+        returns: 'Whether the internal reflection currently owns social admission.',
+      },
+      {
         signature: 'stop(): void',
         description: 'Stop the current opportunity while retaining its confirmed progress.',
         parameters: [],
@@ -2688,9 +2822,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
-        signature: 'consider(sourceAgent: Agent): Promise<void>',
+        signature: 'consider(sourceAgent: Agent, boredom: boolean = false): Promise<void>',
         description: 'Admit one idle opportunity from actual user evidence; no timer is installed by this method.',
-        parameters: [{ name: 'sourceAgent', description: 'Live operator Life channel; its permission ceiling is retained.' }],
+        parameters: [{ name: 'sourceAgent', description: 'Live operator Life channel; its permission ceiling is retained.' }, { name: 'boredom', description: 'Whether the recurring idle scheduler requested this opportunity.' }],
         returns: 'After the complete owned interval, result settlement and Agent disposal; repeated sources do not dispatch again.',
       },
       {
@@ -2720,7 +2854,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'initialize\') async initialize(name: string, signal: AbortSignal): Promise<void>',
-        description: 'Check configured chat/reviewer/writer routes and the embedding service, then name this existing life once. Credentials use the existing provider settings or account sign-in; no secrets are accepted or stored here.',
+        description: 'Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once. Credentials use the existing provider settings or account sign-in; no secrets are accepted or stored here.',
         parameters: [{ name: 'name', description: 'User-chosen name, retained across Sessions and restarts.' }, { name: 'signal', description: 'Caller cancellation; an admitted storage commit may still finish after cancellation.' }],
         returns: 'After naming commits; errors leave initialization pending unless a storage write has uncertain outcome.',
       },
@@ -2729,6 +2863,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Persist independent memory routes without credentials or profile-overlay precedence.',
         parameters: [{ name: 'settings', description: 'Decision and writer routes.' }, { name: 'revision', description: 'Displayed revision; stale changes are refused.' }, { name: 'signal', description: 'Caller cancellation; admitted writes still drain.' }],
         returns: 'Committed revision.',
+      },
+      {
+        signature: '@Remote(\'deployLocalDecision\') async deployLocalDecision(revision: number, signal: AbortSignal): Promise<number>',
+        description: 'Install and verify the optional local decision model before selecting it.',
+        parameters: [{ name: 'revision', description: 'Last displayed model revision; concurrent edits refuse route publication.' }, { name: 'signal', description: 'Operator cancellation during download and verification.' }],
+        returns: 'New settings revision; failed installation preserves the previous selection.',
+      },
+      {
+        signature: '@Remote(\'stopLocalDecision\') async stopLocalDecision(revision: number, remove: boolean, signal: AbortSignal): Promise<number>',
+        description: 'Disable the managed route before stopping or removing its private runtime.',
+        parameters: [{ name: 'revision', description: 'Last displayed settings revision.' }, { name: 'remove', description: 'True also removes downloaded assets; cloud configuration and life data are retained.' }, { name: 'signal', description: 'Operator cancellation before admission.' }],
+        returns: 'New revision after route selection commits and teardown finishes.',
       },
       {
         signature: '@Remote(\'testModel\') async testModel(role: \'decision\' | \'writer\', signal: AbortSignal): Promise<void>',
@@ -7087,6 +7233,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type BindingOrigin = \'created\' | \'referenced\' | \'discovered\' | \'tracked\';',
   },
   {
+    name: 'BoredomState',
+    declaration: 'export type BoredomState = z.infer<typeof boredomStateSchema>;',
+  },
+  {
     name: 'BoxProps',
     declaration: 'export interface BoxProps {\n    readonly flexDirection?: \'row\' | \'column\' | undefined;\n    readonly paddingX?: number | undefined;\n    readonly paddingY?: number | undefined;\n    readonly padding?: number | undefined;\n    readonly gap?: number | undefined;\n    readonly border?: boolean | string | undefined;\n    readonly borderColor?: string | undefined;\n    readonly children?: UiNode | undefined;\n}',
   },
@@ -7340,11 +7490,19 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConsolidationChange',
-    declaration: 'export interface ConsolidationChange {\n    id?: MemoryId;\n    input: MemoryInput;\n    embedding: MemoryEmbedding;\n    habit?: MemoryHabit;\n    experienceIds: MemoryId[];\n}',
+    declaration: 'export interface ConsolidationChange {\n    id?: MemoryId;\n    input: MemoryInput;\n    embedding?: MemoryEmbedding | undefined;\n    habit?: MemoryHabit;\n    experienceIds: MemoryId[];\n}',
   },
   {
     name: 'ConsolidationCommit',
     declaration: 'export interface ConsolidationCommit {\n    revision: number;\n    versions: Array<{\n        id: MemoryId;\n        updatedAt: string;\n    }>;\n    changes: ConsolidationChange[];\n}',
+  },
+  {
+    name: 'ContactCatalog',
+    declaration: 'export interface ContactCatalog {\n    items: LifeContact[];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
+    name: 'ContactInput',
+    declaration: 'export type ContactInput = z.infer<typeof contactInputSchema>;',
   },
   {
     name: 'ContentBlockMap',
@@ -7696,7 +7854,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'EmbeddingSettings',
-    declaration: 'export interface EmbeddingSettings {\n    url: string;\n    model: string;\n    dimensions: number;\n    keyRef?: string | undefined;\n}',
+    declaration: 'export interface EmbeddingSettings {\n    enabled?: boolean | undefined;\n    url: string;\n    model: string;\n    dimensions: number;\n    keyRef?: string | undefined;\n}',
   },
   {
     name: 'EmotionAdjustment',
@@ -7768,7 +7926,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ExperienceChange',
-    declaration: 'export interface ExperienceChange {\n    id?: MemoryId;\n    input: MemoryInput;\n    details: MemoryExperience;\n    embedding: MemoryEmbedding;\n}',
+    declaration: 'export interface ExperienceChange {\n    id?: MemoryId;\n    input: MemoryInput;\n    details: MemoryExperience;\n    embedding?: MemoryEmbedding | undefined;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -8103,6 +8261,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface HostConnectionRpc {\n    handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void>;\n    intercept(channel: \'/api\', matches: ConnectionRpcEndpointMatcher, handler: ConnectionRpcHandler): () => Promise<void>;\n}',
   },
   {
+    name: 'IdleConversationProvider',
+    declaration: 'export interface IdleConversationProvider {\n    name: string;\n    targets(signal: AbortSignal): Promise<MessageTarget[]>;\n    send(target: MessageTargetId, text: string, origin: {\n        agent: Agent;\n        callId: ToolCallId;\n        signal: AbortSignal;\n    }): Promise<{\n        confirmed: boolean;\n        receipt: string;\n    }>;\n}',
+  },
+  {
     name: 'ImageAttachmentLimits',
     declaration: 'export interface ImageAttachmentLimits {\n    maxImageBytes: number;\n    maxImagesPerMessage: number;\n    maxMessageImageBytes: number;\n    maxImagePixels: number;\n    maxImageDimension: number;\n    mediaTypes: readonly ImageMediaType[];\n}',
   },
@@ -8367,12 +8529,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
   },
   {
+    name: 'LifeContact',
+    declaration: 'export type LifeContact = z.infer<typeof contactSchema>;',
+  },
+  {
     name: 'LifeConversation',
     declaration: 'export type LifeConversation = z.infer<typeof conversationSchema>;',
   },
   {
     name: 'LifeCore',
-    declaration: 'export class LifeCore {\n    bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>;\n    confirmConversationSession(sessionId: SessionId): Promise<void>;\n    forgetPerson(personId: PersonId, updatedAt?: string): Promise<boolean>;\n    reservePersonMessage(sessionId: SessionId, source: PersonSource, digest: string): Promise<boolean>;\n    reserveQqReply(sessionId: SessionId, seq: number, parts: number): Promise<boolean>;\n    settleQqReply(sessionId: SessionId, seq: number, status: \'confirmed\' | \'uncertain\', messageIds: string[]): Promise<void>;\n    isOperatorSession(sessionId: SessionId): boolean;\n    isQqSession(sessionId: SessionId): boolean;\n    isOperatorPerson(personId: PersonId): boolean;\n    onCommitted(listener: (events: readonly LifeEvent[]) => void): () => void;\n    initializeInitiative(): Promise<void>;\n    configureInitiative(settings: InitiativeSettings, revision: number): Promise<number>;\n    advanceInitiativeCursor(eventId: LifeEventId): Promise<void>;\n    requestInteraction(key: string, sourceEventId: LifeEventId): Promise<InteractionRecord>;\n    saveInteraction(record: InteractionRecord): Promise<void>;\n    constructor(private readonly domain: Domain<typeof lifeDomain>, private readonly config: Config, private readonly records: Domain<typeof lifeRecordsDomain>);\n    start(): Promise<void>;\n    prepareDeliberation(sessionId: SessionId, key: string, kind: \'request\' | \'event\', source?: LifeEventId): Promise<LifeEvent>;\n    recor /* …truncated — full shape in source */',
+    declaration: 'export class LifeCore {\n    isOperatorEmail(address: string): boolean;\n    async contacts(query: string, offset: number = 0): Promise<ContactCatalog>;\n    saveContact(input: ContactInput, evidence?: {\n        sessionId: SessionId;\n        eventId: string;\n    }, operator?: boolean): Promise<LifeContact>;\n    deleteContact(personId: PersonId, evidence?: {\n        sessionId: SessionId;\n        eventId: string;\n    }): Promise<boolean>;\n    bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>;\n    confirmConversationSession(sessionId: SessionId): Promise<void>;\n    forgetPerson(personId: PersonId, updatedAt?: string): Promise<boolean>;\n    reservePersonMessage(sessionId: SessionId, source: PersonSource, digest: string): Promise<boolean>;\n    reserveQqReply(sessionId: SessionId, seq: number, parts: number): Promise<boolean>;\n    settleQqReply(sessionId: SessionId, seq: number, status: \'confirmed\' | \'uncertain\', messageIds: string[]): Promise<void>;\n    isOperatorSession(sessionId: SessionId): boolean;\n    isQqSession(sessionId: SessionId): boolean;\n    isOperatorPerson(personId: PersonId): boolean;\n    onCommitted(listener: (events: readonly LifeEvent[]) => void): () => void;\n    initializeInitiative(): Promise<void>;\n    configureInitiative(settings: InitiativeSettings, revision: number): Promise<number>;\n    advanceInitiativeCursor(eventId: LifeEventId): Promise<void>;\n    requestInteraction(key: string, sourceEventId: LifeEventId): Promi /* …truncated — full shape in source */',
   },
   {
     name: 'LifeDecision',
@@ -8428,7 +8594,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LifeStatus',
-    declaration: 'export interface LifeStatus {\n    lifePreset?: string;\n    operator?: {\n        name: string;\n        identity: string;\n        revision: number;\n    };\n    organization?: {\n        selectionLimit: number;\n        maxResults: number;\n    };\n    emotion?: EmotionState & {\n        settings: EmotionSettings;\n        history: EmotionHistoryEntry[];\n        omitted: number;\n        review?: ReviewOutcome;\n    };\n    interest?: {\n        entries: InterestSummary[];\n        omitted: number;\n        history: InterestHistoryEntry[];\n        historyOmitted: number;\n        review?: ReviewOutcome;\n    };\n    models?: MemoryModelsSettings & {\n        revision: number;\n        keys: Record<\'decision\' | \'writer\', {\n            configured: boolean;\n            writable: boolean;\n        }>;\n    };\n    consolidation?: MemoryConsolidation & {\n        enabled: boolean;\n        maxFailures: number;\n        minHabitSupport: number;\n    };\n    review?: ReviewOutcome;\n    embedding?: EmbeddingSettings & {\n        revision: number;\n        keyConfigured: boolean;\n        keyWritable: boolean;\n    };\n    setup?: {\n        phase: \'credentials\' | \'naming\' | \'conversation\' | \'ready\';\n        firstSessionId?: SessionId;\n    };\n    identity: LifeIdentity;\n    sampledAt: string;\n    runtime: {\n        platform: string;\n        node: string;\n        liveSessions: number;\n    };\n    counts: {\n        events: number;\n        memories: number;\n        growth: number;\n    };\n    capabilities: Array<{\n        s /* …truncated — full shape in source */',
+    declaration: 'export interface LifeStatus {\n    lifePreset?: string;\n    operator?: {\n        name: string;\n        identity: string;\n        revision: number;\n    };\n    organization?: {\n        selectionLimit: number;\n        maxResults: number;\n    };\n    emotion?: EmotionState & {\n        settings: EmotionSettings;\n        history: EmotionHistoryEntry[];\n        omitted: number;\n        review?: ReviewOutcome;\n    };\n    interest?: {\n        entries: InterestSummary[];\n        omitted: number;\n        history: InterestHistoryEntry[];\n        historyOmitted: number;\n        review?: ReviewOutcome;\n    };\n    localDecision?: LocalDecisionStatus;\n    models?: MemoryModelsSettings & {\n        configuredDecision?: MemoryModelsSettings[\'decision\'];\n        revision: number;\n        keys: Record<\'decision\' | \'writer\', {\n            configured: boolean;\n            writable: boolean;\n        }>;\n    };\n    consolidation?: MemoryConsolidation & {\n        enabled: boolean;\n        maxFailures: number;\n        minHabitSupport: number;\n    };\n    review?: ReviewOutcome;\n    embedding?: EmbeddingSettings & {\n        revision: number;\n        keyConfigured: boolean;\n        keyWritable: boolean;\n    };\n    setup?: {\n        phase: \'credentials\' | \'naming\' | \'conversation\' | \'ready\';\n        firstSessionId?: SessionId;\n    };\n    identity: LifeIdentity;\n    sampledAt: string;\n    runtime: {\n        platform: string;\n        node: string;\n        liveSessions: number;\n    };\n    counts: {\n        even /* …truncated — full shape in source */',
   },
   {
     name: 'LifeThought',
@@ -8535,6 +8701,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LocalAtInput {\n    readonly date: string;\n    readonly time: string;\n    readonly time_zone: string;\n}',
   },
   {
+    name: 'LocalDecisionStatus',
+    declaration: 'export interface LocalDecisionStatus {\n    phase: \'idle\' | \'downloading\' | \'starting\' | \'ready\' | \'failed\';\n    downloadedBytes: number;\n}',
+  },
+  {
     name: 'LocalizedText',
     declaration: 'export type LocalizedText = string | {\n    readonly en: string;\n    readonly [locale: string]: string;\n};',
   },
@@ -8581,6 +8751,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LspRange',
     declaration: 'export interface LspRange {\n    readonly start: LspPosition;\n    readonly end: LspPosition;\n}',
+  },
+  {
+    name: 'MailId',
+    declaration: 'export type MailId = Branded<\'GenesisMailId\'>;',
+  },
+  {
+    name: 'MailMessage',
+    declaration: 'export type MailMessage = z.infer<typeof mailSchema>;',
+  },
+  {
+    name: 'MailSettings',
+    declaration: 'export type MailSettings = z.infer<typeof settingsSchema>;',
+  },
+  {
+    name: 'MailStatus',
+    declaration: 'export interface MailStatus {\n    settings: MailSettings;\n    pollMs: number;\n    revision: number;\n    credentialPresent: boolean;\n    awake: boolean;\n    active: boolean;\n    failure: \'sync\' | \'processing\' | \'send\' | \'credential\' | null;\n    lastSyncAt: number | null;\n    pending: number;\n    uncertain: number;\n    messages: MailSummary[];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
+    name: 'MailSummary',
+    declaration: 'export type MailSummary = Omit<MailMessage, \'text\'>;',
   },
   {
     name: 'ManagedTaskCatalog',
@@ -8728,7 +8918,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MemoryChange',
-    declaration: 'export type MemoryChange = {\n    action: \'delete\';\n    id: MemoryId;\n} | {\n    action: \'upsert\';\n    id?: MemoryId;\n    input: MemoryInput;\n    embedding: MemoryEmbedding;\n};',
+    declaration: 'export type MemoryChange = {\n    action: \'delete\';\n    id: MemoryId;\n} | {\n    action: \'upsert\';\n    id?: MemoryId;\n    input: MemoryInput;\n    embedding?: MemoryEmbedding | undefined;\n};',
   },
   {
     name: 'MemoryConsolidation',
@@ -8764,7 +8954,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MemoryModelsSettings',
-    declaration: 'export interface MemoryModelsSettings {\n    maxRetries?: number | undefined;\n    decision: ProviderRoute | (EndpointRoute & {\n        kind: \'jev\';\n        threshold: number;\n    });\n    writer: ProviderRoute | (EndpointRoute & {\n        kind: \'openai\';\n    });\n}',
+    declaration: 'export interface MemoryModelsSettings {\n    maxRetries?: number | undefined;\n    writerInherit?: boolean | undefined;\n    localDecision?: boolean | undefined;\n    decision: ProviderRoute | (EndpointRoute & {\n        kind: \'jev\';\n        threshold: number;\n    }) | (EndpointRoute & {\n        kind: \'openai\';\n    });\n    writer: ProviderRoute | (EndpointRoute & {\n        kind: \'openai\';\n    });\n}',
   },
   {
     name: 'MemoryOrganizationId',
@@ -8780,7 +8970,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MemoryRelabel',
-    declaration: 'export interface MemoryRelabel {\n    id: MemoryId;\n    content: string;\n    embedding: MemoryEmbedding;\n    habit?: {\n        cue: string;\n        response: string;\n    };\n    topics?: string[];\n}',
+    declaration: 'export interface MemoryRelabel {\n    id: MemoryId;\n    content: string;\n    embedding?: MemoryEmbedding | undefined;\n    habit?: {\n        cue: string;\n        response: string;\n    };\n    topics?: string[];\n}',
   },
   {
     name: 'Mergeability',
@@ -9092,7 +9282,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'OrganizedMemory',
-    declaration: 'export interface OrganizedMemory {\n    input: MemoryInput;\n    embedding: MemoryEmbedding;\n    evidenceIds: MemoryId[];\n}',
+    declaration: 'export interface OrganizedMemory {\n    input: MemoryInput;\n    embedding?: MemoryEmbedding | undefined;\n    evidenceIds: MemoryId[];\n}',
   },
   {
     name: 'OTelEventRecord',
@@ -11872,7 +12062,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WebResource',
-    declaration: 'export type WebResource = (request: Request, peer?: PeerScope) => Promise<Response>;',
+    declaration: 'export type WebResource = (request: Request, peer?: PeerScope, connection?: WebResourceConnection) => Promise<Response>;',
+  },
+  {
+    name: 'WebResourceConnection',
+    declaration: 'export interface WebResourceConnection {\n    readonly remoteAddress?: string | undefined;\n    readonly localAddress?: string | undefined;\n}',
   },
   {
     name: 'WebResourceRoute',

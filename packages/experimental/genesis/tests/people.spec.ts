@@ -4,7 +4,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
 /** Persistent social identity, independently sourced relationships and audience refusal. */
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -194,4 +194,29 @@ it('reserves external input and actual send receipts once, refuses conflicting r
   const damaged = await restored.core.snapshot()
   damaged.people!.conversations.push({ id: conversationIdSchema.parse('qq:group:11111:77777'), kind: 'group', sessionId })
   expect(stateSchema.safeParse(damaged).success).toBe(false)
+})
+
+it('backfills legacy relationships on restart and attaches new relationships to existing contacts without replacing addresses', async () => {
+  const f = await fixture()
+  const sender = source()
+  const sessionId = SessionId('contact-backfill')
+  await f.core.bindConversation({ id: sender.conversationId, sessionId, kind: 'group' }, sender.personId)
+  await f.core.saveContact({ name: '联系人称呼', qq: sender.accountId, emails: ['friend@example.com'], handles: [], notes: '保留备注' })
+  await f.core.reviewEmotion(sessionId, exchange(), (await f.core.snapshot()).emotion!.revision, update(sender.personId))
+  expect((await f.core.contacts('')).items).toHaveLength(1)
+  expect((await f.core.contacts('friend@example.com')).items[0]!.name).toBe('联系人称呼')
+  const legacy = await f.core.snapshot()
+  delete legacy.contacts
+  await f.close()
+  const path = join(f.root, 'genesis.json')
+  const stored: { tables: { states: { life: typeof legacy } } } = JSON.parse(await readFile(path, 'utf8'))
+  stored.tables.states.life = legacy
+  await writeFile(path, JSON.stringify(stored))
+  const restored = await openCore(f.root, 'json', { emotion: {} })
+  cleanup.push(() => restored.close())
+  const contacts = await restored.core.contacts('')
+  expect(contacts.items).toHaveLength(1)
+  expect(contacts.items[0]).toMatchObject({ personId: sender.personId, qq: sender.accountId, operator: true, emails: [] })
+  expect((await restored.core.snapshot()).identity).toEqual(legacy.identity)
+  expect((await restored.core.snapshot()).people!.people).toEqual(legacy.people!.people)
 })

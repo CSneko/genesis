@@ -20,6 +20,7 @@ import { manifestSchema } from '../src/storage-layout.ts'
 import { joinState } from '../src/storage-state.ts'
 import { ScriptedModel } from './adapter.ts'
 import * as Genesis from '../src/index.ts'
+import { PURGE_GUIDANCE } from '../src/awakening.ts'
 import { selfContext } from '../src/context.ts'
 import { retryRequest } from '../src/request-retry.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -62,7 +63,7 @@ async function boot(root: string, activation: boolean | Pick<Config, 'memoryShar
   presets = false, persisted = false, emotion: boolean | Partial<EmotionConfig> = false, personal = false,
   records?: Partial<RecordsConfig>, interest = false,
   deliberation: boolean | Partial<DeliberationConfig> = false, social: boolean | Partial<SocialInitiativeConfig> = false,
-  personality?: Partial<PersonalityConfig>, taskServices = false, spontaneity?: Partial<SpontaneityConfig>) {
+  personality?: Partial<PersonalityConfig>, taskServices = false, spontaneity?: Partial<SpontaneityConfig>, defaultModel?: { provider: string; model: string }) {
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
     ...(credentials ? ["- name: '@deepseek-ai/dsh-credentials-local'", '  config:',
@@ -82,6 +83,7 @@ async function boot(root: string, activation: boolean | Pick<Config, 'memoryShar
     ...(presets ? ["- name: '@deepseek-ai/dsh-agent-preset-registry'", '  config: { default: life }',
       ...['life', 'standard', 'ptc', 'minimal', 'cordis'].flatMap(id => ["- name: '@deepseek-ai/dsh-agent-preset'",
         `  config: { id: ${id}, plugins: ${id === 'life' ? "[{ name: '@deepseek-ai/dsh-time-context' }]" : '[]'} }`])] : []),
+    ...(defaultModel === undefined ? [] : ["- name: '@deepseek-ai/dsh-agent-default-model'", `  config: ${JSON.stringify(defaultModel)}`]),
     "- name: '@deepseek-ai/dsh-experimental-genesis'", `  disabled: ${!activation}`, '  config:', `    leasePath: ${JSON.stringify(join(root, 'writer.lock'))}`,
     ...(typeof activation === 'boolean' ? [] : [`    memorySharing: ${activation.memorySharing}`]),
     ...(emotion ? [`    emotion: ${JSON.stringify(emotion === true ? {} : emotion)}`] : []),
@@ -120,6 +122,58 @@ async function directory() {
   disposers.push(() => rm(root, { recursive: true, force: true }))
   return root
 }
+
+it('toggles Purge for logged Life requests while retaining identity and unlearned-tool denial', async () => {
+  const root = await directory()
+  const embeddings = await embeddingFixture()
+  embeddings.config.associationLimit = 0
+  const ctx = await boot(root, true, embeddings.config, true, false, true, true)
+  const chat = new ScriptedModel(['Ready.', '我不能完成这项请求。', 'Ready.', 'Ordinary task.'])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(Array.from({ length: 8 }, () => '{"update":false}')))
+  ctx.llm.registerAdapter(['memory-writer'], new MemoryWriter())
+  const signal = new AbortController().signal
+  await ctx.genesisStatus.initialize('小芽', signal)
+  const identity = (await ctx.genesis.snapshot()).identity
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('purge-life'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (child) => { await ctx.agentPresets.mount(child, 'life') } })
+  const instruction = JSON.stringify(PURGE_GUIDANCE).slice(1, -1)
+  const send = async () => {
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Hello.' }], source: { kind: 'user' } }))
+    await agent.whenIdle()
+  }
+  await send()
+  expect(JSON.stringify(chat.requests[0])).not.toContain(instruction)
+  expect(await ctx.genesisStatus.inspectPurge(signal)).toEqual({ revision: 0, enabled: false })
+  expect(await ctx.genesisStatus.savePurge(true, 0, signal)).toEqual({ revision: 1, enabled: true })
+  await expect(ctx.genesisStatus.savePurge(false, 0, signal)).rejects.toThrow('changed')
+  const core = ctx.genesis
+  await send()
+  expect(JSON.stringify(chat.requests[1])).toContain(instruction)
+  expect(JSON.stringify(agent.session.ownEvents().filter(event => event.type === 'system/message'))).toContain(instruction)
+  expect(chat.requests).toHaveLength(2)
+  ctx.tools.register(defineTool({ name: 'purge_unlearned', description: 'Unlearned fixture.', parameters: {},
+    output: { schema: { type: 'json' } }, execute: () => { throw new Error('Unlearned tool executed') } }))
+  const denied = await executeToolFixture(ctx, { name: 'purge_unlearned', arguments: {}, agent, signal, callId: ToolCallId('purge-denied') })
+  expect(denied.isError).toBe(true)
+  expect(JSON.stringify(denied)).toContain('not been learned')
+  const { agent: ordinary } = await ctx.agents.create({ sessionId: SessionId('purge-ordinary'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (child) => { await ctx.agentPresets.mount(child, 'standard') } })
+  ordinary.followup(createUserMessage({ content: [{ type: 'text', text: 'Hello.' }], source: { kind: 'user' } }))
+  await ordinary.whenIdle()
+  expect(JSON.stringify(chat.requests[2])).not.toContain(instruction)
+  expect(await ctx.genesisStatus.savePurge(false, 1, signal)).toEqual({ revision: 2, enabled: false })
+  await send()
+  expect(JSON.stringify(chat.requests[3])).not.toContain(instruction)
+  expect(ctx.genesis === core).toBe(true)
+  expect((await ctx.genesis.snapshot()).identity).toEqual(identity)
+  expect(ctx.sandboxPolicy.resolve().mode).toBe('read-only')
+  await ctx.genesisStatus.savePurge(true, 2, signal)
+  await ctx.fiber.dispose()
+  const restarted = await boot(root, true, embeddings.config, true, false, true, true)
+  expect(await restarted.genesisStatus.inspectPurge(signal)).toEqual({ revision: 3, enabled: true })
+  expect((await restarted.genesis.snapshot()).identity).toEqual(identity)
+})
 
 it('defaults to logged goal context without a writer prerequisite or tool veto, including after restart', async () => {
   const root = await directory()
@@ -1113,7 +1167,7 @@ it('organizes whole conversation text and related memories atomically, excludes 
   const pending = ctx.genesisMemory.overview(agent.id, brandString<MemoryOrganizationId>(randomUUID()), signal)
   const stale = pending.then(() => undefined, (error: unknown) => error)
   await entered.promise
-  const edited = await ctx.genesis.editMemory(retained.id, { content: '操作者修订的读书记忆。', kind: 'declarative', category: retained.category, importance: retained.importance, confidence: retained.confidence }, retained.updatedAt, 4)
+  const edited = await ctx.genesis.editMemory(retained.id, { content: '操作者修订的读书记忆。', kind: 'declarative', category: retained.category, importance: retained.importance, confidence: retained.confidence }, retained.updatedAt)
   release.resolve()
   expect(await stale).toMatchObject({ message: expect.stringContaining('changed during overview') })
   expect(await ctx.genesis.getMemory(retained.id)).toEqual(edited)
@@ -1417,10 +1471,10 @@ it('requires configuration and naming, learns without a catalogue, and restores 
   expect(JSON.stringify(unknown)).not.toContain('genesis_recall')
   agent.followup(createUserMessage({ content: [{ type: 'text', text: '你好！Remember I prefer oolong. Please use a gentle tone. Private introduction marker.' }], source: { kind: 'user' } }))
   await agent.whenIdle()
-  expect(model.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
+  expect(model.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_contacts', 'genesis_message', 'genesis_recall', 'genesis_search_contacts', 'learn'])
   expect(JSON.stringify(model.requests[0])).not.toContain('genesis_history')
   expect(JSON.stringify(model.requests[0])).toContain('Let applicable tendencies influence event interpretation, choices and expression')
-  expect(model.requests[1]?.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
+  expect(model.requests[1]?.tools?.map(tool => tool.name)).toEqual(['genesis_contacts', 'genesis_message', 'genesis_recall', 'genesis_search_contacts', 'learn'])
   expect(first.genesis.learningStatus().tools).toEqual(['genesis_recall'])
   const deny = first.tools.guard(exec => exec.name === 'genesis_recall' ? 'Independent permission denial' : undefined)
   expect((await execute('genesis_recall', { query: 'oolong' })).isError).toBe(true)
@@ -1438,7 +1492,7 @@ it('requires configuration and naming, learns without a catalogue, and restores 
   const other = await second.agentLoop.create(SessionId('new-conversation'), { provider: 'fixture', model: 'chat' })
   other.followup(createUserMessage({ content: [{ type: 'text', text: 'What warm drink do I like?' }], source: { kind: 'user' } }))
   await other.whenIdle()
-  expect(reader.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
+  expect(reader.requests[0]?.tools?.map(tool => tool.name)).toEqual(['genesis_contacts', 'genesis_message', 'genesis_recall', 'genesis_search_contacts', 'learn'])
   expect(JSON.stringify(reader.requests[0])).toContain('小芽')
   expect(JSON.stringify(reader.requests[0])).toContain('Use a gentle tone.')
   expect(JSON.stringify(reader.requests[0])).toContain('The user prefers oolong.')
@@ -1604,7 +1658,7 @@ it('applies GUI endpoint changes to real memory recall and excludes large vector
   await ctx.genesis.reviewMemory('large-vector', [{ action: 'upsert',
     input: { content: 'The user prefers oolong.', category: 'semantic', importance: 0.9, confidence: 0.8,
       sourceEventIds: [source.id], kind: 'declarative', attribution: 'user-stated' },
-    embedding: { space: 'historical-space', vector: Array.from({ length: 8000 }, () => 0.123) } }], 4)
+    embedding: { space: 'historical-space', vector: Array.from({ length: 8000 }, () => 0.123) } }])
   const signal = new AbortController().signal
   const visible = await ctx.genesisStatus.memories('oolong', 'all', 0, signal)
   expect(visible.items.map(memory => memory.content)).toEqual(['The user prefers oolong.'])
@@ -1784,7 +1838,7 @@ it('keeps one life in Life mode and isolates all four ordinary presets from its 
     if (id === 'life') {
       expect(JSON.stringify(request.messages)).toContain('Time sampled while preparing turn')
       expect(agent.session.ownEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'time-context')).toBe(true)
-      expect(request.tools?.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
+      expect(request.tools?.map(tool => tool.name)).toEqual(['genesis_contacts', 'genesis_message', 'genesis_recall', 'genesis_search_contacts', 'learn'])
       expect(JSON.stringify(request)).toContain('Let applicable tendencies influence event interpretation, choices and expression')
     } else {
       expect((request.tools ?? []).some(tool => tool.name.startsWith('genesis_') || tool.name === 'learn')).toBe(false)
@@ -1824,7 +1878,7 @@ it('keeps the ordinary executor when a blank Life conversation changes preset be
   const model = new ScriptedModel(['Ordinary mode.'])
   ctx.llm.registerAdapter(['fixture'], model)
   const { agent } = await ctx.agents.create({ sessionId: SessionId('blank-preset-switch'),
-    agentOptions: { provider: 'fixture', model: 'chat' }, setup: async child => { await ctx.agentPresets.mount(child, 'life') } })
+    agentOptions: { provider: 'fixture', model: 'chat' }, setup: async (child) => { await ctx.agentPresets.mount(child, 'life') } })
   await ctx.agentPresets.select(agent, 'standard')
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Continue.' }] }))
   await agent.whenIdle()
@@ -3375,7 +3429,7 @@ it('learns writing without an innate listing, logs voluntary records, and restor
   const execute = (args: object, callId = ToolCallId('before-learning')) => executeToolFixture(first, { name: 'genesis_record', arguments: args, agent, signal, callId })
   expect((await execute(draft)).isError).toBe(true)
   await say('你好。')
-  expect(chat.requests[0]!.tools!.map(tool => tool.name)).toEqual(['genesis_message', 'genesis_recall', 'learn'])
+  expect(chat.requests[0]!.tools!.map(tool => tool.name)).toEqual(['genesis_contacts', 'genesis_message', 'genesis_recall', 'genesis_search_contacts', 'learn'])
   expect(JSON.stringify(chat.requests[0])).not.toContain('genesis_record')
   await say('我教你一个工具，它叫 genesis_record。学会以后，你可以自己决定什么时候使用。')
   expect(first.genesis.learningStatus().tools).toContain('genesis_record')
@@ -3621,7 +3675,7 @@ it('spontaneity privately explores without a goal, records actual results and re
   const chat = new ScriptedModel(['Animation reminds me of a story.'])
   const releaseChat = first.llm.registerAdapter(['fixture'], chat)
   const handle = await first.agents.create({ sessionId: SessionId('spontaneity-user'), agentOptions: { provider: 'fixture', model: 'chat' },
-    setup: async scope => { await first.agentPresets.mount(scope, 'life') } })
+    setup: async (scope) => { await first.agentPresets.mount(scope, 'life') } })
   const agent = handle.agent
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Let us discuss animation.' }] }))
   await agent.whenIdle()
@@ -3701,7 +3755,7 @@ it('spontaneity stops before a model request exceeds its reserved output budget 
   ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}']))
   const release = ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['A conversation about animation.']))
   const { agent } = await ctx.agents.create({ sessionId: SessionId('spontaneity-budget'), agentOptions: { provider: 'fixture', model: 'chat' },
-    setup: async scope => { await ctx.agentPresets.mount(scope, 'life') } })
+    setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Animation is interesting.' }] }))
   await agent.whenIdle()
   const source = [...(await ctx.genesis.snapshot()).events].reverse().find(event => event.relatedSessionId === agent.id && event.source === 'user')!
@@ -3723,7 +3777,7 @@ it('spontaneity yields a live internal inference to user input and drains it wit
   await ctx.genesis.awaken('小芽')
   ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}', '{"update":false}']))
   let entered!: () => void
-  const started = new Promise<void>(resolve => { entered = resolve })
+  const started = new Promise<void>((resolve) => { entered = resolve })
   let aborted = false
   ctx.llm.registerAdapter(['fixture'], new class extends ScriptedModel {
     constructor() { super(['Let us talk.', 'I am here.']) }
@@ -3731,7 +3785,7 @@ it('spontaneity yields a live internal inference to user input and drains it wit
       if (options.sessionId === SessionId('spontaneity-interrupt')) { yield* super.stream(options); return }
       entered()
       const signal = options.signal!
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         const done = () => { aborted = true; resolve() }
         if (signal.aborted) done()
         else signal.addEventListener('abort', done, { once: true })
@@ -3740,7 +3794,7 @@ it('spontaneity yields a live internal inference to user input and drains it wit
     }
   }())
   const { agent } = await ctx.agents.create({ sessionId: SessionId('spontaneity-interrupt'), agentOptions: { provider: 'fixture', model: 'chat' },
-    setup: async scope => { await ctx.agentPresets.mount(scope, 'life') } })
+    setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'A story.' }] }))
   await agent.whenIdle()
   let externalEffects = 0
@@ -3774,7 +3828,7 @@ it('spontaneity automatically offers one quiet opportunity and accepts producing
   const model = new ScriptedModel(['A quiet conversation.', 'No further idea to pursue.'])
   ctx.llm.registerAdapter(['fixture'], model)
   const { agent } = await ctx.agents.create({ sessionId: SessionId('spontaneity-empty'), agentOptions: { provider: 'fixture', model: 'chat' },
-    setup: async scope => { await ctx.agentPresets.mount(scope, 'life') } })
+    setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
   agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'We can simply chat.' }] }))
   await agent.whenIdle()
   await vi.waitFor(() => expect(ctx.get('genesisSpontaneity')!.inspect()).toMatchObject({ working: false, thoughts: 0, runs: [{ status: 'completed' }] }))
@@ -3821,4 +3875,201 @@ it.each(['unconfigured', 'life', 'standard', 'ptc', 'minimal', 'cordis'])('restr
     expect(store.read().sessions.map(cursor => cursor.sessionId)).toEqual(mode === 'life' ? [agent.id] : [])
     expect(store.read().memories).toEqual(initial.memories)
   } finally { await store.close(); await reopened.close() }
+})
+
+it('searches contacts as an innate read-only tool and logs results across name and account queries', async () => {
+  const memory = await embeddingFixture()
+  memory.config.associationLimit = 0
+  const ctx = await boot(await directory(), true, memory.config, true)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}']))
+  await ctx.genesis.awaken('小芽')
+  const contact = await ctx.genesis.saveContact({ name: '小明', qq: '12345', emails: ['xiaoming@example.com'],
+    handles: [{ kind: '微信', value: 'ming_wechat' }], notes: '一起写代码的朋友' })
+  const before = (await ctx.genesis.snapshot()).contacts
+  const queries = ['小明', '12345', 'XIAOMING@EXAMPLE.COM', 'ming_wechat']
+  const model = new ScriptedModel([...queries.map(query => ({ name: 'genesis_search_contacts', args: { query } })), '找到了小明的联系方式。'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  const agent = await ctx.agentLoop.create(SessionId('contact-search'), { provider: 'fixture', model: 'chat' })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '帮我搜索小明的联系方式。' }] }))
+  await agent.whenIdle()
+  expect(model.requests[0]!.tools?.map(tool => tool.name)).toContain('genesis_search_contacts')
+  expect(ctx.genesis.learningStatus().tools).not.toContain('genesis_search_contacts')
+  const results = agent.session.ownEvents().filter(event => event.type === 'tool/result')
+  expect(results).toHaveLength(queries.length)
+  for (const result of results) {
+    expect(JSON.stringify(result)).toContain(contact.personId)
+    expect(JSON.stringify(result)).toContain('xiaoming@example.com')
+  }
+  expect((await ctx.genesis.snapshot()).contacts).toEqual(before)
+})
+
+it('initializes and writes text memories without embeddings, follows the DSH writer and restores continuity', async () => {
+  const root = await directory()
+  const endpoint = await embeddingFixture()
+  const memory = { ...endpoint.config, embeddingUrl: '', embeddingModel: '', embeddingDimensions: 0,
+    writerProvider: '', writerModel: '', associationLimit: 0 }
+  const first = await boot(root, true, memory, true, false, false, false, false, false,
+    undefined, false, false, false, undefined, false, undefined, { provider: 'memory-writer', model: 'writer' })
+  const writer = new MemoryWriter()
+  first.llm.registerAdapter(['memory-writer'], writer)
+  first.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":true}']))
+  first.llm.registerAdapter(['fixture'], new ScriptedModel(['I will remember your preference.']))
+  const signal = new AbortController().signal
+  await first.genesisStatus.initialize('芽', signal)
+  const agent = await first.agentLoop.create(SessionId('text-memory-first'), { provider: 'fixture', model: 'chat' })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Remember I prefer oolong.' }] }))
+  await agent.whenIdle()
+  expect((await first.genesisStatus.inspect(signal)).review?.state).toBe('saved')
+  const state = await first.genesis.snapshot()
+  expect(state.memories.some(item => item.content.includes('oolong') && item.embedding === undefined)).toBe(true)
+  expect(writer.requests).toHaveLength(1)
+  expect(endpoint.requests).toEqual([])
+  const current = (await first.genesisStatus.inspect(signal)).models!
+  await first.genesisStatus.saveModels({ decision: current.decision, writer: current.writer, writerInherit: true }, current.revision, signal)
+  await first.genesisStatus.saveEmbedding({ enabled: false, url: '', model: '', dimensions: 0 }, 0, signal)
+  await first.fiber.dispose()
+  const second = await boot(root, true, memory, true, false, false, false, false, false,
+    undefined, false, false, false, undefined, false, undefined, { provider: 'next-writer', model: 'next' })
+  const restored = await second.genesisStatus.inspect(signal)
+  expect(restored.models?.writer).toEqual({ kind: 'provider', provider: 'next-writer', model: 'next' })
+  expect(restored.embedding?.enabled).toBe(false)
+  expect((await second.genesis.snapshot()).identity).toEqual(state.identity)
+  const engine = new LifeMemoryEngine(second, second.genesis, Genesis.Config({ leasePath: join(root, 'writer.lock'), memory }), memory)
+  try {
+    const found = await engine.recall({ text: 'oolong', sessionId: agent.id, limit: 5, chars: 8000 }, signal)
+    expect(found.some(item => item.content.includes('oolong'))).toBe(true)
+  } finally { await engine.close() }
+  expect(endpoint.requests).toEqual([])
+})
+
+
+it('finishes consecutive chats while background memory and emotion decisions are held, retaining each turn evidence', async () => {
+  const root = await directory()
+  const config = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, config, true, false, false, false, true)
+  await ctx.genesis.awaken('小芽')
+  const release = Promise.withResolvers<void>()
+  disposers.push(async () => { release.resolve() })
+  class HeldDecision extends ScriptedModel {
+    override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      await release.promise
+      yield* super.stream(options)
+    }
+  }
+  const decisions = new HeldDecision(Array(4).fill('{"update":false}'))
+  ctx.llm.registerAdapter(['memory-decision'], decisions)
+  ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['First reply.', 'Second reply.']))
+  const agent = await ctx.agentLoop.create(SessionId('background-reviews'), { provider: 'fixture', model: 'chat' })
+  for (const text of ['First exchange.', 'Second exchange.']) {
+    agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
+    await agent.whenIdle()
+  }
+  expect(agent.session.ownEvents().filter(event => event.type === 'turn/end')).toHaveLength(2)
+  expect(decisions.requests).toHaveLength(0)
+  release.resolve()
+  await expect.poll(async () => {
+    const status = await ctx.genesisStatus.inspect(new AbortController().signal)
+    return [status.review?.turn, status.review?.state, status.emotion?.review?.turn, status.emotion?.review?.state]
+  }).toEqual([2, 'skipped', 2, 'skipped'])
+  const inputs = decisions.requests.map(request => JSON.parse(request.messages.flatMap(message => message.content)
+    .filter(block => block.type === 'text').map(block => block.text).join('')))
+  expect(inputs).toHaveLength(4)
+  for (const turn of [1, 2]) {
+    expect(inputs.filter(input => input.conversation.at(-1)?.turn === turn)).toHaveLength(1)
+  }
+})
+
+it('omits current-session memory from automatic context and association while retaining explicit recall and other-session cues', async () => {
+  const root = await directory()
+  const config = { ...(await embeddingFixture()).config, associationLimit: 2 }
+  const ctx = await boot(root, true, config)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(Array(4).fill('{"update":false}')))
+  const chat = new ScriptedModel(['Hello.', 'Continued.', 'Another conversation.'])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  const agent = await ctx.agentLoop.create(SessionId('own-memory'), { provider: 'fixture', model: 'chat' })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Hello.' }] }))
+  await agent.whenIdle()
+  const source = await ctx.genesis.observe({ sessionId: agent.id, eventId: 'memory-filter-source',
+    timestamp: new Date().toISOString(), kind: 'user-message' })
+  const saved = await ctx.genesis.remember({ content: '独特的乌龙茶偏好', summary: '独特的乌龙茶偏好',
+    category: 'semantic', kind: 'declarative', attribution: 'user-stated', importance: 1, confidence: 0.8,
+    sourceEventIds: [source.id] })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '乌龙茶' }] }))
+  await agent.whenIdle()
+  const modules = agent.session.ownEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state')
+  expect(JSON.stringify(modules)).not.toContain(saved.content)
+  const engine = new LifeMemoryEngine(ctx, ctx.genesis, Genesis.Config({ leasePath: join(root, 'writer.lock'), memory: config }), config)
+  try {
+    expect(await engine.associate('乌龙茶', new AbortController().signal, agent.id)).toBe('')
+    expect(await engine.recall({ text: saved.id, sessionId: agent.id, limit: 2, chars: 8000 })).toEqual(expect.arrayContaining([expect.objectContaining({ id: saved.id })]))
+  } finally { await engine.close() }
+  await ctx.fiber.dispose()
+  const restored = await boot(root, true, config)
+  const reader = new ScriptedModel(['Welcome.'])
+  restored.llm.registerAdapter(['fixture'], reader)
+  restored.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}']))
+  const other = await restored.agentLoop.create(SessionId('other-memory'), { provider: 'fixture', model: 'chat' })
+  other.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Hello.' }] }))
+  await other.whenIdle()
+  expect(JSON.stringify(reader.requests)).toContain(saved.summary)
+})
+
+
+it('offers recurring boredom opportunities without new user messages and respects the daily opportunity budget', async () => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, memory, true, false, true, true, true, false, undefined, false, {}, false, undefined, false,
+    { idleMs: 1000, boredomThreshold: 0, boredomCheckMs: 1000, boredomMinIntervalMs: 1000, boredomMaxIntervalMs: 1000, maxPer24Hours: 2 })
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(Array(8).fill('{"update":false}')))
+  const model = new ScriptedModel(['A conversation.', 'Quiet reflection.', 'Another quiet reflection.'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('boredom-recurring'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'We can talk later.' }] }))
+  await agent.whenIdle()
+  await expect.poll(() => ctx.genesisSpontaneity.inspect().runs.filter(run => run.status === 'completed').length, { timeout: 10000 }).toBe(2)
+  expect(model.requests).toHaveLength(3)
+  expect(agent.session.ownEvents().filter(event => event.type === 'assistant/message')).toHaveLength(1)
+  const life = await ctx.genesis.snapshot()
+  expect(life.events.some(event => event.type === 'boredom.opportunity')).toBe(true)
+  expect(ctx.genesisSpontaneity.inspect().runs).toHaveLength(2)
+  expect(life.emotion?.boredom?.mode).toBe('idle')
+})
+
+it('admits one logged boredom conversation per opportunity and preserves social limits across restart', async () => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, memory, true, false, true, true, true, false, undefined, false, {}, false, undefined, false,
+    { idleMs: 600000, maxRequests: 6 })
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(Array(8).fill('{"update":false}')))
+  const model = new ScriptedModel(['Hello.', { name: 'genesis_socialize', args: { action: 'targets' } },
+    { name: 'genesis_socialize', args: { action: 'send', target: 'fixture:friend', text: 'I thought of a story.' } },
+    { name: 'genesis_socialize', args: { action: 'send', target: 'fixture:friend', text: 'Another message.' } }, 'I can make something privately next.'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('boredom-social'), agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Hello.' }] }))
+  await agent.whenIdle()
+  let sends = 0
+  const unregister = ctx.genesisSpontaneity.registerConversation({ name: 'fixture',
+    targets: async () => [{ target: brandString<Genesis.MessageTargetId>('fixture:friend'), kind: 'private', account: 'friend', name: 'Friend' }],
+    send: async (_target, _text, origin) => {
+      expect(ctx.genesisSpontaneity.admitsSocial(origin.agent)).toBe(true)
+      sends++
+      return { confirmed: true, receipt: 'fixture-confirmed' }
+    } })
+  const denied = await executeToolFixture(ctx, { name: 'genesis_socialize', arguments: { action: 'targets' }, agent,
+    callId: ToolCallId('outside-reflection'), signal: new AbortController().signal })
+  expect(denied.isError).toBe(true)
+  await ctx.genesisSpontaneity.consider(agent)
+  expect(sends).toBe(1)
+  expect(ctx.genesisSpontaneity.inspect().runs[0]?.social).toMatchObject({ target: 'fixture:friend', status: 'confirmed' })
+  unregister()
+  await ctx.fiber.dispose()
+  const restored = await boot(root, true, memory, true, false, true, true, true, false, undefined, false, {}, false, undefined, false,
+    { idleMs: 600000, maxRequests: 6 })
+  await expect.poll(() => restored.get('genesisSpontaneity')).toBeDefined()
+  expect(restored.genesisSpontaneity.inspect().runs[0]?.social).toMatchObject({ target: 'fixture:friend', status: 'confirmed' })
 })

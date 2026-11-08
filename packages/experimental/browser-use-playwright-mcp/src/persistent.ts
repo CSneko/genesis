@@ -1,4 +1,4 @@
-/** Shared Playwright MCP lifetime and disk-backed browser profile ownership. @module */
+/** Shared Playwright MCP lifetime for managed profiles and external browsers. @module */
 import { lstatSync, mkdirSync } from 'node:fs'
 import { isAbsolute, parse, resolve } from 'node:path'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
@@ -6,12 +6,13 @@ import { BrowserUseProviderName } from '@deepseek-ai/dsh-browser-use/brand'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import type {} from '@deepseek-ai/dsh-browser-use'
 
-interface PersistentOptions {
-  userDataDir: string
+interface SharedOptions {
   args: string[]
   env: Record<string, string>
   toolCallTimeoutMs?: number
+  shutdownTool?: string
 }
+interface PersistentOptions extends Omit<SharedOptions, 'shutdownTool'> { userDataDir: string }
 
 /** Shared admission for AI tools and operator browser mutations. */
 export interface BrowserQueue {
@@ -41,6 +42,17 @@ export async function mountPersistentBrowser(ctx: Context, options: PersistentOp
   if (!directory.isDirectory() || directory.isSymbolicLink()) {
     throw new Error('Playwright userDataDir must be a directory, not a symbolic link')
   }
+  return mountSharedBrowser(ctx, { ...options, shutdownTool: 'browser_close' })
+}
+
+/**
+ * Publish one serialized MCP browser to all Sessions until provider disposal.
+ * Omitting shutdownTool disconnects without closing an externally owned browser.
+ * @param ctx - Provider scope owning tool registration and operation admission.
+ * @param options - Pinned MCP arguments, environment, and explicit browser shutdown ownership.
+ * @returns Shared admission after discovery; unload drains calls before removing the provider.
+ */
+export async function mountSharedBrowser(ctx: Context, options: SharedOptions): Promise<BrowserQueue> {
   let tail = Promise.resolve()
   let stopping = false
   let child!: Fiber
@@ -65,7 +77,8 @@ export async function mountPersistentBrowser(ctx: Context, options: PersistentOp
       transport: 'stdio', serverName: 'playwright-mcp', command: process.execPath,
       args: options.args, env: options.env, cwd: process.cwd(),
       ...options.toolCallTimeoutMs === undefined ? {} : { toolCallTimeoutMs: options.toolCallTimeoutMs },
-      failOnStartupError: true, reconnect: { enabled: false }, shutdownTool: 'browser_close',
+      failOnStartupError: true, reconnect: { enabled: false },
+      ...options.shutdownTool === undefined ? {} : { shutdownTool: options.shutdownTool },
     }))
     yield child.dispose
     yield async () => {

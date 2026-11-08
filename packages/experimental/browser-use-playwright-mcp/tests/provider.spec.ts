@@ -1,22 +1,29 @@
 import { existsSync } from 'node:fs'
 import { parse, resolve, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mountSessionMcp } from '@deepseek-ai/dsh-experimental-browser-use-runtime/mcp'
 import * as Provider from '../src/index.ts'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 
 vi.mock('@deepseek-ai/dsh-experimental-browser-use-runtime/mcp', async importOriginal => ({
   ...await importOriginal<typeof import('@deepseek-ai/dsh-experimental-browser-use-runtime/mcp')>(),
   mountSessionMcp: vi.fn(),
 }))
-afterEach(() => {
+let ctx: Context
+beforeEach(async () => {
+  ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+})
+afterEach(async () => {
+  await ctx.fiber.dispose()
   vi.clearAllMocks()
   vi.unstubAllEnvs()
 })
 
 it('uses the pinned Playwright executable with isolated Chromium launch settings', async () => {
   vi.stubEnv('PLAYWRIGHT_MCP_CDP_ENDPOINT', 'http://invalid.example:1')
-  await Provider.apply(new Context(), Provider.Config({ mode: 'launch', executablePath: '/custom/chromium', toolCallTimeoutMs: 123 }))
+  await Provider.apply(ctx, Provider.Config({ mode: 'launch', executablePath: '/custom/chromium', toolCallTimeoutMs: 123 }))
   const options = vi.mocked(mountSessionMcp).mock.calls[0]![1]
   expect(existsSync(options.args[0]!)).toBe(true)
   expect(options).toMatchObject({ name: 'playwright-mcp', exclusive: false, command: process.execPath, toolCallTimeoutMs: 123 })
@@ -26,20 +33,24 @@ it('uses the pinned Playwright executable with isolated Chromium launch settings
 })
 
 it('supports headed launch and attaches without launching a browser or creating a profile', async () => {
-  await Provider.apply(new Context(), Provider.Config({ mode: 'launch', headless: false }))
-  expect(vi.mocked(mountSessionMcp).mock.calls[0]![1].args.slice(1)).toEqual(['--browser', 'chromium', '--caps', 'vision', '--image-responses', 'allow', '--isolated'])
-  await Provider.apply(new Context(), Provider.Config({ mode: 'attach', endpoint: 'http://127.0.0.1:9222' }))
+  await Provider.apply(ctx, Provider.Config({ mode: 'launch', headless: false }))
+  const launched = vi.mocked(mountSessionMcp).mock.calls[0]![1]
+  expect(launched.args.slice(1)).toEqual(['--browser', 'chromium', '--caps', 'vision', '--image-responses', 'allow', '--isolated'])
+  await ctx.fiber.dispose()
+  ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+  await Provider.apply(ctx, Provider.Config({ mode: 'attach', endpoint: 'http://127.0.0.1:9222' }))
   const options = vi.mocked(mountSessionMcp).mock.calls[1]![1]
   expect(options.exclusive).toBe(true)
   expect(options.args.slice(1)).toEqual(['--browser', 'chromium', '--caps', 'vision', '--image-responses', 'allow', '--cdp-endpoint', 'http://127.0.0.1:9222'])
 })
 
 it('rejects malformed endpoints before mounting any browser resources', async () => {
-  await expect(Provider.apply(new Context(), Provider.Config({ mode: 'attach', endpoint: 'http://localhost:bad/path' }))).rejects.toThrow('browser endpoint')
+  await expect(Provider.apply(ctx, Provider.Config({ mode: 'attach', endpoint: 'http://localhost:bad/path' }))).rejects.toThrow('browser endpoint')
   expect(mountSessionMcp).not.toHaveBeenCalled()
 })
 
 it.each(['../profile', join(parse(resolve('.')).root, 'profile', '..')])('rejects unsafe persistent profile path %s before registering browser resources', async (userDataDir) => {
-  await expect(Provider.apply(new Context(), Provider.Config({ mode: 'persistent', userDataDir }))).rejects.toThrow('absolute, non-root')
+  await expect(Provider.apply(ctx, Provider.Config({ mode: 'persistent', userDataDir }))).rejects.toThrow('absolute, non-root')
   expect(mountSessionMcp).not.toHaveBeenCalled()
 })

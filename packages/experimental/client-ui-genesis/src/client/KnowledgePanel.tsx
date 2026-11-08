@@ -23,6 +23,10 @@ export interface KnowledgeActions extends StatusActions {
   credential(this: void, ref: string, value: string | undefined): Promise<RemoteResult<void>>
   /** Verify the currently saved endpoint and credential, with cancellation. */
   test(this: void, signal: AbortSignal): Promise<RemoteResult<void>>
+  /** Download and verify the managed local decision runtime, then select it. */
+  deployLocalDecision(this: void, revision: number, signal: AbortSignal): Promise<RemoteResult<number>>
+  /** Stop or uninstall only the Genesis-owned runtime. */
+  stopLocalDecision(this: void, revision: number, remove: boolean, signal: AbortSignal): Promise<RemoteResult<number>>
   refresh(this: void): void
 }
 
@@ -36,13 +40,14 @@ type EditorProps = PropsLocale<'genesis'> & Pick<InjectFace<KnowledgeActions>, '
 }
 
 function editableSettings(settings: EmbeddingSettings): EmbeddingSettings {
-  return { url: settings.url, model: settings.model, dimensions: settings.dimensions,
+  return { ...(settings.enabled === undefined ? {} : { enabled: settings.enabled }), url: settings.url, model: settings.model, dimensions: settings.dimensions,
     ...(settings.keyRef === undefined ? {} : { keyRef: settings.keyRef }) }
 }
 
 function EmbeddingEditor({ initial, revision, writable, keyConfigured, keyWritable, save, credential, test, refresh, t }: EditorProps) {
   const id = useId()
   const [draft, setDraft] = useState(() => editableSettings(initial))
+  const [expanded, setExpanded] = useState(() => initial.enabled !== false && Boolean(initial.url || initial.model || initial.dimensions))
   const [fence, setFence] = useState(revision)
   const [secret, setSecret] = useState('')
   const [pending, setPending] = useState(false)
@@ -83,46 +88,51 @@ function EmbeddingEditor({ initial, revision, writable, keyConfigured, keyWritab
     <form className={css.naming} onSubmit={(event) => {
       event.preventDefault()
       void run(async () => {
-        const saved = await save({ ...draft, url: draft.url.trim(), model: draft.model.trim() }, fence,
-          operation.current?.signal ?? AbortSignal.abort())
+        const saved = await save(expanded ? { ...draft, url: draft.url.trim(), model: draft.model.trim() }
+          : { enabled: false, url: '', model: '', dimensions: 0 }, fence,
+        operation.current?.signal ?? AbortSignal.abort())
         if (saved.ok && operation.current?.signal.aborted === false) setFence(saved.value)
         return saved
       }, 'saved')
     }}>
-      <label htmlFor={`${id}-url`}>{t('embeddingUrl')}</label>
-      <Input id={`${id}-url`} type="url" required value={draft.url} disabled={pending || !writable}
-        onChange={(event) => { edit({ url: event.target.value }) }} />
-      <label htmlFor={`${id}-model`}>{t('embeddingModel')}</label>
-      <Input id={`${id}-model`} required value={draft.model} disabled={pending || !writable}
-        onChange={(event) => { edit({ model: event.target.value }) }} />
-      <label htmlFor={`${id}-dimensions`}>{t('embeddingDimensions')}</label>
-      <Input id={`${id}-dimensions`} type="number" min={1} max={65536} step={1} required
-        value={draft.dimensions || ''} disabled={pending || !writable}
-        onChange={(event) => { edit({ dimensions: Number(event.target.value) }) }} />
-      <Checkbox label={t('requiresKey')} checked={draft.keyRef !== undefined} disabled={pending || !writable}
-        onChange={(checked) => {
-          setDraft((current) => {
-            const { keyRef: _key, ...rest } = current
-            return checked ? { ...rest, keyRef: 'GENESIS_EMBEDDING_API_KEY' } : rest
-          })
-          setSecret('')
-          setOutcome(undefined); setFailure(undefined)
-        }} />
-      {draft.keyRef === undefined ? null : <>
-        <label htmlFor={`${id}-ref`}>{t('keyReference')}</label>
-        <Input id={`${id}-ref`} required pattern="[A-Za-z_][A-Za-z0-9_]*" value={draft.keyRef}
-          disabled={pending || !writable} onChange={(event) => { edit({ keyRef: event.target.value }); setSecret('') }} />
-      </>}
+      <Checkbox label={t('embeddingEnabled')} checked={expanded} disabled={pending || !writable}
+        onChange={(enabled) => { setExpanded(enabled); edit({ enabled }) }} />
+      {expanded ? <>
+        <label htmlFor={`${id}-url`}>{t('embeddingUrl')}</label>
+        <Input id={`${id}-url`} type="url" required value={draft.url} disabled={pending || !writable}
+          onChange={(event) => { edit({ url: event.target.value }) }} />
+        <label htmlFor={`${id}-model`}>{t('embeddingModel')}</label>
+        <Input id={`${id}-model`} required value={draft.model} disabled={pending || !writable}
+          onChange={(event) => { edit({ model: event.target.value }) }} />
+        <label htmlFor={`${id}-dimensions`}>{t('embeddingDimensions')}</label>
+        <Input id={`${id}-dimensions`} type="number" min={1} max={65536} step={1} required
+          value={draft.dimensions || ''} disabled={pending || !writable}
+          onChange={(event) => { edit({ dimensions: Number(event.target.value) }) }} />
+        <Checkbox label={t('requiresKey')} checked={draft.keyRef !== undefined} disabled={pending || !writable}
+          onChange={(checked) => {
+            setDraft((current) => {
+              const { keyRef: _key, ...rest } = current
+              return checked ? { ...rest, keyRef: 'GENESIS_EMBEDDING_API_KEY' } : rest
+            })
+            setSecret('')
+            setOutcome(undefined); setFailure(undefined)
+          }} />
+        {draft.keyRef === undefined ? null : <>
+          <label htmlFor={`${id}-ref`}>{t('keyReference')}</label>
+          <Input id={`${id}-ref`} required pattern="[A-Za-z_][A-Za-z0-9_]*" value={draft.keyRef}
+            disabled={pending || !writable} onChange={(event) => { edit({ keyRef: event.target.value }); setSecret('') }} />
+        </>}
+      </> : null}
       <div className={css.actions}>
         <Button type="submit" disabled={pending || !writable}>{t('saveConfiguration')}</Button>
         <Button type="button" variant="outline" disabled={pending} onClick={() => {
-          setDraft(editableSettings(initial)); setFence(revision); setSecret(''); setOutcome(undefined); setFailure(undefined)
+          setDraft(editableSettings(initial)); setExpanded(initial.enabled !== false && Boolean(initial.url || initial.model || initial.dimensions)); setFence(revision); setSecret(''); setOutcome(undefined); setFailure(undefined)
         }}>{t('reloadConfiguration')}</Button>
-        <Button type="button" variant="outline" disabled={pending}
+        <Button type="button" variant="outline" disabled={pending || !expanded}
           onClick={() => { void run(() => test(operation.current?.signal ?? AbortSignal.abort()), 'tested') }}>{t('testSaved')}</Button>
       </div>
     </form>
-    {draft.keyRef === undefined ? null : <form className={css.naming} onSubmit={(event) => {
+    {!expanded || draft.keyRef === undefined ? null : <form className={css.naming} onSubmit={(event) => {
       event.preventDefault()
       const ref = draft.keyRef
       if (ref === undefined) return
@@ -160,7 +170,7 @@ function EmbeddingEditor({ initial, revision, writable, keyConfigured, keyWritab
  * @returns A wrapping page retaining drafts and search results after recoverable failures.
  */
 export function KnowledgePanel({ useResource, initialize, startConversation, close, saveModels, testModel,
-  save, credential, test, refresh, t }: KnowledgeProps) {
+  save, credential, test, refresh, deployLocalDecision, stopLocalDecision, t }: KnowledgeProps) {
   const id = useId()
   const resource = useResource<'genesis'>('dsh-resource://genesis/status')
   const status = resource.value
@@ -178,7 +188,8 @@ export function KnowledgePanel({ useResource, initialize, startConversation, clo
     <LifeSetupButton t={t} setup={status?.setup} initialize={initialize} startConversation={startConversation}
       refresh={refresh} done={close} />
     {status?.models === undefined ? null : <MemoryModels t={t} initial={status.models} writable={resource.status === 'live'}
-      saveModels={saveModels} testModel={testModel} credential={credential} refresh={refresh} />}
+      saveModels={saveModels} testModel={testModel} credential={credential} refresh={refresh}
+      localStatus={status.localDecision} deployLocalDecision={deployLocalDecision} stopLocalDecision={stopLocalDecision} />}
     {status?.review === undefined ? null : <ReviewSummary review={status.review} t={t} />}
     {status?.embedding === undefined ? null : <EmbeddingEditor t={t}
       initial={status.embedding} revision={status.embedding.revision}

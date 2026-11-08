@@ -52,7 +52,7 @@ export function feedbackTurns(state: LifeState, ids: readonly string[]): Set<str
  * @returns Sourced replacements; invalid plans fail atomically.
  */
 export async function consolidationChanges(raw: unknown, state: LifeState, memories: LifeMemory[], config: MemoryConfig,
-  embed: (text: string) => Promise<MemoryEmbedding>): Promise<ConsolidationChange[]> {
+  embed: (text: string) => Promise<MemoryEmbedding | undefined>): Promise<ConsolidationChange[]> {
   const plan = z.strictObject({ changes: z.array(entry).max(config.maxChanges) }).parse(raw)
   const allowed = new Map(memories.map(memory => [String(memory.id), memory]))
   const touched = new Set<string>()

@@ -12,6 +12,7 @@ const pages = [
   { id: 'memories', label: 'memoryPageTitle' }, { id: 'personality', label: 'personalityTitle' },
   { id: 'emotion', label: 'emotionTitle' }, { id: 'relationship', label: 'peopleTitle' },
   { id: 'agency', label: 'agencyTitle' }, { id: 'records', label: 'recordsTitle' },
+  { id: 'contacts', label: 'contactsTitle' }, { id: 'mail', label: 'mailTitle' },
   { id: 'outbox', label: 'outboxTitle' }, { id: 'thoughts', label: 'thoughtsTitle' },
 ] as const
 type Page = typeof pages[number]['id']

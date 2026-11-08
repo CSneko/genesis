@@ -46,7 +46,7 @@ export const organizationRequestSchema = z.strictObject({
 })
 
 /** One sourced interpretation and its embedding, ready for atomic creation. */
-export interface OrganizedMemory { input: MemoryInput; embedding: MemoryEmbedding; evidenceIds: MemoryId[] }
+export interface OrganizedMemory { input: MemoryInput; embedding?: MemoryEmbedding | undefined; evidenceIds: MemoryId[] }
 
 /**
  * Resolve exactly the selected versions; omissions and concurrent edits are refused.

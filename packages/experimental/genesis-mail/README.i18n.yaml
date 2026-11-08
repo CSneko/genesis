@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-mail/README.md
+/:
+  en: cab409fd00cddac3
+  zh: 513b8b2ad237ce85
+/deepseek-ai-dsh-experimental-genesis-mail:
+  en: bef8b7fe064968c1
+  zh: 09a65e10fa50e94a
+/deepseek-ai-dsh-experimental-genesis-mail/summary:
+  en: b2de071c6ed8bde4
+  zh: 72fa41612b172902
+/deepseek-ai-dsh-experimental-genesis-mail/table-of-contents:
+  en: bf9fa3f38eff405d
+  zh: 56db7005e6f1c637
+/deepseek-ai-dsh-experimental-genesis-mail/use:
+  en: 64e8398f4d0d3d4c
+  zh: 534005656f4d97fb
+/deepseek-ai-dsh-experimental-genesis-mail/implementation:
+  en: 6659f278714427e3
+  zh: 03f170c08847970d
+/deepseek-ai-dsh-experimental-genesis-mail/further-exploration:
+  en: 3b09a5066d8fa148
+  zh: 582f745b77404049
+/deepseek-ai-dsh-experimental-genesis-mail/model-experience:
+  en: ec26dc62ff15196b
+  zh: bde4b9a1146830c3
+/deepseek-ai-dsh-experimental-genesis-mail/known-limitations-and-deferred-work:
+  en: 70a19e1fb5b06ff4
+  zh: 340ca5aaeee6f22f
+/deepseek-ai-dsh-experimental-genesis-mail/dev-note:
+  en: b75c8458928b72b9
+  zh: 45e76642489dcc3c

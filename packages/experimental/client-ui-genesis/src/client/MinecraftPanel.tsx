@@ -87,8 +87,8 @@ function MinecraftEditor({ sample, writable, t, ...actions }: PropsLocale<'genes
         <Checkbox checked={settings.jevEnabled} label={t('minecraftJevEnabled')} onChange={(value) => { edit('jevEnabled', value) }} />
         <Checkbox checked={settings.reuseKnowledge} label={t('minecraftReuseKnowledge')} onChange={(value) => { edit('reuseKnowledge', value) }} />
         <p className={css.secondary}>{t('minecraftKnowledgeHint')}</p>
-        <label className={css.minecraftField}>{t('modelId')}<Input required value={settings.jevModel} onChange={(event) => { edit('jevModel', event.target.value) }} /></label>
         {settings.reuseKnowledge ? null : <>
+          <label className={css.minecraftField}>{t('modelId')}<Input required value={settings.jevModel} onChange={(event) => { edit('jevModel', event.target.value) }} /></label>
           <label className={css.minecraftField}>{t('modelEndpoint')}<Input type="url" required value={settings.jevUrl} onChange={(event) => { edit('jevUrl', event.target.value) }} /></label>
           <label className={css.minecraftField}>{t('keyReference')}<Input required pattern="[A-Za-z_][A-Za-z0-9_]*" value={settings.jevKeyRef}
             onChange={(event) => { edit('jevKeyRef', event.target.value); setSecret('') }} /></label>

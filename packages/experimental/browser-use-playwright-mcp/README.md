@@ -1,6 +1,6 @@
 ---
 description: "Operate Chromium through Playwright MCP with isolated, attached, or shared persistent browser state."
-kind: "package-reference"
+kind: "package-bundle"
 ---
 
 # @deepseek-ai/dsh-experimental-browser-use-playwright-mcp
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use Playwright MCP to inspect pages and operate Chromium through its upstream tools. The provider initializes a Session's MCP connection before creation or resume completes and retains it across turns. Launch a separate browser, attach one Session to an existing browser, or share a persistent profile across Sessions. This published experimental package activates only when explicitly mounted.
+Use Playwright MCP to inspect pages and operate Chromium through its upstream tools. Launch a separate browser, attach one Session to an existing browser, or share managed or external Chrome across Sessions. The source Genesis Web profile includes this experimental bundle by default; ordinary Harness profiles keep their existing composition.
 
 ## Table of Contents
 
@@ -25,7 +25,9 @@ Use Playwright MCP to inspect pages and operate Chromium through its upstream to
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount both entries before creating or resuming a Session, in a profile composition that supplies Agents, tools, system prompts, and the working-directory service. Launch and attach modes do not adopt Sessions that are already active; persistent mode publishes shared tools after provider startup. Browser installation follows the upstream runtime; select an existing Chromium installation with `executablePath`.
+The bundle adds a browser provider and the `./connection` adapter, defaulting to an independently managed Chrome at `http://127.0.0.1:9222`. Add it to another profile with `dsh plugin --profile <name> add @deepseek-ai/dsh-experimental-browser-use-playwright-mcp`; remove it with the corresponding `remove` command. Bundle defaults apply below editable profile settings. Genesis exposes the address in Settings → Browser. The `endpoint` setting accepts HTTP(S) or WS(S) URLs, persists across restarts and is captured until provider restart; saving leaves the current connection intact and does not probe connectivity. All Sessions share one MCP connection and the same browser state, with serialized individual calls. Provider disposal disconnects without closing external Chrome. Missing Chrome makes browser operations fail without launching another browser. The adapter does not provide the persistent-mode preview. See [server setup](../../../docs/genesis/README.md#browser-control).
+
+The root plugin retains the following explicit launch, attach and persistent configurations. Mount both entries before creating or resuming a Session, in a profile composition that supplies Agents, tools, system prompts, and the working-directory service. Launch and attach modes do not adopt Sessions that are already active; persistent mode publishes shared tools after provider startup. Browser installation follows the upstream runtime; select an existing Chromium installation with `executablePath`.
 
 ```yaml
 - name: '@deepseek-ai/dsh-browser-use'
@@ -115,8 +117,8 @@ An unchanged catalog preserves its tool-definition prefix. Results append to his
 The integration retains the pinned server's browser and tool restrictions.
 
 - Chromium only; Firefox and WebKit are not selectable.
-- MCP startup failure rejects provider activation in persistent mode, or Session creation/resume in other modes. Reconnection is disabled. Fix the cause and reload the provider; launch/attach mode also requires a new or resumed Session.
-- Attachment exclusivity is local to this provider instance. Other processes and browser users can still modify the same pages.
+- MCP startup failure rejects provider activation in persistent mode and the `./connection` adapter, or Session creation/resume in root launch/attach modes. Reconnection is disabled. Fix the cause and reload the provider; launch/attach mode also requires a new or resumed Session.
+- Root attach-mode exclusivity is local to this provider instance. Other processes and browser users can still modify the same pages.
 - In launch and attach modes, the shared resource-server inventory can show inherited server names; it does not grant access to another Session's browser.
 - Cancellation does not undo navigation, clicks, or other actions already delivered to the browser.
 - Tool schemas follow the pinned experimental dependency and carry no DSH stability promise.

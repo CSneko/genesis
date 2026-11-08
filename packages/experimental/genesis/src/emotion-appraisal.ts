@@ -42,7 +42,7 @@ export function applyAppraisal(after: EmotionState, update: EmotionUpdate, setti
   const effects = { current: {} as Record<string, number>, mood: {} as Record<string, number>,
     needs: {} as Record<string, number>, relationship: {} as Record<string, number>, repetitionFactor: factor, moodEligible, repeated }
   const hasChanges = [
-    ...Object.values(update.delta), ...Object.values(update.moodDelta),
+    update.boredomDelta ?? 0, ...Object.values(update.delta), ...Object.values(update.moodDelta),
     ...Object.values(update.needsDelta), ...Object.values(update.relationshipDelta ?? {}),
   ]
     .some(value => value !== 0)
@@ -60,6 +60,13 @@ export function applyAppraisal(after: EmotionState, update: EmotionUpdate, setti
       values[key] = Math.max(minimum(key), Math.min(1, before + change))
       applied[key] = values[key] - before
     }
+  }
+  if (after.boredom !== undefined && update.boredomDelta !== undefined) {
+    const values = { level: after.boredom.level }
+    apply({ level: update.boredomDelta }, values, settings.maxDelta, effects.current, true, () => 0)
+    after.boredom.level = values.level
+    effects.current['boredom'] = effects.current['level'] ?? 0
+    delete effects.current['level']
   }
   apply(update.delta, after.current, settings.maxDelta, effects.current, true, () => 0)
   apply(update.moodDelta, after.mood, settings.maxMoodDelta, effects.mood, moodEligible, key => key === 'valence' ? -1 : 0)

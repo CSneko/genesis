@@ -23,7 +23,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `JsonlHeaderLine` | header | `18ee62b8900a4c3d046700f05d7a4d49d6cab2a660a020c87481d1603dd8bd4f` | [`HeaderLine`](#persistence-type-sha256-18ee62b8900a4c3d046700f05d7a4d49d6cab2a660a020c87481d1603dd8bd4f) |
 | `SessionEventEnvelope` | envelope | `5776e5553ff2dfe3f5bc202dbb1e7c9f93e35a531aebb7764c23b2b6153b2ccc` | [`union (3 variants)`](#persistence-type-sha256-5776e5553ff2dfe3f5bc202dbb1e7c9f93e35a531aebb7764c23b2b6153b2ccc) |
 | `event:agent-preset/selected` | event | `a10c17474eaf2ddab7095a099e0fe3d046fc18e56c3e344fc8894c05ff9ef97b` | [`{ type: "agent-preset/selected" }`](#persistence-type-sha256-a10c17474eaf2ddab7095a099e0fe3d046fc18e56c3e344fc8894c05ff9ef97b) |
-| `event:agent/inbox/spliced` | event | `5b766399bc1ba914f2c0cf6f1e62754742ff53ff8686b1c156b3195402f9b26a` | [`{ type: "agent/inbox/spliced" }`](#persistence-type-sha256-5b766399bc1ba914f2c0cf6f1e62754742ff53ff8686b1c156b3195402f9b26a) |
+| `event:agent/inbox/spliced` | event | `e8e98bd3d98cd5b1cc8f914c99dfc37d0dd58dfc54d9629e768753d887582db4` | [`{ type: "agent/inbox/spliced" }`](#persistence-type-sha256-e8e98bd3d98cd5b1cc8f914c99dfc37d0dd58dfc54d9629e768753d887582db4) |
 | `event:approval/asked` | event | `3bfeb47b58606f4661904bc723da612782214c463d01e6d61cd6d6193d7374e1` | [`{ type: "approval/asked" }`](#persistence-type-sha256-3bfeb47b58606f4661904bc723da612782214c463d01e6d61cd6d6193d7374e1) |
 | `event:approval/decided` | event | `bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3` | [`{ type: "approval/decided" }`](#persistence-type-sha256-bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3) |
 | `event:approval/policy` | event | `26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78` | [`{ type: "approval/policy" }`](#persistence-type-sha256-26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78) |
@@ -36,7 +36,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:compaction/start` | event | `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965` | [`{ type: "compaction/start" }`](#persistence-type-sha256-db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965) |
 | `event:compaction/summary` | event | `e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602` | [`{ type: "compaction/summary" }`](#persistence-type-sha256-e2f9a41e0989f54ed8cee80f8db2bcf9d60a5c810dc9d45b83fa050b9dce7602) |
 | `event:deliverables/presented` | event | `13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176` | [`{ type: "deliverables/presented" }`](#persistence-type-sha256-13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176) |
-| `event:developer/message` | event | `8261631fa9e9defb3dbb9290cbbee173b6a4db136a90e6fb2e85e5637cf58ac7` | [`{ type: "developer/message" }`](#persistence-type-sha256-8261631fa9e9defb3dbb9290cbbee173b6a4db136a90e6fb2e85e5637cf58ac7) |
+| `event:developer/message` | event | `4ce571140422803a4e0a0b2de45cf9efd2daf69e6409b357ff85b7da692bfb91` | [`{ type: "developer/message" }`](#persistence-type-sha256-4ce571140422803a4e0a0b2de45cf9efd2daf69e6409b357ff85b7da692bfb91) |
 | `event:feedback/message-delete` | event | `3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796` | [`{ type: "feedback/message-delete" }`](#persistence-type-sha256-3ee93b06f3a125850337602bcdf155d2538c43a5c944ec55b1b3c365152d6796) |
 | `event:feedback/message-put` | event | `b5086d249e8502e9ead1d39156bb8d559bde7951cac0f14ce150345b4e42a2bf` | [`{ type: "feedback/message-put" }`](#persistence-type-sha256-b5086d249e8502e9ead1d39156bb8d559bde7951cac0f14ce150345b4e42a2bf) |
 | `event:feedback/record` | event | `b54940ff095c17e874c5be03815f4c2145a256cf3a1d34dae4ab2f7769dfffe8` | [`{ type: "feedback/record" }`](#persistence-type-sha256-b54940ff095c17e874c5be03815f4c2145a256cf3a1d34dae4ab2f7769dfffe8) |
@@ -58,7 +58,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:session-log-deepseek/delivery-accepted` | event | `d63b8b8ffad9c02fd80c43a17df4f240c1fe8118ecca9de34f9d5871838ab5b9` | [`{ type: "session-log-deepseek/delivery-accepted" }`](#persistence-type-sha256-d63b8b8ffad9c02fd80c43a17df4f240c1fe8118ecca9de34f9d5871838ab5b9) |
 | `event:session/end-seed` | event | `5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e` | [`{ type: "session/end-seed" }`](#persistence-type-sha256-5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e) |
 | `event:session/title` | event | `1b912703e2d64f91c99c675b8f805b01076c8325b905c1218ad81ef0b24909d5` | [`{ type: "session/title" }`](#persistence-type-sha256-1b912703e2d64f91c99c675b8f805b01076c8325b905c1218ad81ef0b24909d5) |
-| `event:session/title-llm-request` | event | `08030b345b23e933699a3f50e2e94f40bd7408bcb2f9560b5e60154c074d45a7` | [`{ type: "session/title-llm-request" }`](#persistence-type-sha256-08030b345b23e933699a3f50e2e94f40bd7408bcb2f9560b5e60154c074d45a7) |
+| `event:session/title-llm-request` | event | `1b0f831b4e7f1b63ddfa63421cef0f68bcfd2ac743a7b25c9199bb479b46326c` | [`{ type: "session/title-llm-request" }`](#persistence-type-sha256-1b0f831b4e7f1b63ddfa63421cef0f68bcfd2ac743a7b25c9199bb479b46326c) |
 | `event:step/end` | event | `e0a787e6ec76c7c94fecbc501b489164ab0293db05bc947914077ad01e674f05` | [`{ type: "step/end" }`](#persistence-type-sha256-e0a787e6ec76c7c94fecbc501b489164ab0293db05bc947914077ad01e674f05) |
 | `event:step/start` | event | `4513e088d43e6c68425be30451b9f961cc264fe7318ca62681c41d4d78615986` | [`{ type: "step/start" }`](#persistence-type-sha256-4513e088d43e6c68425be30451b9f961cc264fe7318ca62681c41d4d78615986) |
 | `event:subagent/catalog` | event | `d49164d37eab0f0f70fa787c65d887abbea869c010ccb103d717fab3519c3a41` | [`{ type: "subagent/catalog" }`](#persistence-type-sha256-d49164d37eab0f0f70fa787c65d887abbea869c010ccb103d717fab3519c3a41) |
@@ -81,7 +81,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:tool/result` | event | `7c9f44e90a0058f4cc532ae20dad0c10afa6eba22e70a6c79fc79490bad64397` | [`{ type: "tool/result" }`](#persistence-type-sha256-7c9f44e90a0058f4cc532ae20dad0c10afa6eba22e70a6c79fc79490bad64397) |
 | `event:turn/end` | event | `0f8512903d94f57a4748fa1a2092e64342856796684e6b8343db685b192745ce` | [`{ type: "turn/end" }`](#persistence-type-sha256-0f8512903d94f57a4748fa1a2092e64342856796684e6b8343db685b192745ce) |
 | `event:turn/start` | event | `aa0957eca50aeb28bcd2e6930b95809926edacb550c8c340ba526ba6b861b3d8` | [`{ type: "turn/start" }`](#persistence-type-sha256-aa0957eca50aeb28bcd2e6930b95809926edacb550c8c340ba526ba6b861b3d8) |
-| `event:user/message` | event | `c1be8f4104c43051271030f5067a389d504f6c10ac3b478357e9d4fda9665e95` | [`{ type: "user/message" }`](#persistence-type-sha256-c1be8f4104c43051271030f5067a389d504f6c10ac3b478357e9d4fda9665e95) |
+| `event:user/message` | event | `6cab952fca6003f488530e2687c549388220d8d14e55679cf599377e270389a4` | [`{ type: "user/message" }`](#persistence-type-sha256-6cab952fca6003f488530e2687c549388220d8d14e55679cf599377e270389a4) |
 | `event:web/deepseek-search-llm-request` | event | `0c556c9b9f2a96238a6b9bbb99e748206cbff2ed6203041c9571f04ae5802f52` | [`{ type: "web/deepseek-search-llm-request" }`](#persistence-type-sha256-0c556c9b9f2a96238a6b9bbb99e748206cbff2ed6203041c9571f04ae5802f52) |
 | `event:working-directory/change` | event | `124aa62078ca3311353b39cc3bf6c75da281338be6bbf672f8b361d828cddca3` | [`{ type: "working-directory/change" }`](#persistence-type-sha256-124aa62078ca3311353b39cc3bf6c75da281338be6bbf672f8b361d828cddca3) |
 | `event:workspace/changes` | event | `e308ccf867a5398e316e0af8cb6ce238a8d33a63b9b384c8250a686786285f72` | [`{ type: "workspace/changes" }`](#persistence-type-sha256-e308ccf867a5398e316e0af8cb6ce238a8d33a63b9b384c8250a686786285f72) |
@@ -1936,6 +1936,14 @@ SHA-256: `357f1ca0bffbc972db271c3fea6f166fe046c4409c6181d96672e8f1921f04a3`
 
 `"genesis-initiative"`
 
+<a id="persistence-type-sha256-1d157ef09113ec766835ff94b3e3de8f77f03e1253d7e197fe6aeff1492c7c84"></a>
+
+### `"genesis-mail"`
+
+SHA-256: `1d157ef09113ec766835ff94b3e3de8f77f03e1253d7e197fe6aeff1492c7c84`
+
+`"genesis-mail"`
+
 <a id="persistence-type-sha256-2986e597fcaced839dd0f4605d3b8ae3621bee82a0853e4e504ab713aa76306b"></a>
 
 ### `"genesis-minecraft"`
@@ -3506,7 +3514,7 @@ Sources: [`packages/web/web-search-deepseek/src/provider.ts:55`](../packages/web
 | `body` | required | [`{ max_tokens, messages, model, thinking?, … }`](#persistence-type-sha256-9c001ecb5e1d3c3894410db2a1e383842e5f8454fb52182338686158abc1b3ee) |
 | `endpoint` | required | `string` |
 
-<a id="persistence-type-sha256-8dbf8f97d0f841b256add60784ec5338026dd1c4ac4ef587862967f847bad0d5"></a>
+<a id="persistence-type-sha256-027fa2154ab6225bbe701046b0272e504dcad7493f1ff1e3212b3fa70ad1176b"></a>
 
 <a id="persistence-type-developermessage"></a>
 
@@ -3514,7 +3522,7 @@ Sources: [`packages/web/web-search-deepseek/src/provider.ts:55`](../packages/web
 
 ### `DeveloperMessage`
 
-SHA-256: `8dbf8f97d0f841b256add60784ec5338026dd1c4ac4ef587862967f847bad0d5`
+SHA-256: `027fa2154ab6225bbe701046b0272e504dcad7493f1ff1e3212b3fa70ad1176b`
 
 Sources: [`packages/llm/llm/src/message.ts:157`](../packages/llm/llm/src/message.ts)
 
@@ -3523,7 +3531,7 @@ Sources: [`packages/llm/llm/src/message.ts:157`](../packages/llm/llm/src/message
 | `content` | required | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
 | `id` | required | `string` |
 | `role` | required | `"developer"` |
-| `source` | required | [`MessageSource`](#persistence-type-sha256-e135fa6509eac9a6547d41c403cdd903edb816bc08f84eff47bf4eb329c15bdd) |
+| `source` | required | [`MessageSource`](#persistence-type-sha256-ab2b6b9bd4afa91cc49182980ce3e8d6db9000c7fb81cedefceee2faeb2d996c) |
 
 Source compatibility: `source` — `session-source-attribution` v1; `session.developer-message.source`; `kind`; `preserve`.
 
@@ -4222,7 +4230,7 @@ Sources: [`packages/llm/llm-retry/src/types.ts:43`](../packages/llm/llm-retry/sr
 | `step` | required | `number` |
 | `turn` | required | `number` |
 
-<a id="persistence-type-sha256-38f5d80cbbf8b66b42f12a4199faeb89b699eac1d9f0297f532b22f1ad3fff56"></a>
+<a id="persistence-type-sha256-b41f0c98d8f423afdd3a21323c76dfa63ed7d7698d3c70e4dc7bacecbec9e69a"></a>
 
 <a id="persistence-type-message"></a>
 
@@ -4230,15 +4238,15 @@ Sources: [`packages/llm/llm-retry/src/types.ts:43`](../packages/llm/llm-retry/sr
 
 ### `Message`
 
-SHA-256: `38f5d80cbbf8b66b42f12a4199faeb89b699eac1d9f0297f532b22f1ad3fff56`
+SHA-256: `b41f0c98d8f423afdd3a21323c76dfa63ed7d7698d3c70e4dc7bacecbec9e69a`
 
 Sources: [`packages/llm/llm/src/message.ts:196`](../packages/llm/llm/src/message.ts)
 
 One of:
 
 - [`ToolResultMessage`](#persistence-type-sha256-4b259f7f8f0a44ad5e90b70a73553ced1df27012d126921d397ff403b6c86731)
-- [`DeveloperMessage`](#persistence-type-sha256-8dbf8f97d0f841b256add60784ec5338026dd1c4ac4ef587862967f847bad0d5)
-- [`UserMessage`](#persistence-type-sha256-3cc0fc85182b968606fc591d03956ac7be952fad6068c396b6b940cda497e1a0)
+- [`DeveloperMessage`](#persistence-type-sha256-027fa2154ab6225bbe701046b0272e504dcad7493f1ff1e3212b3fa70ad1176b)
+- [`UserMessage`](#persistence-type-sha256-3b05c545c30703bf083b9c77dd0790ddf0500dc1bb6ff851ee7fde28f80beb80)
 - [`SystemMessage`](#persistence-type-sha256-09f3f8dc417f278257202714132f98ba7b52957d7b558c4a04456603890eb363)
 - [`AssistantMessage`](#persistence-type-sha256-fa87537f4a9c1e25602990a8bf686b383e9e00352ec8946e16ae24ba7c1625be)
 
@@ -4315,7 +4323,7 @@ One of:
 - `"negative"`
 - `"positive"`
 
-<a id="persistence-type-sha256-e135fa6509eac9a6547d41c403cdd903edb816bc08f84eff47bf4eb329c15bdd"></a>
+<a id="persistence-type-sha256-ab2b6b9bd4afa91cc49182980ce3e8d6db9000c7fb81cedefceee2faeb2d996c"></a>
 
 <a id="persistence-type-messagesource"></a>
 
@@ -4323,7 +4331,7 @@ One of:
 
 ### `MessageSource`
 
-SHA-256: `e135fa6509eac9a6547d41c403cdd903edb816bc08f84eff47bf4eb329c15bdd`
+SHA-256: `ab2b6b9bd4afa91cc49182980ce3e8d6db9000c7fb81cedefceee2faeb2d996c`
 
 Sources: [`packages/llm/llm/src/message.ts:136`](../packages/llm/llm/src/message.ts)
 
@@ -4369,6 +4377,7 @@ Sources: [`packages/llm/llm/src/message.ts:136`](../packages/llm/llm/src/message
 | `genesis-initiative` | `"relay"` | `interactionId`: `string` | [`{ kind: "genesis-initiative", form: "relay" }`](#persistence-type-sha256-13f78d5effaefef1c6a3eec08452de8e56c25d623a75103e09ba147a5bc74327) |
 | `genesis-initiative` | `"snapshot"` | `interactionId`: `string`; `sections`: [`ContextSnapshotSection[]`](#persistence-type-sha256-c748fb42c80a120038a8c587af80ec39924803c401364db11c8974d5bf6d0262) | [`{ kind: "genesis-initiative", form: "snapshot" }`](#persistence-type-sha256-a9709fa4f3dd9cf4335af62c90cf41d1188ee8c9e8b7b47c60397716d2f3bf24) |
 | `genesis-initiative` | not declared | `interactionId`: `string` | [`{ kind: "genesis-initiative" }`](#persistence-type-sha256-7c469b3914471496e59efe7ab5eb2276d1e93de92843115dedf1d5efe93c5d51) |
+| `genesis-mail` | `"notice"` | `summary`: `string` | [`{ kind: "genesis-mail", form: "notice" }`](#persistence-type-sha256-73a309b295771125dd8780f3ba4b5b5c2af6b6b861d24dabf2fd47864ef75566) |
 | `genesis-minecraft` | `"catalog"` | `observationId`: `string` | [`{ kind: "genesis-minecraft", form: "catalog" }`](#persistence-type-sha256-3563f027bf764bf633ce51c477a85b87613c370fe90c387a14e4a9fd91a94834) |
 | `genesis-minecraft` | `"instructions"` | `observationId`: `string` | [`{ kind: "genesis-minecraft", form: "instructions" }`](#persistence-type-sha256-94fb3b702e31e8166e93bd23dcf12ce0d388c65dde3bbfebe81f9b5b63d5cacc) |
 | `genesis-minecraft` | `"notice"` | `observationId`: `string`; `summary`: `string` | [`{ kind: "genesis-minecraft", form: "notice" }`](#persistence-type-sha256-0e7723b13201db03afb1596bda60a7f4c3c9eeb3a4b0cdd974619b12bf501041) |
@@ -4500,13 +4509,13 @@ Sources: [`packages/llm/llm/src/message.ts:136`](../packages/llm/llm/src/message
 | `webhook` | `"notice"` | `deliveryId`: `string`; `provider`: `string`; `ruleId`: `string`; `source`: `string`; `summary`: `string` | [`{ kind: "webhook", form: "notice" }`](#persistence-type-sha256-9edc162949abf93bd5ff049191b345454ba104f583937ce5580fb50f067d2b94) |
 | `working-directory` | not declared | none | [`{ kind: "working-directory" }`](#persistence-type-sha256-2235d957bf4b7c6cf959231d480f0ba1f3a6d72d82981493fb6c7c963021d3d5) |
 
-<a id="persistence-type-sha256-4c65863bec8bb1b64757d1079513fbbeffb3977fac33516bebc8f95cf4a1a266"></a>
+<a id="persistence-type-sha256-5c21005d474bde6fc2177bda092c635ccc0c62b88ca6c736bf412a7cacc0e6e1"></a>
 
 ### `Message[]`
 
-SHA-256: `4c65863bec8bb1b64757d1079513fbbeffb3977fac33516bebc8f95cf4a1a266`
+SHA-256: `5c21005d474bde6fc2177bda092c635ccc0c62b88ca6c736bf412a7cacc0e6e1`
 
-Array of [`Message`](#persistence-type-sha256-38f5d80cbbf8b66b42f12a4199faeb89b699eac1d9f0297f532b22f1ad3fff56).
+Array of [`Message`](#persistence-type-sha256-b41f0c98d8f423afdd3a21323c76dfa63ed7d7698d3c70e4dc7bacecbec9e69a).
 
 <a id="persistence-type-sha256-719c51f67074f97034a6c94297fe1f4b5d3c8d392c57586dab732aa5398c7a91"></a>
 
@@ -4896,7 +4905,7 @@ Sources: [`packages/session/session-title/src/types.ts:41`](../packages/session/
 | `source` | required | [`SessionTitleSource`](#persistence-type-sha256-30d5a537b296685770b1241c4b4bbde19d5a31ff81aa23df73fab5e90b8fc65f) |
 | `title` | required | `string` |
 
-<a id="persistence-type-sha256-4ab1435b86717c01ec7e1d19e24597cb9e96e9bc64daa3969fcd29c8c030dbfc"></a>
+<a id="persistence-type-sha256-9f5bd865388d83997c18090bc588154d0efece909b0f5626f182a15cde39b8da"></a>
 
 <a id="persistence-type-packagessessionsession-title-llmsrcindextssessiontitlellmrequesteventdata"></a>
 
@@ -4904,7 +4913,7 @@ Sources: [`packages/session/session-title/src/types.ts:41`](../packages/session/
 
 ### `SessionTitleLlmRequestEventData`
 
-SHA-256: `4ab1435b86717c01ec7e1d19e24597cb9e96e9bc64daa3969fcd29c8c030dbfc`
+SHA-256: `9f5bd865388d83997c18090bc588154d0efece909b0f5626f182a15cde39b8da`
 
 Sources: [`packages/session/session-title-llm/src/index.ts:43`](../packages/session/session-title-llm/src/index.ts)
 
@@ -4912,7 +4921,7 @@ Sources: [`packages/session/session-title-llm/src/index.ts:43`](../packages/sess
 |---|---|---|
 | `maxTokens` | required | `number` |
 | `messageSeqs` | required | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |
-| `messages` | required | [`Message[]`](#persistence-type-sha256-4c65863bec8bb1b64757d1079513fbbeffb3977fac33516bebc8f95cf4a1a266) |
+| `messages` | required | [`Message[]`](#persistence-type-sha256-5c21005d474bde6fc2177bda092c635ccc0c62b88ca6c736bf412a7cacc0e6e1) |
 | `reasoningEffort` | optional | `string` |
 | `route` | required | [`SessionTitleModelIdentity`](#persistence-type-sha256-07e1a58c58b593f507b8e7f25723bb0aa42baae6e00f5ecfddf28cb1e64d3235) |
 | `system` | required | `string` |
@@ -5591,7 +5600,7 @@ Sources: [`packages/core/session/src/types.ts:238`](../packages/core/session/src
 | `interrupted` | not declared | none | [`{ kind: "interrupted" }`](#persistence-type-sha256-56b7c047694875a843ba020dfea3c8380d54ae4ff88ab349e72004dc21e07c23) |
 | `max-tokens` | not declared | none | [`{ kind: "max-tokens" }`](#persistence-type-sha256-ab7ec5f9eb2c6dfacca5da4c37cf7ba85d04172053ee6b1ebf1709ffcd99c1a7) |
 
-<a id="persistence-type-sha256-3cc0fc85182b968606fc591d03956ac7be952fad6068c396b6b940cda497e1a0"></a>
+<a id="persistence-type-sha256-3b05c545c30703bf083b9c77dd0790ddf0500dc1bb6ff851ee7fde28f80beb80"></a>
 
 <a id="persistence-type-packagesllmllmsrcmessagetsusermessage"></a>
 
@@ -5599,7 +5608,7 @@ Sources: [`packages/core/session/src/types.ts:238`](../packages/core/session/src
 
 ### `UserMessage`
 
-SHA-256: `3cc0fc85182b968606fc591d03956ac7be952fad6068c396b6b940cda497e1a0`
+SHA-256: `3b05c545c30703bf083b9c77dd0790ddf0500dc1bb6ff851ee7fde28f80beb80`
 
 Sources: [`packages/llm/llm/src/message.ts:162`](../packages/llm/llm/src/message.ts)
 
@@ -5608,19 +5617,19 @@ Sources: [`packages/llm/llm/src/message.ts:162`](../packages/llm/llm/src/message
 | `content` | required | [`ContentBlock[]`](#persistence-type-sha256-b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1) |
 | `id` | required | `string` |
 | `role` | required | `"user"` |
-| `source` | required | [`MessageSource`](#persistence-type-sha256-e135fa6509eac9a6547d41c403cdd903edb816bc08f84eff47bf4eb329c15bdd) |
+| `source` | required | [`MessageSource`](#persistence-type-sha256-ab2b6b9bd4afa91cc49182980ce3e8d6db9000c7fb81cedefceee2faeb2d996c) |
 
 Source compatibility: `source` — `session-source-attribution` v1; `session.user-message.source`; `kind`; `preserve`.
 
 Attribution-only additions: `action-cards`, `genesis-deliberation`, `genesis-initiative`, `genesis-minecraft`, `genesis-planning`, `genesis-state`, `genesis-task`, `tmux-context`, `user-question-reply`, `working-directory`.
 
-<a id="persistence-type-sha256-8f21fd79ab543ccd8a41485f7ad7eb2bf96bcea2c32451449506c8fb0a83bbdc"></a>
+<a id="persistence-type-sha256-4ee3cacdbc704f81113ed75f41a91b637596813366c971482bb09aacc5cbd8c3"></a>
 
 ### `UserMessage[]`
 
-SHA-256: `8f21fd79ab543ccd8a41485f7ad7eb2bf96bcea2c32451449506c8fb0a83bbdc`
+SHA-256: `4ee3cacdbc704f81113ed75f41a91b637596813366c971482bb09aacc5cbd8c3`
 
-Array of [`UserMessage`](#persistence-type-sha256-3cc0fc85182b968606fc591d03956ac7be952fad6068c396b6b940cda497e1a0).
+Array of [`UserMessage`](#persistence-type-sha256-3b05c545c30703bf083b9c77dd0790ddf0500dc1bb6ff851ee7fde28f80beb80).
 
 <a id="persistence-type-sha256-c2deb7c9183735d4e0fffddf5c623f4e34daa1c8e96b111982e957dfcbbcf896"></a>
 
@@ -6611,18 +6620,18 @@ Sources: [`packages/core/session/src/types.ts:398`](../packages/core/session/src
 | `reason` | required | [`RequestHeaderReason`](#persistence-type-sha256-530da6c0267813bb4511af72883cc518834e624e3b3220a7062955fd57a788a6) |
 | `startsSeries` | optional | `true` |
 
-<a id="persistence-type-sha256-6c415886582eeee1616665bf2519babfc38b68546785fb72c4eaef9e77165bf4"></a>
+<a id="persistence-type-sha256-7bb1eaf7a5964e68ada8c85132003a0fc7e55be15bb811da3c3afdf1c6b60d2f"></a>
 
 ### `{ headerSeq?, message, step, turn }`
 
-SHA-256: `6c415886582eeee1616665bf2519babfc38b68546785fb72c4eaef9e77165bf4`
+SHA-256: `7bb1eaf7a5964e68ada8c85132003a0fc7e55be15bb811da3c3afdf1c6b60d2f`
 
 Sources: [`packages/core/session/src/types.ts:317`](../packages/core/session/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
 | `headerSeq` | optional | `number` |
-| `message` | required | [`DeveloperMessage`](#persistence-type-sha256-8dbf8f97d0f841b256add60784ec5338026dd1c4ac4ef587862967f847bad0d5) |
+| `message` | required | [`DeveloperMessage`](#persistence-type-sha256-027fa2154ab6225bbe701046b0272e504dcad7493f1ff1e3212b3fa70ad1176b) |
 | `step` | required | `number` |
 | `turn` | required | `number` |
 
@@ -6706,17 +6715,17 @@ Sources: [`packages/core/session/src/types.ts:435`](../packages/core/session/src
 |---|---|---|
 | `inherited` | optional | `true` |
 
-<a id="persistence-type-sha256-65fb05afce6907bb829dcf71eb0809d653e8e42d4d0881f4c0ba16478ffda21b"></a>
+<a id="persistence-type-sha256-5480b9e9d56833413ddb8314d123f78a00355110dda87bb9e4fab5d4c51c63c3"></a>
 
 ### `{ inserted, outcome?, removedCount?, start, … }`
 
-SHA-256: `65fb05afce6907bb829dcf71eb0809d653e8e42d4d0881f4c0ba16478ffda21b`
+SHA-256: `5480b9e9d56833413ddb8314d123f78a00355110dda87bb9e4fab5d4c51c63c3`
 
 Sources: [`packages/core/agent/src/types.ts:110`](../packages/core/agent/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
-| `inserted` | required | [`UserMessage[]`](#persistence-type-sha256-8f21fd79ab543ccd8a41485f7ad7eb2bf96bcea2c32451449506c8fb0a83bbdc) |
+| `inserted` | required | [`UserMessage[]`](#persistence-type-sha256-4ee3cacdbc704f81113ed75f41a91b637596813366c971482bb09aacc5cbd8c3) |
 | `outcome` | optional | `"canceled"` |
 | `removedCount` | optional | `number` |
 | `start` | required | `number` |
@@ -7248,6 +7257,20 @@ SHA-256: `a9709fa4f3dd9cf4335af62c90cf41d1188ee8c9e8b7b47c60397716d2f3bf24`
 | `interactionId` | required | `string` |
 | `kind` | required | `"genesis-initiative"` |
 | `sections` | required | [`ContextSnapshotSection[]`](#persistence-type-sha256-c748fb42c80a120038a8c587af80ec39924803c401364db11c8974d5bf6d0262) |
+
+<a id="persistence-type-sha256-73a309b295771125dd8780f3ba4b5b5c2af6b6b861d24dabf2fd47864ef75566"></a>
+
+### `{ kind: "genesis-mail", form: "notice" }`
+
+SHA-256: `73a309b295771125dd8780f3ba4b5b5c2af6b6b861d24dabf2fd47864ef75566`
+
+Sources: [`packages/experimental/genesis-mail/src/runtime.ts:412`](../packages/experimental/genesis-mail/src/runtime.ts)
+
+| Property | Presence | Type |
+|---|---|---|
+| `form` | required | `"notice"` |
+| `kind` | required | `"genesis-mail"` |
+| `summary` | required | `string` |
 
 <a id="persistence-type-sha256-2af4c20cbe8bc8193382f68c789438f5988116fbef0fbe650b9e6f17f4aed985"></a>
 
@@ -8999,17 +9022,17 @@ SHA-256: `a10c17474eaf2ddab7095a099e0fe3d046fc18e56c3e344fc8894c05ff9ef97b`
 | `time` | required | `number` |
 | `type` | required | `"agent-preset/selected"` |
 
-<a id="persistence-type-sha256-5b766399bc1ba914f2c0cf6f1e62754742ff53ff8686b1c156b3195402f9b26a"></a>
+<a id="persistence-type-sha256-e8e98bd3d98cd5b1cc8f914c99dfc37d0dd58dfc54d9629e768753d887582db4"></a>
 
 <a id="persistence-type-eventagentinboxspliced"></a>
 
 ### `{ type: "agent/inbox/spliced" }`
 
-SHA-256: `5b766399bc1ba914f2c0cf6f1e62754742ff53ff8686b1c156b3195402f9b26a`
+SHA-256: `e8e98bd3d98cd5b1cc8f914c99dfc37d0dd58dfc54d9629e768753d887582db4`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`{ inserted, outcome?, removedCount?, start, … }`](#persistence-type-sha256-65fb05afce6907bb829dcf71eb0809d653e8e42d4d0881f4c0ba16478ffda21b) |
+| `data` | required | [`{ inserted, outcome?, removedCount?, start, … }`](#persistence-type-sha256-5480b9e9d56833413ddb8314d123f78a00355110dda87bb9e4fab5d4c51c63c3) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `time` | required | `number` |
@@ -9250,17 +9273,17 @@ SHA-256: `13d3d180f977bf78081d487ffa0ecb75857349bcab29a5a3fb48189fca2a6176`
 | `time` | required | `number` |
 | `type` | required | `"deliverables/presented"` |
 
-<a id="persistence-type-sha256-8261631fa9e9defb3dbb9290cbbee173b6a4db136a90e6fb2e85e5637cf58ac7"></a>
+<a id="persistence-type-sha256-4ce571140422803a4e0a0b2de45cf9efd2daf69e6409b357ff85b7da692bfb91"></a>
 
 <a id="persistence-type-eventdevelopermessage"></a>
 
 ### `{ type: "developer/message" }`
 
-SHA-256: `8261631fa9e9defb3dbb9290cbbee173b6a4db136a90e6fb2e85e5637cf58ac7`
+SHA-256: `4ce571140422803a4e0a0b2de45cf9efd2daf69e6409b357ff85b7da692bfb91`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`{ headerSeq?, message, step, turn }`](#persistence-type-sha256-6c415886582eeee1616665bf2519babfc38b68546785fb72c4eaef9e77165bf4) |
+| `data` | required | [`{ headerSeq?, message, step, turn }`](#persistence-type-sha256-7bb1eaf7a5964e68ada8c85132003a0fc7e55be15bb811da3c3afdf1c6b60d2f) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `sourceEventSeqs` | optional | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |
@@ -9660,17 +9683,17 @@ SHA-256: `1b912703e2d64f91c99c675b8f805b01076c8325b905c1218ad81ef0b24909d5`
 | `time` | required | `number` |
 | `type` | required | `"session/title"` |
 
-<a id="persistence-type-sha256-08030b345b23e933699a3f50e2e94f40bd7408bcb2f9560b5e60154c074d45a7"></a>
+<a id="persistence-type-sha256-1b0f831b4e7f1b63ddfa63421cef0f68bcfd2ac743a7b25c9199bb479b46326c"></a>
 
 <a id="persistence-type-eventsessiontitle-llm-request"></a>
 
 ### `{ type: "session/title-llm-request" }`
 
-SHA-256: `08030b345b23e933699a3f50e2e94f40bd7408bcb2f9560b5e60154c074d45a7`
+SHA-256: `1b0f831b4e7f1b63ddfa63421cef0f68bcfd2ac743a7b25c9199bb479b46326c`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`SessionTitleLlmRequestEventData`](#persistence-type-sha256-4ab1435b86717c01ec7e1d19e24597cb9e96e9bc64daa3969fcd29c8c030dbfc) |
+| `data` | required | [`SessionTitleLlmRequestEventData`](#persistence-type-sha256-9f5bd865388d83997c18090bc588154d0efece909b0f5626f182a15cde39b8da) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `time` | required | `number` |
@@ -10109,17 +10132,17 @@ Sources: [`packages/llm/llm/src/types.ts:502`](../packages/llm/llm/src/types.ts)
 | `type` | required | `"usage"` |
 | `usage` | required | [`TokenUsage`](#persistence-type-sha256-fec5442b9ee4122e10514d81d5a43648003fe8bfb7ee2ba50c0cdbdd383ed394) |
 
-<a id="persistence-type-sha256-c1be8f4104c43051271030f5067a389d504f6c10ac3b478357e9d4fda9665e95"></a>
+<a id="persistence-type-sha256-6cab952fca6003f488530e2687c549388220d8d14e55679cf599377e270389a4"></a>
 
 <a id="persistence-type-eventusermessage"></a>
 
 ### `{ type: "user/message" }`
 
-SHA-256: `c1be8f4104c43051271030f5067a389d504f6c10ac3b478357e9d4fda9665e95`
+SHA-256: `6cab952fca6003f488530e2687c549388220d8d14e55679cf599377e270389a4`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`UserMessage`](#persistence-type-sha256-3cc0fc85182b968606fc591d03956ac7be952fad6068c396b6b940cda497e1a0) |
+| `data` | required | [`UserMessage`](#persistence-type-sha256-3b05c545c30703bf083b9c77dd0790ddf0500dc1bb6ff851ee7fde28f80beb80) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `sourceEventSeqs` | optional | [`number[]`](#persistence-type-sha256-5d03ba38734809bcbd2a55221bd938b3b3fc34b49bb686c6113e9e4931e3aa78) |

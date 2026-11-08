@@ -18,7 +18,7 @@ export const settingsSchema = z.strictObject({
   timeoutMs: z.number().int().min(100).max(120000).default(10000),
   threshold: z.number().min(0).max(1).default(0.8),
   notificationIntervalMs: z.number().int().min(1000).max(300000).default(10000),
-  vision: z.boolean().default(true),
+  vision: z.boolean().default(false),
   lowHealth: z.number().min(0).max(20).default(6), skillTimeoutMs: z.number().int().min(1000).max(300000).default(30000),
 })
 /** Explicit connection input; the default port follows Minecraft Java and version omission enables detection. */

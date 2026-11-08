@@ -180,6 +180,10 @@ class StreamingRenderer {
  * including `#L24` / `#L24-L30` fragments and `:24` / `:24-30` / `:24:5` suffixes
  * (ranges open at their first line, columns are ignored, and invalid locations
  * open only the file; see the README for URL/path classification).
+ * `labels.media` enables audio/video controls for image-syntax embeddings,
+ * plus download links for embedded files, including failed previews. Playback
+ * support depends on the browser codec. Local sources use the same resolver
+ * and settlement rule as images; remote downloads follow browser origin rules.
  * Copying a selection inside the document writes selected formulas as
  * `$…$` / `$$…$$` TeX source.
  * @returns A GFM document with TeX math rendered through KaTeX; raw HTML never

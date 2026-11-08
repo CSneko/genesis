@@ -28,6 +28,7 @@ import { CodeBlock } from './CodeBlock.tsx'
 import { isExplicitFilePath, parseFileLink } from './file-link.ts'
 import { renderTexToReact } from './katex.tsx'
 import { LinkIconMedium, classifyLinkPath } from '../LinkIcon.tsx'
+import { fileExtension } from '../FileTypeIcon.tsx'
 import { useMarkdownDelegate } from './MarkdownDelegate.tsx'
 import { HoverCard } from '../HoverCard.tsx'
 import { DraggableImage } from '../DraggableImage.tsx'
@@ -50,6 +51,8 @@ export interface MarkdownCodeLabels {
 export interface MarkdownLabels {
   code: MarkdownCodeLabels
   footnotes: string
+  /** Enables embedded media controls and download links; supplied by the conversation owner. */
+  media?: { download: string; failed: string } | undefined
 }
 
 function sanitizeUrl(url: string): string {
@@ -672,15 +675,16 @@ function inlineCodeHttpUrl(value: string): string | undefined {
 
 function renderImage(url: string, alt: string, key: Key, context: MarkdownRenderContext): ReactNode {
   return <MarkdownImage key={`${key}:${url}`} destination={url} alt={alt}
-    pathImages={context.pathImages} streaming={context.streaming} inLink={context.inLink === true} />
+    pathImages={context.pathImages} streaming={context.streaming} inLink={context.inLink === true} media={context.labels.media} />
 }
 
-function MarkdownImage({ destination, alt, pathImages, streaming, inLink }: {
+function MarkdownImage({ destination, alt, pathImages, streaming, inLink, media }: {
   destination: string
   alt: string
   pathImages: MarkdownPathImages | undefined
   streaming: boolean
   inLink: boolean
+  media: MarkdownLabels['media']
 }): ReactNode {
   const { fileImages } = useMarkdownDelegate()
   const [load] = useState(nextImageLoad)
@@ -688,8 +692,40 @@ function MarkdownImage({ destination, alt, pathImages, streaming, inLink }: {
   const resolved = file === undefined ? undefined : fileImages?.resolve(file.path)
   const src = resolved === undefined ? imageSource(destination, pathImages, load) : freshImageUrl(resolved, load)
   if (src === undefined) return <span className={css.imageAlt}>{alt}</span>
+  if (media !== undefined && !inLink) {
+    return <MarkdownMedia key={src} src={src} destination={destination} alt={alt} labels={media} preview={fileImages} />
+  }
   return <LoadedMarkdownImage key={src} src={src} alt={alt} destination={destination} preview={inLink ? undefined : fileImages} />
 }
+
+/** Media embeddings share image syntax and retain a download when playback or decoding fails. */
+function MarkdownMedia({ src, destination, alt, labels, preview }: {
+  src: string
+  destination: string
+  alt: string
+  labels: NonNullable<MarkdownLabels['media']>
+  preview: MarkdownDelegatePreview
+}): ReactNode {
+  const [failed, setFailed] = useState(false)
+  const file = parseFileLink(destination)
+  const path = file?.path ?? new URL(src).pathname
+  const extension = fileExtension(path)
+  const name = path.split(/[\\/]/u).at(-1) || alt
+  const audio = /^(mp3|wav|ogg|oga|m4a|aac|flac|opus)$/u.test(extension ?? '')
+  const video = /^(mp4|webm|ogv|mov|m4v)$/u.test(extension ?? '')
+  const playerProps = { src, controls: true, preload: 'none', 'aria-label': alt || name,
+    onError: () => { setFailed(true) }, className: css.mediaPlayer } as const
+  return <span className={css.media}>
+    {failed ? <span role="status">{labels.failed}</span>
+      : audio ? <audio {...playerProps} />
+        : video ? <video {...playerProps} playsInline />
+          : file !== undefined && extension !== '' && classifyLinkPath(path) !== 'image' ? null
+            : <LoadedMarkdownImage src={src} alt={alt} destination={destination} preview={preview} />}
+    <a href={src} download={name}>{labels.download}{alt || name ? ` · ${alt || name}` : ''}</a>
+  </span>
+}
+
+type MarkdownDelegatePreview = ReturnType<typeof useMarkdownDelegate>['fileImages']
 
 function LoadedMarkdownImage({ src, alt, destination, preview }: {
   src: string

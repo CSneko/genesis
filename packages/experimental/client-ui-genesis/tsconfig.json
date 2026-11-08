@@ -79,6 +79,9 @@
     },
     {
       "path": "../genesis-companion"
+    },
+    {
+      "path": "../genesis-mail"
     }
   ]
 }

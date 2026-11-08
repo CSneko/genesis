@@ -47,8 +47,7 @@ export function QqConnectionEditor({ sample, writable, saveConnection, setToken,
           value={draft.connection.port} onChange={(event) => { edit('port', Number(event.target.value)) }} /></label>
         <label className={emotionCss.field}>{t('qqBot')}<Input inputMode="numeric" pattern="[1-9][0-9]*" required={draft.connection.enabled}
           value={draft.connection.botQq} onChange={(event) => { edit('botQq', event.target.value) }} /></label>
-        <label className={emotionCss.field}>{t('qqOperator')}<Input inputMode="numeric" pattern="[1-9][0-9]*"
-          value={draft.connection.operatorQq} onChange={(event) => { edit('operatorQq', event.target.value) }} /></label>
+        <p className={css.secondary}>{t('qqContactOperatorHint')}</p>
       </fieldset>
       <p className={css.secondary}>{t('qqConnectionHint')}</p>
       <div className={css.actions}>

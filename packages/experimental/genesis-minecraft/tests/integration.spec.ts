@@ -164,7 +164,7 @@ it('delivers logged Jev changes, reuses knowledge routing with a different model
   ctx.on('session/event', (_session, event) => { const record = pluginRecordOf(event); if (record !== undefined) audits.push(record.type) })
   await executeToolFixture(ctx, { name: 'minecraft_connect', callId: ToolCallId('connect'), arguments: { host: '127.0.0.1', port: 25565, username: 'Genesis', version: '' }, agent, signal }).then((result) => { expect(result.isError).toBe(false) })
   await vi.waitFor(() => { expect(model.requests.length).toBeGreaterThan(0) })
-  expect(requests[0]?.model).toBe('minecraft-model')
+  expect(requests[0]?.model).toBe('knowledge-model')
   expect(JSON.stringify(model.requests[0])).toContain('Minecraft observation')
   const look = await executeToolFixture(ctx, { name: 'minecraft_observe', callId: ToolCallId('observe'), arguments: {}, agent, signal })
   const observation = z.object({ observation: z.object({ id: z.string() }) }).parse(look.value)

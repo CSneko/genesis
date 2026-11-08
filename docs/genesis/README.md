@@ -40,17 +40,22 @@ Workspace Genesis Web includes the [Bilibili integration](../../packages/experim
 
 ### Browser control
 
-Workspace Genesis Web also loads the existing [Playwright MCP provider](../../packages/experimental/browser-use-playwright-mcp/README.md) through `config/genesis-browser.patch.yml`. All conversations share one headless Chromium browser to navigate, read pages, click, fill forms and take screenshots. Its persistent profile is `$DSH_HOME/browser/playwright`, normally `~/.genesis-harness/browser/playwright`. Install the browser required by the repository-pinned `@playwright/mcp` dependency once:
+Workspace Genesis Web enables the [Playwright browser bundle](../../packages/experimental/browser-use-playwright-mcp/README.md) by default. It connects to a dedicated Chrome running independently on the Genesis server at `http://127.0.0.1:9222`. In **Settings → Browser**, edit **Chrome debugging address** and save. The address is resolved on the server, not your local computer; HTTP(S) and WS(S) debugging URLs are accepted. Profile settings retain the address across restarts. Saving does not test connectivity. Restart Genesis after saving to reconnect the shared provider at the new address.
+
+On a Linux server with Chrome installed and an active graphical session, install the repository's user service:
 
 ```sh
-pnpm --filter @deepseek-ai/dsh-experimental-browser-use-playwright-mcp exec playwright-mcp install-browser chrome-for-testing --no-remove
+install -Dm644 config/systemd/genesis-chrome.service ~/.config/systemd/user/genesis-chrome.service
+systemctl --user daemon-reload
+systemctl --user enable --now genesis-chrome.service
+pnpm dsh web
 ```
 
-Alternatively, set `GENESIS_BROWSER_EXECUTABLE` to an absolute Chrome or Chromium executable path. Restart DSH to load the shared browser tools. A missing executable makes browser operations fail visibly; install the matching browser or correct the executable path before retrying.
+The service runs a visible Chrome window with a dedicated profile at `~/.genesis-harness/browser/chrome` and a loopback debugging port. Use a systemd service override to change `GENESIS_CHROME_PROFILE` or `GENESIS_CHROME_PORT`; update the UI address when changing the port. The service inherits the user manager's graphical environment and needs a working X11/Xwayland display. It runs separately from DSH, so stopping DSH leaves Chrome and its pages open. The service restarts Chrome after normal or abnormal exit; use `systemctl --user stop genesis-chrome.service` to stop it explicitly. The previous `$DSH_HOME/browser/playwright` profile is retained and is not imported into Chrome automatically. Stop Chrome before backing up or deleting its profile, which contains sensitive login data.
 
-In life mode, teach exact tool names through `learn`, for example `mcp__playwright-mcp__browser_navigate`, `mcp__playwright-mcp__browser_snapshot`, `mcp__playwright-mcp__browser_click` and `mcp__playwright-mcp__browser_fill_form`. Learning, cookies with an expiry, and website local storage persist across normal restarts. Open tabs and session-only website data are not guaranteed to return. The browser directory contains sensitive login data; stop DSH before backing it up or deleting it. Individual browser calls run in order; multi-call workflows from different conversations can still interleave. Learning a tool does not grant authorization for external actions. Other presets expose the available browser tools directly. Screenshots require an image-capable model route; text snapshots work with text models. The provider is experimental; see its README for configuration and recovery limits.
+All conversations share the same Chrome, pages and website identity. Individual tool calls run serially; multi-call workflows from different conversations can still interleave. If Chrome is unavailable, browser operations report a connection error without launching a replacement browser. Restore Chrome before retrying; restart Genesis if its existing connection remains unusable. The built-in **AI browser** preview is disabled for this connection; use the server's Chrome window through its graphical desktop to view pages, log in and take over. A remote desktop is not provided by this service.
 
-Open the right Sidebar guide and choose **AI browser** to watch the same persistent browser. The panel shows the page, URL, and recent AI action statuses, updating about once per second while open. The panel lists open tabs and lets you select a preview, reload or close a real page. **Follow AI** returns to her current page; preview selection does not change her active tab. Preview images and the short action list do not survive restart or enter model context.
+In life mode, teach exact tool names through `learn`, such as `mcp__playwright-mcp__browser_navigate`, `mcp__playwright-mcp__browser_snapshot`, `mcp__playwright-mcp__browser_click` and `mcp__playwright-mcp__browser_fill_form`. Learning a tool does not grant authorization for external actions. Screenshots require an image-capable model route; text snapshots work with text models. This connection still uses Playwright and does not guarantee avoidance of website anti-bot checks. Keep the debugging port on loopback; remote access requires a protected tunnel because the endpoint controls signed-in websites.
 
 ### Desktop control on GNOME Wayland
 

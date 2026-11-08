@@ -34,8 +34,8 @@
       decisionKeyEnv: GENESIS_DECISION_API_KEY
       decisionThreshold: 0.5
       decisionModel: !!js process.env.GENESIS_DECISION_MODEL ?? 'jev-latest'
-      writerProvider: !!js process.env.GENESIS_WRITER_PROVIDER ?? process.env.GENESIS_CHAT_PROVIDER ?? 'deepseek-official'
-      writerModel: !!js process.env.GENESIS_WRITER_MODEL ?? process.env.GENESIS_CHAT_MODEL ?? 'deepseek-v4-flash'
+      writerProvider: !!js process.env.GENESIS_WRITER_PROVIDER ?? ''
+      writerModel: !!js process.env.GENESIS_WRITER_MODEL ?? ''
       embeddingUrl: !!js process.env.GENESIS_EMBEDDING_URL
       embeddingModel: !!js process.env.GENESIS_EMBEDDING_MODEL
       embeddingDimensions: !!js Number(process.env.GENESIS_EMBEDDING_DIMENSIONS ?? 0)

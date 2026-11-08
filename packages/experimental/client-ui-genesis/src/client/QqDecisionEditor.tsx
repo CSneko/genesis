@@ -58,18 +58,20 @@ export function QqDecisionEditor({ sample, writable, saveDecision, setDecisionKe
           <Button variant="outline" onClick={() => { setDraft(draftOf(sample)) }}>{t('reloadConfiguration')}</Button></div>
       </fieldset>
     </form>
-    <label className={emotionCss.field}>{t('qqDecisionKey')}<Input type="password" autoComplete="new-password" disabled={pending || !writable} value={key}
-      onChange={(event) => { setKey(event.target.value) }} /></label>
-    <p>{t(sample.keyConfigured ? 'qqTokenPresent' : 'qqTokenMissing')}</p>
-    <div className={css.actions}>{([false, true] as const).map(remove => <Button key={String(remove)} variant="outline"
-      disabled={pending || !writable || (remove ? !sample.keyConfigured : !key.trim())} onClick={() => {
-        if (operation.current) return
-        const owned = new AbortController(); operation.current = owned; setPending(true)
-        void setDecisionKey(remove ? undefined : key, owned.signal).then((result) => {
-          if (result.ok && !owned.signal.aborted) { setKey(''); refresh() }
-        }).catch((_error: unknown) => { /* Shell-owned feedback reports credential failures. */ })
-          .finally(() => { operation.current = undefined; if (!owned.signal.aborted) setPending(false) })
-      }}>{t(remove ? 'removeKey' : 'saveKey')}</Button>)}</div>
+    {!draft.inherit && !draft.providerMode ? <>
+      <label className={emotionCss.field}>{t('qqDecisionKey')}<Input type="password" autoComplete="new-password" disabled={pending || !writable} value={key}
+        onChange={(event) => { setKey(event.target.value) }} /></label>
+      <p>{t(sample.keyConfigured ? 'qqTokenPresent' : 'qqTokenMissing')}</p>
+      <div className={css.actions}>{([false, true] as const).map(remove => <Button key={String(remove)} variant="outline"
+        disabled={pending || !writable || (remove ? !sample.keyConfigured : !key.trim())} onClick={() => {
+          if (operation.current) return
+          const owned = new AbortController(); operation.current = owned; setPending(true)
+          void setDecisionKey(remove ? undefined : key, owned.signal).then((result) => {
+            if (result.ok && !owned.signal.aborted) { setKey(''); refresh() }
+          }).catch((_error: unknown) => { /* Shell-owned feedback reports credential failures. */ })
+            .finally(() => { operation.current = undefined; if (!owned.signal.aborted) setPending(false) })
+        }}>{t(remove ? 'removeKey' : 'saveKey')}</Button>)}</div>
+    </> : null}
     <h4>{t('qqDecisions')}</h4>
     {sample.recent.length === 0 ? <p>{t('qqNoDecisions')}</p> : <ul className={css.records}>{sample.recent.toReversed().map(row => <li key={`${row.sessionId}:${row.messageId}`}>
       <div>{t(`qqDecisionOutcome.${row.outcome}`)} · {row.target} · {row.messageId}</div>

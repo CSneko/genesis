@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/browser-use-playwright-mcp/README.md
 /:
-  en: ca454539758c8535
-  zh: 9c2f76f295b9ec48
+  en: 74eba5758b0ac789
+  zh: 2c273db812cf60ab
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp:
   en: 9e5a4fa85c51434d
   zh: 21a6143dff340791
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp/summary:
-  en: 46f53657c9eaaf04
-  zh: ebf9eb601e9e5480
+  en: a0552cd027651864
+  zh: 0905985441e65b77
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp/table-of-contents:
   en: d152484eb41ac6b4
   zh: ea2227f28624a0e6
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp/use-this-package:
-  en: 14417258af9e980f
-  zh: 45891724c1e17508
+  en: 61667698f514940d
+  zh: ce59ae17e271c394
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp/understand-the-implementation:
   en: d8abfd985268198b
   zh: 1a641683ccfa1a62
@@ -39,8 +39,8 @@
   en: 86e83cc10f829b2b
   zh: c2e61c09531a5de2
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp/known-limitations-and-deferred-work:
-  en: 485e001cea565fcf
-  zh: 517829b76eaf906f
+  en: 7156f8e863a39533
+  zh: dddd4d682540d927
 /deepseek-ai-dsh-experimental-browser-use-playwright-mcp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

@@ -64,3 +64,14 @@ export function memoryViewFor(state: LifeState, sessionId: SessionId, sharing: C
 function sourceIsOperator(source: import('./people-model.ts').PersonSource, state: LifeState): boolean {
   return source.conversationId.split(':')[1] === 'private' && source.personId === state.people?.operatorPersonId
 }
+
+/**
+ * Identify memories whose current sources include the calling conversation.
+ * @param state - Committed source events.
+ * @param memory - Current memory version, including any revised sources.
+ * @param sessionId - Conversation whose own memories need no automatic reminder.
+ * @returns Whether at least one current source belongs to this Session.
+ */
+export function memoryFromSession(state: LifeState, memory: LifeMemory, sessionId: SessionId): boolean {
+  return memory.sourceEventIds.some(id => state.events.some(event => event.id === id && event.relatedSessionId === sessionId))
+}

@@ -31,6 +31,7 @@ export async function verifyMcpBrowser(
   namespace: string,
   navigate: { name: string; arguments(url: string): Record<string, unknown> },
   mode: 'launch' | 'attach',
+  shared = false,
 ): Promise<void> {
   const executable = process.env.DSH_BROWSER_EXECUTABLE!
   const root = await mkdtemp(join(tmpdir(), 'dsh-browser-upstream-'))
@@ -88,8 +89,25 @@ export async function verifyMcpBrowser(
     expect(result.isError, JSON.stringify(result.content)).toBe(false)
     expect(observed.has(`/${namespace}-${mode}`)).toBe(true)
     expect(result.content.length).toBeGreaterThan(0)
-    await owner.dispose()
-    expect(ctx.tools.schemas(owner.agent)).toEqual([])
+    if (shared) {
+      const second = await ctx.agents.create({ sessionId: SessionId('browser-second'), meta: { cwd: root } })
+      try {
+        expect(ctx.tools.schemas(second.agent).some(tool => tool.name === `mcp__${namespace}__${navigate.name}`)).toBe(true)
+        const result = await executeToolFixture(ctx, { agent: second.agent, name: `mcp__${namespace}__${navigate.name}`,
+          arguments: navigate.arguments(url), callId: ToolCallId('second-navigate'), signal: new AbortController().signal })
+        expect(result.isError, JSON.stringify(result.content)).toBe(false)
+        await owner.dispose()
+        expect(ctx.tools.schemas(second.agent).some(tool => tool.name === `mcp__${namespace}__${navigate.name}`)).toBe(true)
+      } finally {
+        await second.dispose()
+      }
+      const tools = ctx.tools
+      await ctx.fiber.dispose()
+      expect(tools.schemas()).toEqual([])
+    } else {
+      await owner.dispose()
+      expect(ctx.tools.schemas(owner.agent)).toEqual([])
+    }
     if (browserConfig.mode === 'attach') {
       expect(external?.exitCode).toBeNull()
       const response = await fetch(`${browserConfig.endpoint}/json/list`)

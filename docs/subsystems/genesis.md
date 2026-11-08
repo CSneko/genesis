@@ -4,6 +4,8 @@ English | [中文](genesis.zh.md)
 
 The optional [Genesis layer](../genesis/README.md) owns a persistent life, sourced memories and observed system growth. [Data records](../genesis/data-model.md) define identity continuity and evidence; [integration](../genesis/architecture.md) defines lifecycle and permission ownership.
 
+`BoredomState` is the optional `EmotionState.boredom` value and stores online engagement mode, intensity and time scales. `EmotionUpdate.boredomDelta` is a cited, bounded appraisal; `SpontaneityRun.social` retains autonomous sending reservations and outcomes. `IdleConversationProvider` supplies approved live destinations and durable text delivery to the reflection-only tool. [Boredom](../genesis/emotion.md#boredom-and-engagement) and [idle opportunities](../genesis/spontaneity.md#boredom-driven-idle-opportunities-and-conversation) own behavior and permissions.
+
 `ThoughtId` identifies a `LifeThought` independently of goals and Sessions. `SpontaneityRun` records one reserved internal interval and its actual settlement; the version-1 thought domain retains current projections and sourced edit receipts. Exploration decisions use `purpose: exploration`, while existing decisions remain readable. [Spontaneous cognition](../genesis/spontaneity.md) defines choices, private execution, budgets, deletion and recovery.
 
 `ToolkitId` identifies an operator-owned `ToolkitDefinition`; `ToolkitStatus` returns the revisioned catalogue with learned and registered tool names. `GenesisToolkitGateway` owns authenticated edits, while `genesisToolkits` Session projection restores versioned activation records. [Toolkits](../../packages/experimental/genesis/README.md#toolkits) defines membership, visibility, limits and execution checks.
@@ -42,7 +44,11 @@ Optional version-3 `EmotionState` separates nine-field `EmotionCurrent`, two-fie
 
 `PersonId` identifies an authenticated QQ person independently of names and Sessions. `ConversationId` and `LifeConversation` bind group/private routes to durable Sessions; `PersonSource` is the logged `genesis-person` attribution. Optional version-1 `LifeState.people` retains only meaningful `LifePerson` relationship profiles, explicit operator binding and conversation routes. `QqController` owns independently persisted `QqConnection` choices, credentials, transport replacement and durable receipt inspection; `QqRuntime` owns transport readiness and input admission; Genesis owns relationship learning and memory audience checks. [QQ conversations](../genesis/qq.md) defines deployment, retention, failure and permission semantics.
 
+`LifeContact` associates a name, QQ, email addresses and other handles with the same `PersonId` as relationship records. `ContactInput` replaces all editable fields; `ContactCatalog` pages bounded search results. Optional version-1 `LifeState.contacts` preserves updates through life transactions and backup recovery. `GenesisContactsGateway` owns operator UI access; the logged `genesis_contacts` tool owns model reads and edits in operator conversations. See [contacts](../../packages/experimental/genesis/README.md#use). Contacts also own the single operator role, projected into the existing people operator ID for QQ consumers. Startup imports retained relationships once; new relationship creation attaches or creates a contact without overwriting existing addresses.
+
 `QqDecisionSettings` selects explicit inheritance, an existing provider/model, or a dedicated probability endpoint with its own credential reference. `QqDecisionReceipt` binds bounded real probabilities and outcomes to group/message and Session IDs. [QQ conversations](../genesis/qq.md) owns settings, media/quote scoping and deletion.
+
+The optional [mail integration](../../packages/experimental/genesis-mail/README.md) owns life-bound mailbox storage, separate character attention and immutable SMTP reservations. `MailId` identifies local mail independently of provider UIDs and Message-ID headers; `MailStatus` exposes bounded metadata without credential values. `LifeCore.recordIntegrationState` records observed integration initialization and connectivity as system growth, independently of learned tools and execution permission.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -59,10 +65,41 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 One life owner. Writes serialize components and replace one manifest, so facts and state commit together. Storage failures poison this instance until reload; validation and capacity refusals leave it usable. Returned data is detached.
 
 ```ts cordis-catalog
+/** Match an email address against the operator selected in Contacts.
+ * @param address - Parsed sender address; transport authentication is checked separately.
+ * @returns Whether the current operator contact explicitly owns this address.
+ */
+isOperatorEmail(address: string): boolean
+
+/**
+ * Search contacts by name, person ID or address without loading relationship evidence.
+ * @param query - Case-insensitive substring, or empty for all contacts.
+ * @param offset - Zero-based page offset.
+ * @returns A detached page bounded by queryLimit and resultChars.
+ */
+async contacts(query: string, offset: number = 0): Promise<ContactCatalog>
+
+/**
+ * Save addresses under the same QQ-derived identity as relationship records.
+ * @param input - Complete contact replacement; an existing person ID must match the QQ account.
+ * @param evidence - Optional actual Session evidence for a model-authored update.
+ * @param operator - Explicit operator UI selection; omitted preserves authority and is unavailable to model edits.
+ * @returns The durably committed contact; repeated unchanged saves create no new event.
+ */
+saveContact(input: ContactInput, evidence?: { sessionId: SessionId; eventId: string }, operator?: boolean): Promise<LifeContact>
+
+/**
+ * Remove current addresses while preserving relationship history and Session audit logs.
+ * @param personId - Stable person ID selected from a contact result.
+ * @param evidence - Optional logged tool call responsible for deletion.
+ * @returns Whether a contact was removed.
+ */
+deleteContact(personId: PersonId, evidence?: { sessionId: SessionId; eventId: string }): Promise<boolean>
+
 /**
  * Bind an authenticated platform route to one durable Session before accepting messages.
  * @param conversation - Exact route and reserved Session; reuse may not silently replace it.
- * @param operatorPersonId - Explicit deployment binding, never inferred from a name or relationship.
+ * @param operatorPersonId - Legacy deployment seed used only until Contacts owns operator selection.
  * @returns After the route is durable; conflicting routes or operator identities are refused.
  */
 bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>
@@ -75,7 +112,7 @@ bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): P
 confirmConversationSession(sessionId: SessionId): Promise<void>
 
 /**
- * Delete a retained profile, earlier account recognition and memories citing that person's messages, preserving audited Session evidence.
+ * Delete a retained profile, its contact details, earlier account recognition and memories citing that person's messages, preserving audited Session evidence.
  * @param personId - Explicit operator-selected identity; names cannot select a person.
  * @param updatedAt - Optional displayed profile version; changed or missing profiles refuse deletion.
  * @returns Whether a retained profile existed; raw Session logs require separate lifecycle deletion.
@@ -125,7 +162,7 @@ isOperatorSession(sessionId: SessionId): boolean
 isQqSession(sessionId: SessionId): boolean
 
 /**
- * Match an authenticated account to the configured operator; names and relationships never qualify.
+ * Match an authenticated account to the contact operator; names and relationships never qualify.
  * @param personId - Transport-verified person identity.
  * @returns Whether this exact account has the durable operator binding.
  */
@@ -311,6 +348,21 @@ async snapshot(): Promise<LifeState>
 reviewEmotion(sessionId: SessionId, evidence: EmotionDialogue['turns'], revision: number, update?: EmotionUpdate): Promise<void>
 
 /**
+ * Record an online idle opportunity with its sampled boredom, never an invented interaction.
+ * @param sessionId - Live source conversation supplying the execution ceiling.
+ * @param key - Stable opportunity key reserved by the idle scheduler.
+ * @returns Committed source event; replay returns the same event.
+ */
+reserveBoredomOpportunity(sessionId: SessionId, key: string): Promise<LifeEvent>
+
+/**
+ * Settle elapsed engagement time before changing its mode; no inference or relationship change occurs.
+ * @param mode - Runtime-observed activity, never a model claim of completed work.
+ * @returns After a changed mode and its source record commit; unchanged modes do not write.
+ */
+setBoredomMode(mode: BoredomState['mode']): Promise<void>
+
+/**
  * Save elapsed online affect time without changing operator revisions or creating an experience.
  * @returns After the online-only anchor is durable; storage uncertainty stops dependent operations.
  */
@@ -400,6 +452,14 @@ saveOperator(profile: OperatorIdentity, revision: number, versions: Array<{ id: 
  * @returns Committed fact, including the original fact for duplicate delivery.
  */
 observe(observation: ObservedInteraction): Promise<LifeEvent>
+
+/** Record an optional integration's observed state without granting tool permission.
+ * @param name - Stable integration name.
+ * @param status - Actual initialization or transport observation; initialization is recorded once.
+ * @param detail - Nonsecret evidence describing what was observed and what remains unverified.
+ * @returns Durable observation; repeated unchanged states reuse their previous event.
+ */
+recordIntegrationState(name: string, status: 'initialized' | 'connected' | 'disconnected', detail: string): Promise<LifeEvent>
 
 /**
  * Bind an actual created or resumed Session to this life without changing identity.
@@ -663,6 +723,41 @@ Internal peers cannot invoke operator controls or grant tool permissions.
 
 Source: [`packages/experimental/genesis-companion/src/gateway.ts`](../../packages/experimental/genesis-companion/src/gateway.ts)
 
+<a id="ctxgenesiscontacts--genesiscontactsgateway"></a>
+
+### `ctx.genesisContacts` — `GenesisContactsGateway`
+
+Contact operations use the life owner's atomic persistence and writer lease.
+
+```ts cordis-catalog
+/** Search names and addresses.
+ * @param query - Case-insensitive substring, empty for all.
+ * @param offset - Zero-based page offset.
+ * @param signal - Cancellation before admission.
+ * @returns Bounded current contacts and continuation offset.
+ */
+@Remote('inspect') inspect(query: string, offset: number, signal: AbortSignal): Promise<ContactCatalog>
+
+/** Replace a contact's editable fields.
+ * @param input - Complete name, QQ, email addresses, other handles and notes.
+ * @param operator - Whether this person is the single operator; selecting replaces the previous operator.
+ * @param signal - Cancellation before admission; admitted writes drain on disposal.
+ * @returns After the life transaction commits.
+ */
+@Remote('save') save(input: ContactInput, operator: boolean, signal: AbortSignal): Promise<void>
+
+/** Remove current contact details without deleting the person's relationship.
+ * @param id - Exact person ID selected from the contact catalogue.
+ * @param signal - Cancellation before admission.
+ * @returns After deletion commits, including an already absent contact.
+ */
+@Remote('erase') erase(id: PersonId, signal: AbortSignal): Promise<void>
+```
+
+Types: [PersonId](../genesis/data-model.md)
+
+Source: [`packages/experimental/genesis/src/contacts-gateway.ts`](../../packages/experimental/genesis/src/contacts-gateway.ts)
+
 <a id="ctxgenesisdeliberation--lifedeliberationengine"></a>
 
 ### `ctx.genesisDeliberation` — `LifeDeliberationEngine`
@@ -807,6 +902,69 @@ Settings revisions are independent of background receipt commits.
 Types: [InitiativeSettings](../genesis/social.md) · [InitiativeStatus](../genesis/social.md)
 
 Source: [`packages/experimental/genesis/src/initiative-gateway.ts`](../../packages/experimental/genesis/src/initiative-gateway.ts)
+
+<a id="ctxgenesismail--mailgateway"></a>
+
+### `ctx.genesisMail` — `MailGateway`
+
+Operator reads never mark mail as read by the character.
+
+```ts cordis-catalog
+/** Read metadata and independent attention states.
+ * @param folder - Folder filter or all.
+ * @param query - Literal search.
+ * @param offset - Page position.
+ * @param signal - Caller cancellation.
+ * @returns Bounded current mailbox sample.
+ */
+@Remote('inspect') inspect(folder: string, query: string, offset: number, signal: AbortSignal): Promise<MailStatus>
+
+/** Read retained text without changing character attention.
+ * @param id - Exact local mail ID.
+ * @param signal - Caller cancellation.
+ * @returns Current message.
+ */
+@Remote('detail') detail(id: MailId, signal: AbortSignal): Promise<MailMessage>
+
+/** Persist account and policy choices.
+ * @param settings - Complete nonsecret draft.
+ * @param revision - Displayed revision.
+ * @param signal - Caller cancellation.
+ * @returns Committed revision.
+ */
+@Remote('save') save(settings: MailSettings, revision: number, signal: AbortSignal): Promise<number>
+
+/** Store/remove the account application password.
+ * @param value - Password or undefined for removal.
+ * @param revision - Displayed settings revision.
+ * @param signal - Caller cancellation.
+ * @returns After credential confirmation.
+ */
+@Remote('setPassword') setPassword(value: string | undefined, revision: number, signal: AbortSignal): Promise<void>
+
+/** Fetch a bounded batch without waiting for model processing.
+ * @param signal - Caller cancellation before admission.
+ * @returns After sync; background processing is independently visible.
+ */
+@Remote('sync') sync(signal: AbortSignal): Promise<void>
+
+/** Move mail locally; no remote deletion or character read is implied.
+ * @param id - Exact mail ID.
+ * @param action - Local folder operation.
+ * @param signal - Caller cancellation.
+ * @returns After durable organization.
+ */
+@Remote('organize') organize(id: MailId, action: 'archive' | 'trash' | 'restore', signal: AbortSignal): Promise<void>
+
+/** Permanently remove a trashed local copy while retaining text-free deduplication.
+ * @param id - Exact trashed message.
+ * @param signal - Caller cancellation.
+ * @returns After local deletion; server mail and Session logs remain separate.
+ */
+@Remote('erase') erase(id: MailId, signal: AbortSignal): Promise<void>
+```
+
+Source: [`packages/experimental/genesis-mail/src/gateway.ts`](../../packages/experimental/genesis-mail/src/gateway.ts)
 
 <a id="ctxgenesismemory--genesismemorygateway"></a>
 
@@ -1516,6 +1674,23 @@ One cancelable opportunity at a time; interrupted runs never auto-resume.
  */
 async configure(settings: SpontaneitySettings, revision: number): Promise<number>
 
+/** Read actual exploration activity; reflection alone does not satisfy engagement.
+ * @returns Whether a selected private activity is running.
+ */
+isExploring(): boolean
+
+/** Register an optional transport with an explicit autonomous destination policy.
+ * @param provider - Runtime-owned directory and durable sender.
+ * @returns Lifecycle-owned removal; duplicate names fail visibly.
+ */
+registerConversation(provider: IdleConversationProvider): () => void
+
+/** Verify a live social operation separately from its persisted Session marker.
+ * @param agent - Exact runtime instance.
+ * @returns Whether the internal reflection currently owns social admission.
+ */
+admitsSocial(agent: Agent): boolean
+
 /** Stop the current opportunity while retaining its confirmed progress. */
 stop(): void
 
@@ -1556,10 +1731,11 @@ install(): void
 /** Admit one idle opportunity from actual user evidence; no timer is installed by this method.
  *
  * @param sourceAgent - Live operator Life channel; its permission ceiling is retained.
+ * @param boredom - Whether the recurring idle scheduler requested this opportunity.
  *
  * @returns After the complete owned interval, result settlement and Agent disposal; repeated sources do not dispatch again.
  */
-consider(sourceAgent: Agent): Promise<void>
+consider(sourceAgent: Agent, boredom: boolean = false): Promise<void>
 
 /** Stop timers and drain the complete owned work interval before storage closes.
  *
@@ -1596,7 +1772,7 @@ decisionModel(): MemoryModelsSettings['decision']
 async decide(session: Session, question: string, input: Record<string, unknown> & { participants: object }, criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision']): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }>
 
 /**
- * Check configured chat/reviewer/writer routes and the embedding service, then name this existing life once.
+ * Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once.
  * Credentials use the existing provider settings or account sign-in; no secrets are accepted or stored here.
  * @param name - User-chosen name, retained across Sessions and restarts.
  * @param signal - Caller cancellation; an admitted storage commit may still finish after cancellation.
@@ -1612,6 +1788,23 @@ async decide(session: Session, question: string, input: Record<string, unknown> 
  * @returns Committed revision.
  */
 @Remote('saveModels') async saveModels(settings: MemoryModelsSettings, revision: number, signal: AbortSignal): Promise<number>
+
+/**
+ * Install and verify the optional local decision model before selecting it.
+ * @param revision - Last displayed model revision; concurrent edits refuse route publication.
+ * @param signal - Operator cancellation during download and verification.
+ * @returns New settings revision; failed installation preserves the previous selection.
+ */
+@Remote('deployLocalDecision') async deployLocalDecision(revision: number, signal: AbortSignal): Promise<number>
+
+/**
+ * Disable the managed route before stopping or removing its private runtime.
+ * @param revision - Last displayed settings revision.
+ * @param remove - True also removes downloaded assets; cloud configuration and life data are retained.
+ * @param signal - Operator cancellation before admission.
+ * @returns New revision after route selection commits and teardown finishes.
+ */
+@Remote('stopLocalDecision') async stopLocalDecision(revision: number, remove: boolean, signal: AbortSignal): Promise<number>
 
 /**
  * Check a saved provider route, or authenticate against an endpoint's model catalog without sending conversation data.

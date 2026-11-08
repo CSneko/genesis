@@ -32,6 +32,8 @@
       "@deepseek-ai/dsh-experimental-client-ui-genesis/client": ["./packages/experimental/client-ui-genesis/src/client/index.ts"],
       "@deepseek-ai/dsh-experimental-genesis/types": ["./packages/experimental/genesis/src/status-types.ts"],
       "@deepseek-ai/dsh-experimental-genesis": ["./packages/experimental/genesis/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-genesis-mail": ["./packages/experimental/genesis-mail/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-genesis-mail/types": ["./packages/experimental/genesis-mail/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-companion": ["./packages/experimental/genesis-companion/src/index.ts"],
       "@deepseek-ai/dsh-experimental-genesis-companion/types": ["./packages/experimental/genesis-companion/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-qq/types": ["./packages/experimental/genesis-qq/src/types.ts"],

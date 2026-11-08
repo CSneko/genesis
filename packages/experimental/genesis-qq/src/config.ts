@@ -3,6 +3,10 @@ import z from '@deepseek-ai/schemastery'
 
 /** Resolved deployment configuration; relationship estimates never change these permissions. */
 export interface Config {
+  /** Explicit autonomous group destinations; operator-requested outbound lists grant no autonomous permission. */
+  proactiveGroups: string[]
+  /** Explicit autonomous private destinations; empty disables private initiation. */
+  proactiveUsers: string[]
   /** Groups permitted for explicit operator-requested outbound messages, independently of incoming admission. */
   outboundGroups: string[]
   /** Private recipients permitted for explicit operator-requested outbound messages. */
@@ -110,6 +114,7 @@ export const Config: z<Partial<Config> & Pick<Config, 'cwd'>, Config> = z.object
   sleepInboxLimit: z.number().min(1).step(1).default(10000),
   sleepInboxChars: z.number().min(1000).step(1).default(5000000),
   sleepInboxBatchChars: z.number().min(1000).step(1).default(16000),
+  proactiveGroups: z.array(z.string().pattern(/^[1-9][0-9]*$/)).default([]), proactiveUsers: z.array(z.string().pattern(/^[1-9][0-9]*$/)).default([]),
   outboundGroups: z.array(z.string()).default([]), outboundUsers: z.array(z.string()).default([]),
   maxMessageReceipts: z.number().min(1).step(1).default(10000),
   wsUrl: z.string().default(''), reconnectMs: z.number().min(100).step(1).default(2000),

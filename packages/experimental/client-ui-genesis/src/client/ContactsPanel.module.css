@@ -1,0 +1,17 @@
+.textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  padding: 8px;
+  resize: vertical;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-line-tertiary);
+  border-radius: var(--dsw-radius-md);
+  font: inherit;
+}
+.textarea:focus-visible {
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) { .textarea { font-size: 16px; } }

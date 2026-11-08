@@ -479,24 +479,41 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-client-connection`
 
 - `inject`: `credentials`
-- `source`: [`packages/client/connection/src/index.ts:96`](../packages/client/connection/src/index.ts)
+- `source`: [`packages/client/connection/src/index.ts:98`](../packages/client/connection/src/index.ts)
 
 ```ts config-catalog
 /** Browser authentication, request limits, and connection recovery configuration. */
 export interface ConnectionConfig {
+  /** Optional private key-file login bound to client IP and this process; absence retains the launch-token carrier. */
+  keyLogin?: KeyLoginConfig | undefined
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**
-   * Authorities this deployment serves beyond loopback: exact `host:port`, or
-   * port-less `host` matching any port. The fence accepts loopback and the
-   * listener's own bind IP independently; other remote authorities require
-   * an entry here. A non-canonical or non-bare authority fails plugin load.
+   * Authorities this deployment serves beyond loopback: exact `host:port`,
+   * port-less `host` matching any port, or `*` accepting every authority. The
+   * fence accepts loopback and the listener's own bind IP independently; other
+   * remote authorities require an entry here. A non-canonical or non-bare
+   * authority fails plugin load.
    */
   trustedHosts?: string[]
   /** Absolute browser and API cookie lifetime in days. Default: 30. */
   cookieMaxAgeDays?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+}
+
+/** Explicit file location and deployment rate limits for optional address-bound browser login. */
+export interface KeyLoginConfig {
+  /** Absolute private UTF-8 key file; created with a random key when absent. */
+  keyFile: string
+  /** Attempts accepted from one IP during one rate window. */
+  attemptsPerWindow: number
+  /** Rate window in milliseconds. */
+  windowMs: number
+  /** Maximum simultaneously tracked IPs; additional addresses receive 429. */
+  maxAddresses: number
+  /** Maximum time allowed to submit the complete small form. */
+  timeoutMs: number
 }
 
 /** Timing for generation readiness and automatic reconnection. */
@@ -937,11 +954,49 @@ export type Config = BrowserMcpConfig
 
 - `inject`: `browserUse` · `agents` · `tools` · `systemPrompt` · `workingDirectory`
 - `refs`: `BrowserMcpConfig` (`@deepseek-ai/dsh-experimental-browser-use-runtime/mcp`)
-- `source`: [`packages/experimental/browser-use-playwright-mcp/src/index.ts:16`](../packages/experimental/browser-use-playwright-mcp/src/index.ts)
+- `source`: [`packages/experimental/browser-use-playwright-mcp/src/index.ts:37`](../packages/experimental/browser-use-playwright-mcp/src/index.ts)
 
 ```ts config-catalog
-/** Fixed Chromium launch or existing-browser attachment settings. */
-export type Config = BrowserMcpConfig
+/** Chromium isolation, existing-browser attachment, or shared persistent profile. */
+export type Config = BrowserMcpConfig | PersistentConfig
+
+/** One shared browser with disk-backed cookies and website storage. */
+interface PersistentConfig {
+  /** Share one disk-backed browser across all Sessions in this deployment. */
+  mode: 'persistent'
+  /** Absolute browser profile directory, retained after provider disposal. */
+  userDataDir: string
+  /** Launch without a visible window; defaults to true. */
+  headless: boolean
+  /** Browser executable; omission uses the upstream installation discovery. */
+  executablePath?: string
+  /** Per-call timeout in milliseconds; omission uses the MCP client's default. */
+  toolCallTimeoutMs?: number
+  /** Optional operator-only sidebar preview; opens a loopback-only debugging endpoint. */
+  preview?: PreviewConfig
+}
+
+/** Operator preview resource limits. */
+export interface PreviewConfig {
+  /** Milliseconds per remote viewport sample; defaults to 500 (2 FPS). */
+  intervalMs: number
+  /** Milliseconds per local/LAN viewport sample; defaults to 1000/30 (30 FPS). */
+  localIntervalMs: number
+  /** Maximum duration of each CDP connection or screenshot operation. */
+  timeoutMs: number
+  /** JPEG screenshot quality from 1 to 100. */
+  jpegQuality: number
+  /** Maximum raw JPEG size; oversized captures retain the preceding image. */
+  maxImageBytes: number
+  /** Maximum number of open pages listed in each preview frame. */
+  tabLimit: number
+  /** Maximum characters in each displayed page title or address. */
+  tabTextChars: number
+  /** Maximum number of action records retained in process memory. */
+  actionLimit: number
+  /** Maximum characters in an operator text insertion or navigation address. */
+  inputTextChars: number
+}
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-browser-use-playwright-mcp -->
 
@@ -1104,6 +1159,55 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-computer-use-portal -->
+<a id="deepseek-aidsh-experimental-computer-use-portal"></a>
+
+## `@deepseek-ai/dsh-experimental-computer-use-portal`
+
+- `inject`: `computerUse` · `subprocess` · `tools` · `systemPrompt` · `agents`
+- `source`: [`packages/experimental/computer-use-portal/src/config.ts:5`](../packages/experimental/computer-use-portal/src/config.ts)
+
+```ts config-catalog
+/** Python/GI runtime and bounded desktop operations; optional deployment-owned persistent desktop sharing. */
+export interface Config {
+  /** Connect at activation and share the grant across Sessions; defaults to false. */
+  autoConnect: boolean
+  /** Absolute private restore-token file; required for autoConnect. */
+  restoreTokenPath?: string
+  /** Python with PyGObject and GStreamer; defaults to /usr/bin/python3. */
+  python: string
+  /** Initial worker readiness deadline; defaults to 10000 ms. */
+  startupTimeoutMs: number
+  /** System or application consent deadline; defaults to 120000 ms. */
+  consentTimeoutMs: number
+  /** Capture, D-Bus and ordinary tool deadline; defaults to 15000 ms. */
+  callTimeoutMs: number
+  /** Screenshot long-edge pixel ceiling; defaults to 1600. */
+  maxImageDimension: number
+  /** Complete worker response byte ceiling; defaults to 16777216. */
+  maxResponseBytes: number
+  /** Maximum text length per typing or replacement operation; defaults to 4000. */
+  maxTextChars: number
+  /** Enable AT-SPI application inspection and semantic actions; defaults to true. */
+  accessibilityEnabled: boolean
+  /** Require interactive approval for each application instance; defaults to true. */
+  requireApplicationConsent: boolean
+  /** Maximum visited nodes or application entries per inspection; defaults to 200. */
+  accessibilityMaxNodes: number
+  /** Maximum accessibility tree depth; defaults to 12. */
+  accessibilityMaxDepth: number
+  /** Maximum characters per accessible name or text excerpt; defaults to 512. */
+  accessibilityTextChars: number
+  /** Serialized accessibility result byte budget; defaults to 32768. */
+  accessibilityResultBytes: number
+  /** Accessibility traversal and per-request deadline; defaults to 5000 ms. */
+  accessibilityTimeoutMs: number
+  /** Managed worker termination grace; defaults to 1000 ms. */
+  processGraceMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-computer-use-portal -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-cua-macos -->
 <a id="deepseek-aidsh-experimental-cua-macos"></a>
 
@@ -1197,6 +1301,963 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-forge-session -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis -->
+<a id="deepseek-aidsh-experimental-genesis"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis`
+
+- `inject`: `storageDomain` · `tools` · `systemPrompt` · `agents` · `sessions` · `llm` · `sessionProjections` · `sandboxPolicy`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`) · `z` (`zod`)
+- `source`: [`packages/experimental/genesis/src/config.ts:137`](../packages/experimental/genesis/src/config.ts)
+
+```ts config-catalog
+/** Validated, resolved Genesis plugin configuration. */
+export interface Config {
+  /** Live opt-in action guidance for Life conversations; execution authorization remains independent. */
+  purge: Volatile<boolean>
+  /** Optional loopback decision deployment; installation occurs only after an operator request. */
+  localDecision: {
+    /** Existing host Ollaya executable; empty selects the pinned runtime for this host. */
+    binary: string
+    /** Nonsecret model alias for the managed endpoint. */
+    model: string
+    /** Pinned Ollaya model manifest URL. */
+    modelUrl: string
+    /** Expected SHA-256 of the model manifest; its descriptors pin every model asset. */
+    modelSha256: string
+    /** Official Linux x64 Ollaya runtime archive URL. */
+    runtimeUrl: string
+    /** Expected SHA-256 of the runtime archive before extraction. */
+    runtimeSha256: string
+    /** Official Windows x64 CPU runtime ZIP URL. */
+    windowsRuntimeUrl: string
+    /** Expected SHA-256 of the Windows x64 ZIP before extraction. */
+    windowsRuntimeSha256: string
+    /** Maximum total model asset bytes or runtime archive bytes. */
+    maxDownloadBytes: number
+    /** Complete download, verification and startup deadline. */
+    installTimeoutMs: number
+    /** Deadline for model loading and the first verified System One decision. */
+    startTimeoutMs: number
+    /** Interval between local readiness probes. */
+    pollMs: number
+    /** Grace period for terminating the owned subprocess range. */
+    graceMs: number
+    /** Deadline for each loopback readiness probe. */
+    probeTimeoutMs: number
+    /** Complete JSON response character limit for the verification probe. */
+    outputChars: number
+    /** Maximum captured diagnostic bytes per runtime stream. */
+    diagnosticBytes: number
+  }
+  /** Life-wide recall across Web and QQ, or source-conversation isolation; the life overlay selects life. */
+  memorySharing: 'life' | 'conversation'
+  /** Short-lived cross-conversation summaries; independent of long-term memory review. */
+  temporaryMemory: TemporaryMemoryConfig
+  /** Bounds for durable social profiles and relationship proposals; strangers need no profile. */
+  people: {
+    /** Maximum retained people; capacity refusal never deletes existing relationships. */
+    maxPeople: number
+    /** Maximum distinct source events retained in each person's current projection. */
+    maxEvidence: number
+    /** Maximum independently attributed relationship changes in one exchange. */
+    maxChanges: number
+  }
+  /** Innate read-only QQ tools; all normal provider and sandbox checks still apply. */
+  qqBasicTools: string[]
+  /** Initial operator toolkits; saved GUI edits override these defaults. A trailing * matches a tool-name prefix. */
+  toolkits: Array<{
+    /** Stable group identifier, preserved across renaming and conversation recovery. */
+    id: string
+    /** Human-readable group name shown to the operator and eligible conversations. */
+    name: string
+    /** Operator-authored purpose, included only when the group has learned members. */
+    description: string
+    /** Exact tool names or trailing-* prefixes; innate tools cannot be grouped. */
+    tools: string[]
+    /** QQ activation audience; omitted keeps the toolkit unavailable on QQ. */
+    qqAccess?: 'disabled' | 'anyone' | 'operator'
+  }>
+  /** Optional one-time personality initialization; omitted preserves the existing memories without seeding. */
+  personality?: PersonalityConfig | undefined
+  /** Lightweight proactive conversation; requires deliberation and memory. */
+  socialInitiative?: SocialInitiativeConfig | undefined
+  /** Optional internal cognition; requires awakening, deliberation, memory and Session persistence. */
+  spontaneity?: SpontaneityConfig | undefined
+  /** Optional shared sleep policy for Life, QQ and autonomous activity. */
+  sleep?: SleepConfig | undefined
+  /** Calendar zone for memory anchors and relative recall; defaults to the host's IANA zone. */
+  timeZone: string
+  /** Enables naming, newborn conversations and persistent tool learning on the configured chat route. */
+  awakening?: {
+    /** Registered chat provider checked before the naming step. */
+    provider: string
+    /** Chat model identifier on the configured provider. */
+    model: string
+    /** Confine life tools, context and lifecycle to this preset; omitted preserves the legacy all-Session policy. */
+    lifePreset?: string
+  } | undefined
+  /** Local atomic backup; omitted resolves beside leasePath as leasePath + '.backup.json'. */
+  backupPath?: string
+  /** Optional private, persistent host directory authorized across workspaces after read/write learning. */
+  personalDirectory?: string
+  /** Optional learned writing tool and operator record management; requires personalDirectory. */
+  records?: RecordsConfig | undefined
+  /** Enables independent review/writing models and semantic memory search. */
+  memory?: MemoryConfig | undefined
+  /** Optional life-wide emotion review, using the independent memory model routes without embeddings. */
+  emotion?: EmotionConfig | undefined
+  /** Optional experience-derived interests using the independent memory writer route. */
+  interest?: InterestConfig | undefined
+  /** Optional main-model plan tools and persistent cross-Session life goals; external event choices are read-only. */
+  deliberation?: DeliberationConfig | undefined
+  /** Paged life persistence; historical totals do not consume catalogue budgets. */
+  storage: {
+    /** Maximum references in one immutable index page or root. */
+    pageSize: number
+    /** Maximum characters in one independently stored life component, including index pages. */
+    maxRecordChars: number
+  }
+  /** Shared exclusive lease file for all processes accessing this life domain. */
+  leasePath: string
+  /** Maximum task/toolkit catalogue entries and fallback implicit-memory count; not historical life records. */
+  maxRecords: number
+  /** Maximum serialized independent task/toolkit catalogue characters; not a total life-history limit. */
+  maxStateChars: number
+  /** Identity context character budget. */
+  identityChars: number
+  /** Capability context character budget. */
+  capabilityChars: number
+  /** Memory context character budget. */
+  memoryChars: number
+  /** Growth context character budget. */
+  growthChars: number
+  /** Complete model tool result budget, including wrappers. */
+  resultChars: number
+  /** Complete model-catalog character budget, independent of inference output limits. */
+  modelCatalogChars: number
+  /** Maximum records in a query response. */
+  queryLimit: number
+  /** Maximum wait for owned background jobs during an explicit task stop; timeout keeps the task paused. */
+  taskStopWaitMs: number
+}
+
+/** Deployment budgets for the independent temporary-memory pipeline. */
+export interface TemporaryMemoryConfig {
+  /** Initially enable automatic summarization; saved operator policy takes precedence. */
+  enabled: boolean
+  /** Quiet interval before a conversation is summarized. */
+  idleMs: number
+  /** Deadline polling interval; expiration is also checked at every read. */
+  pollMs: number
+  /** Maximum current summaries, without evicting unexpired records silently. */
+  maxMemories: number
+  /** Maximum source conversations processed in one timer pass. */
+  maxSourcesPerSweep: number
+  /** Maximum whole-message batches summarized before yielding to queued operator work. */
+  maxBatchesPerRun: number
+  /** Maximum queued activity, maintenance and settings operations. */
+  maxPending: number
+  /** Maximum tracked conversation cursors. */
+  maxSessions: number
+  /** Complete serialized model request character budget, including a whole threshold-crossing message. */
+  inputChars: number
+  /** Maximum returned summary characters; the prompt targets about one hundred. */
+  summaryChars: number
+  /** Auxiliary generation token limit. */
+  maxTokens: number
+  /** Auxiliary response character budget. */
+  outputChars: number
+  /** Maximum current records selected for one conversation. */
+  injectLimit: number
+  /** Complete context-change message character budget. */
+  injectChars: number
+  /** Maximum records and failures shown in one settings sample. */
+  statusLimit: number
+}
+
+/** Initial prose settings stored once as ordinary non-declarative memories. */
+export interface PersonalityConfig {
+  /** Enduring character tendencies; later restarts never overwrite current memories. */
+  tendencies: string
+  /** Durable expression habits, modulated by the current conversation and emotion. */
+  speakingStyle: string
+  /** Existing memory importance used for both initial records. */
+  importance: number
+}
+
+/** Optional proactive conversation policy; durations are milliseconds. */
+export interface SocialInitiativeConfig {
+  /** Permit new opportunities and pending delivery admission; saved operator settings override this default. */
+  enabled: boolean
+  /** Explicit conversation; absent selects the latest live character conversation with real user activity. */
+  sessionId?: string
+  /** Period between decision opportunities while the process runs. */
+  intervalMs: number
+  /** Minimum time between proactive messages. */
+  minSendIntervalMs: number
+  /** Maximum proactive messages in a rolling twenty-four hours. */
+  maxPer24Hours: number
+  /** Required quiet time after the latest real user message. */
+  userIdleMs: number
+  /** Memory importance required for discovery or thought triggers. */
+  eventImportance: number
+  /** Maximum unresolved opportunities. */
+  maxPending: number
+  /** Pending opportunities expire rather than sending stale messages. */
+  maxPendingAgeMs: number
+}
+
+/** Bounded, idle-only internal thought and exploration opportunities. */
+export interface SpontaneityConfig {
+  /** Minimum boredom for recurring idle opportunities; ordinary post-chat opportunities remain available. */
+  boredomThreshold: number
+  /** Lightweight idle-state sampling interval, without an inference call. */
+  boredomCheckMs: number
+  /** Shortest delay between boredom opportunities, still subject to idleMs and daily limits. */
+  boredomMinIntervalMs: number
+  /** Longest delay between boredom opportunities; failed and empty intervals count. */
+  boredomMaxIntervalMs: number
+  /** Minimum interval between autonomous outgoing conversations across all destinations. */
+  socialCooldownMs: number
+  /** Maximum autonomous outgoing conversations in a rolling day, including uncertain sends. */
+  socialMaxPer24Hours: number
+  /** Enable opportunities after completed real Life exchanges. */
+  enabled: boolean
+  /** Required quiet interval; new user input interrupts exploration. */
+  idleMs: number
+  /** Whole opportunity deadline, including model calls and reviews. */
+  maxDurationMs: number
+  /** Reserved output tokens per opportunity, including auxiliary inference and retries. */
+  maxOutputTokens: number
+  /** Maximum output tokens reserved for one conversation-model request. */
+  requestTokens: number
+  /** Maximum conversation-model requests per opportunity, including retries. */
+  maxRequests: number
+  /** Maximum admitted tool calls, including thought and recall tools. */
+  maxToolCalls: number
+  /** Maximum opportunities in a rolling twenty-four hours; empty and failed runs count. */
+  maxPer24Hours: number
+  /** Importance assigned to factual exploration receipts in episodic memory. */
+  experienceImportance: number
+  /** Maximum thoughts, audit receipts and opportunities retained together. */
+  maxRecords: number
+  /** Maximum complete serialized thought storage characters. */
+  maxStateChars: number
+  /** Maximum serialized thought selection supplied to a model request or tool. */
+  contextChars: number
+  /** Exact additional inline tools; learning, toolkits and execution authorization still apply. */
+  tools: string[]
+}
+
+/** Sleep defaults and bounded maintenance under the life writer lease. */
+export interface SleepConfig extends SleepSettings {
+  /** Maximum time between schedule checks. */
+  pollMs: number
+  /** Total retained cycle and control receipts. */
+  maxRecords: number
+  /** Complete serialized sleep state budget. */
+  maxStateChars: number
+  /** Complete sleep status response character budget. */
+  statusChars: number
+  /** Maximum operator text admitted to wake classification. */
+  wakeInputChars: number
+  /** Maximum classified wake requests per scheduled interval. */
+  maxWakeChecks: number
+  /** Maximum memories summarized per batch. */
+  memoryBatchSize: number
+  /** Maximum maintenance model calls before operator intervention. */
+  maxMemoryRounds: number
+  /** Maximum complete generated memory summary characters. */
+  summaryChars: number
+  /** Maximum age of a transition greeting opportunity. */
+  greetingGraceMs: number
+  /** Minimum sourced affection for optional transition greetings. */
+  greetingAffection: number
+}
+
+/** Storage and complete-response limits for independently authored writing records. */
+export interface RecordsConfig {
+  /** Maximum characters in a supplied title. */
+  titleChars: number
+  /** Maximum characters in one body; reads may span several chunks. */
+  contentChars: number
+  /** Maximum characters in an operator-supplied type name. */
+  typeChars: number
+  /** Maximum retained categories, including disabled categories. */
+  maxTypes: number
+  /** Maximum live records plus text-free creation receipts. */
+  maxRecords: number
+  /** Maximum serialized authoritative catalog characters. */
+  maxStateChars: number
+  /** Maximum serialized tool or search/read response characters, including metadata. */
+  resultChars: number
+  /** Maximum matches in one page. */
+  queryLimit: number
+  /** Maximum body excerpt characters in a search match. */
+  snippetChars: number
+}
+
+/** Explicit routes and budgets for the optional long-term memory pipeline. */
+export interface MemoryConfig {
+  /** Maximum recent conversation turns considered together, including the current turn. */
+  windowTurns: number
+  /** TypeSafe-compatible /v1/systemone endpoint; absent uses the legacy provider route. */
+  decisionUrl?: string
+  /** Credential reference for Jev. */
+  decisionKeyEnv?: string
+  /** Minimum probability for a positive Jev decision. */
+  decisionThreshold?: number
+  /** Registered Harness provider for the update/no-update decision. */
+  decisionProvider: string
+  /** Model identifier on the decision provider. */
+  decisionModel: string
+  /** Registered Harness provider for the separate memory writer. */
+  writerProvider: string
+  /** Model identifier on the independent writer provider. */
+  writerModel: string
+  /** OpenAI-compatible embeddings endpoint, including /embeddings. */
+  embeddingUrl: string
+  /** Model identifier accepted by the embedding endpoint. */
+  embeddingModel: string
+  /** Environment variable holding the embeddings credential; omitted for keyless local servers. */
+  embeddingKeyEnv?: string
+  /** Exact vector length requested and validated on every embedding response. */
+  embeddingDimensions: number
+  /** Deadline per automatic review, reply generation or recall, including model calls and embeddings. */
+  timeoutMs: number
+  /** Additional auxiliary inference attempts after a transient or malformed-JSON failure; zero disables retries. */
+  maxRetries: number
+  /** Cancelable delay between auxiliary inference attempts, within the original operation deadline. */
+  retryDelayMs: number
+  /** Complete serialized auxiliary input and single embedding input character limit. */
+  inputChars: number
+  /** Auxiliary model response character limit; also bounds embedding-response metadata. */
+  outputChars: number
+  /** Output token limit for each decision or writer call. */
+  maxTokens: number
+  /** Registered auxiliary calls: auto selects advertised off; provider-default inherits; other values require exact model support. */
+  reasoningEffort: string
+  /** Maximum complete records explicitly selected for one manual organization request. */
+  organizationLimit: number
+  /** Maximum current legacy records rewritten atomically when saving explicit operator identity. */
+  identityRewriteLimit: number
+  /** Maximum changes in one atomic writer plan. */
+  maxChanges: number
+  /** Maximum non-declarative memories selected for one prompt; stored memory count is unbounded. */
+  maxImplicitMemories: number
+  /** Whole-conversation preparation and final planning share these operation limits. */
+  overview: {
+    /** Maximum distinct chat, memory or persisted source references per overview entry. */
+    maxReferences: number
+    /** Maximum changes, including an optional experience, in the atomic overview plan. */
+    maxChanges: number
+    /** Response character limit for overview preparation and planning. */
+    outputChars: number
+    /** Output token limit for each overview writer call. */
+    maxTokens: number
+    /** Maximum summary operations plus the final writer operation, excluding per-request retries. */
+    maxCalls: number
+    /** Whole-conversation deadline, including summaries, retries, embeddings and commit admission. */
+    timeoutMs: number
+  }
+  /** Maximum automatically associated memories per accepted user input; zero disables association. */
+  associationLimit: number
+  /** Complete plain-text budget for automatic associated memories. */
+  associationChars: number
+  /** Maximum current-input characters used as an associative cue. */
+  associationInputChars: number
+  /** Deadline for automatic association before a chat request; explicit recall keeps timeoutMs. */
+  associationTimeoutMs: number
+  /** Maximum gap for offering a same-conversation experience for extension. */
+  experienceWindowMs: number
+  /** Quiet-memory maintenance limits; no chat replies or external actions are generated. */
+  consolidation: {
+    /** Deployment default; a saved operator preference takes precedence. */
+    enabled: boolean
+    /** Quiet interval after user activity or new evidence. */
+    idleMs: number
+    /** Minimum interval between successful automatic passes. */
+    cooldownMs: number
+    /** Minimum interval before retrying a failed pending revision. */
+    retryMs: number
+    /** Automatic failures allowed per evidence revision before manual intervention. */
+    maxFailures: number
+    /** Most recent complete memories considered per bounded pass. */
+    batchLimit: number
+    /** Independent completed user turns required for an inferred habit. */
+    minHabitSupport: number
+  }
+  /** Minimum cosine similarity admitted into semantic recall results. */
+  minSimilarity: number
+}
+
+/** Bounded post-reply emotion appraisal and deterministic recovery. */
+export interface EmotionConfig {
+  /** Online-only boredom growth and engagement recovery time scales. */
+  boredom: {
+    /** Online idle milliseconds needed to halve the remaining distance to full boredom. */
+    riseHalfLifeMs: number
+    /** Engaged milliseconds needed to halve existing boredom. */
+    fallHalfLifeMs: number
+  }
+  /** Include stopped-process time in affect evolution; defaults to the existing wall-clock behavior. */
+  offlineChanges: boolean
+  /** Maximum mood-dependent immediate equilibrium intensity, from zero to one. */
+  moodEmotionScale: number
+  /** Fraction of slow mood's destination contributed by sustained immediate affect, at most one half. */
+  emotionMoodInfluence: number
+  /** Milliseconds between durable online-only clock checkpoints; crash recovery resumes at the last successful checkpoint. */
+  clockCheckpointMs: number
+  /** Shared emotion recovery and appraisal multiplier, including relationship learning; zero freezes automatic changes. */
+  sensitivity: number
+  /** Maximum related and self memories supplied to each appraisal. */
+  appraisalMemoryLimit: number
+  /** Serialized memory retrieval budget for each appraisal memory group. */
+  appraisalMemoryChars: number
+  /** Initial independent needs; subsequent changes come from sourced appraisals. */
+  initialNeeds: Needs
+  /** Slow loneliness adjustment half-life in milliseconds. */
+  needsHalfLifeMs: number
+  /** Half-life of recent contact evidence in milliseconds. */
+  interactionHalfLifeMs: number
+  /** Largest absolute need change per field and exchange. */
+  maxNeedsDelta: number
+  /** Enable learning for this deployment's single operator relationship; no name inference is performed. */
+  relationshipEnabled: boolean
+  /** Largest absolute relationship change per field and exchange before repetition discount. */
+  maxRelationshipDelta: number
+  /** Independent recent appraisals of the same meaning needed for an ordinary mood update. */
+  moodSupportTurns: number
+  /** Importance at which a sourced event may affect mood without repeated support. */
+  importantEventThreshold: number
+  /** Multiplier for each repeated appraisal meaning within the retained dialogue window. */
+  repetitionDiscount: number
+  /** Completed exchanges considered per review, including the current exchange. */
+  windowTurns: number
+  /** Initial mood and trait contribution to the long-term destination for each dimension. */
+  baseline: Mood
+  /** Per-field short reaction half-lives in milliseconds. */
+  shortHalfLifeMs: EmotionHalfLives
+  /** Per-field mood half-lives in milliseconds. */
+  moodHalfLifeMs: MoodHalfLives
+  /** Largest absolute immediate change allowed per field and exchange. */
+  maxDelta: number
+  /** Largest absolute mood change allowed per field and exchange. */
+  maxMoodDelta: number
+  /** Numerical resolution before qualitative degree mapping; only changed degree descriptions enter model context. */
+  contextStep: number
+}
+
+/** Bounds for one post-reply interest review and its model-visible summary. */
+export interface InterestConfig {
+  /** Recent completed exchanges retained for independent interest review. */
+  windowTurns: number
+  /** Maximum current topics in one life; reaching the limit rejects new topics. */
+  maxInterests: number
+  /** Distinct sourced exchanges required before a lasting preference can form. */
+  minEnduringTurns: number
+  /** Complete character budget for the logged current-interest summary. */
+  contextChars: number
+}
+
+/** Bounds for sourced deliberation; no background timer is installed. */
+export interface DeliberationConfig {
+  /** Legacy request setting; all values supply goal context and leave plan decisions to the conversation model. */
+  requestMode: 'context-only' | 'before-input' | 'before-tools'
+  /** Allow one correction of an external event choice linked to inactive goals; it cannot modify goals. */
+  retryInactiveGoalChoice: boolean
+  /** Persistent current motivation inventory limit. */
+  maxMotivations: number
+  /** Persistent goal inventory limit, including terminal goals. */
+  maxGoals: number
+  /** Maximum related memories supplied to a decision. */
+  memoryLimit: number
+  /** Complete serialized memory evidence budget. */
+  memoryChars: number
+  /** Complete logged agency context budget. */
+  contextChars: number
+  /** Half-life of current motivation strength in milliseconds. */
+  motivationHalfLifeMs: number
+  /** Largest strength revision per sourced deliberation. */
+  maxStrengthDelta: number
+}
+
+/** Persisted complete operator schedule. */
+export type SleepSettings = z.infer<typeof sleepSettingsSchema>
+
+/** Persistent inclinations and fulfillment estimates; longing has its own immediate field. */
+export type Needs = z.infer<typeof needsSchema>
+
+/** Valence ranges from negative to positive; arousal measures activation. */
+export type Mood = z.infer<typeof moodSchema>
+
+/** Per-emotion decay durations. */
+export type EmotionHalfLives = z.infer<typeof emotionHalfLivesSchema>
+
+/** Mood recovery durations in milliseconds. */
+export type MoodHalfLives = z.infer<typeof moodHalfLivesSchema>
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-bili-humanism -->
+<a id="deepseek-aidsh-experimental-genesis-bili-humanism"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-bili-humanism`
+
+- `inject`: `genesis` · `genesisRecords` · `tools` · `agents` · `agentPresets`
+- `source`: [`packages/experimental/genesis-bili-humanism/src/index.ts:16`](../packages/experimental/genesis-bili-humanism/src/index.ts)
+
+```ts config-catalog
+/** Validated trusted deployment configuration; account writes and upstream personality learning are unavailable. */
+export interface Config {
+  /** Enable the learnable local transcription tool; omission registers no ASR tool. */
+  localAsr?: LocalAsrConfig | undefined
+  /** Absolute private upstream ledger and inbox directory for this life. */
+  dataDir: string
+  /** Optional absolute read-credential file; empty uses public requests without account credentials. */
+  credentialPath: string
+  /** Trusted absolute Python executable; empty delegates to the upstream local environment. */
+  pythonPath: string
+  /** Trusted absolute ASR model directory; empty delegates to the upstream local environment. */
+  asrModelPath: string
+  /** Upstream estimated source-text tokens per reading, independent of model billing. */
+  maxReadTokens: number
+  /** Optional source-duration limit; omission retains upstream byte, request and wall-time budgets. */
+  maxMediaSeconds?: number
+  /** Only Agents composed with this preset may execute the integration tools. */
+  lifePreset: string
+  /** Stable category id; operator renames and disabling remain authoritative. */
+  recordTypeId: string
+  /** Initial display name for a newly created viewing-note category. */
+  recordTypeName: string
+  /** Maximum complete tool JSON characters admitted for decoding and evidence reconstruction. */
+  sourceChars: number
+}
+
+/** Trusted budgets for one audio download and CPU transcription. */
+export interface LocalAsrConfig {
+  /** Shared deadline for both maintenance commands, including CPU transcription. */
+  timeoutMs: number
+  /** Grace period before managed subprocess termination escalates. */
+  graceMs: number
+  /** Per-stream collection limit; truncated results are refused. */
+  maxOutputBytes: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-bili-humanism -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-companion -->
+<a id="deepseek-aidsh-experimental-genesis-companion"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-companion`
+
+- `inject`: `genesis` · `genesisMessaging` · `agents` · `agentPresets` · `agentDefaultModel` · `sessions` · `sessionPersistence` · `systemPrompt` · `tools` · `storageDomain` · `credentials`
+- `source`: [`packages/experimental/genesis-companion/src/index.ts:13`](../packages/experimental/genesis-companion/src/index.ts)
+
+```ts config-catalog
+/** Deployment limits; editable connection and sleep policy belong to the settings owner. */
+export interface Config {
+  /** Genesis preset whose operator Web conversations may recall the private partner interpretation. */
+  lifePreset: string
+  /** Dedicated directory used to attach the persistent internal conversation to the Web workspace. */
+  cwd: string
+  /** Maximum serialized model conversation characters before a new internal request is refused. */
+  contextChars: number
+  /** Maximum text characters in a single internal message. */
+  maxTextChars: number
+  /** Maximum characters in the current attributed relationship interpretation. */
+  maxUnderstandingChars: number
+  /** Maximum journal messages; capacity refusal retains existing evidence. */
+  maxRecords: number
+  /** Maximum complete serialized partner projection. */
+  maxStateChars: number
+  /** Maximum messages retrieved for prompts and settings. */
+  historyLimit: number
+  /** Maximum output tokens for each main-model internal request. */
+  maxTokens: number
+  /** Maximum time for one complete internal conversation. */
+  exchangeMs: number
+  /** Schedule and cancellation sampling interval during active exchanges. */
+  pollMs: number
+  /** Explicit partner wake override duration. */
+  wakeMs: number
+  /** Socket handshake deadline. */
+  connectTimeoutMs: number
+  /** OneBot heartbeat interval; sends no model-triggering message. */
+  heartbeatMs: number
+  /** Maximum incoming and outgoing UTF-8 JSON frame bytes. */
+  maxFrameBytes: number
+  /** Maximum accepted queued OneBot actions. */
+  maxPending: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-companion -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-mail -->
+<a id="deepseek-aidsh-experimental-genesis-mail"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-mail`
+
+- `inject`: `genesis` · `genesisStatus` · `agents` · `agentPresets` · `agentDefaultModel` · `sessions` · `sessionPersistence` · `systemPrompt` · `tools` · `storageDomain` · `credentials`
+- `source`: [`packages/experimental/genesis-mail/src/config.ts:4`](../packages/experimental/genesis-mail/src/config.ts)
+
+```ts config-catalog
+/** Validated plugin configuration. */
+export interface Config {
+  /** Life preset used for mail processing. */ lifePreset: string
+  /** Dedicated absolute mail conversation directory. */ cwd: string
+  /** Background synchronization interval. */ pollMs: number
+  /** Protocol and complete processing deadline. */ timeoutMs: number
+  /** Maximum RFC 822 bytes before parsing. */ maxSourceBytes: number
+  /** Maximum plain-text message characters. */ maxTextChars: number
+  /** Maximum incoming messages retained in one synchronization. */ batchSize: number
+  /** Retained mail and receipt limit. */ maxRecords: number
+  /** Complete serialized mailbox limit. */ maxStateChars: number
+  /** Complete serialized tool result limit. */ resultChars: number
+  /** Maximum list results per page. */ pageSize: number
+  /** Main model output limit per request. */ maxTokens: number
+  /** Main model requests per mail-processing opportunity. */ maxSteps: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-mail -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-minecraft -->
+<a id="deepseek-aidsh-experimental-genesis-minecraft"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-minecraft`
+
+- `inject`: `storageDomain` · `tools` · `agents` · `agentPresets` · `agentDefaultModel` · `workspaceRegistry` · `genesisStatus` · `genesisToolkits` · `attachments`
+- `source`: [`packages/experimental/genesis-minecraft/src/index.ts:24`](../packages/experimental/genesis-minecraft/src/index.ts)
+
+```ts config-catalog
+/** Deployment-owned paths and resource limits; runtime settings live in the authenticated Minecraft section. */
+export type Config = ControllerConfig
+
+/** Host bounds and Life preset restriction. */
+export interface ControllerConfig extends RuntimeConfig, TaskConfig, ScriptConfig {
+  /** Only Agents composed with this preset can own game activity. */
+  lifePreset: string
+  /** Absolute workspace directory for a connection-owned conversation when no existing Life conversation is selected. */
+  workingDirectory: string
+  /** Maximum serialized Jev text state and questions, excluding separately bounded image bytes. */
+  inputChars: number
+  /** Maximum decoded Jev response characters; UTF-8 bytes are additionally bounded to four times this value. */
+  responseChars: number
+  /** Maximum serialized observation result and complete notification text characters. */
+  resultChars: number
+  /** Elapsed time without delivery that requests a periodic visual review; capture and notification limits still apply. */
+  visualReviewMs: number
+}
+
+/** Runtime resource bounds. */
+export interface RuntimeConfig extends CameraConfig, UseConfig {
+  /** Maximum milliseconds allowed for game connection and initial renderer setup. */
+  connectTimeoutMs: number
+  /** Maximum nearest client-known entities included in an observation. */
+  entityLimit: number
+  /** Maximum inventory stacks included in an observation. */
+  inventoryLimit: number
+  /** Maximum recent player chat messages retained in memory and included in observations. */
+  chatLimit: number
+  /** Maximum recently issued observation identifiers retained for action admission. */
+  observationLimit: number
+  /** Maximum observation age in milliseconds at skill admission. */
+  observationMaxAgeMs: number
+  /** Maximum radius searched around the bot for optional mining hints. */
+  digSearchRadius: number
+  /** Maximum matching blocks evaluated per assisted mining skill. */
+  digCandidates: number
+  /** Maximum eye-to-block-center distance admitted for digging; pathfinding approaches a visible face. */
+  digReach: number
+  /** Maximum distance for a single directional move, in blocks. */
+  moveMaxDistance: number
+  /** Maximum nearby block records in an observation. */
+  blockLimit: number
+  /** Radius searched for observation block records; unloaded regions remain unknown. */
+  blockSearchRadius: number
+  /** Maximum source blocks mined by one collection skill. */
+  collectBlockLimit: number
+  /** Maximum wait per mined block for inventory acquisition, including pickup movement. */
+  collectPickupTimeoutMs: number
+  /** Radius around each mined block in which matching drops may be approached. */
+  collectPickupRadius: number
+}
+
+/** Resource limits for connection-local plans. */
+export interface TaskConfig {
+  /** Maximum submitted steps per short task. */
+  taskStepLimit: number
+  /** Maximum short-task lifetime, independent of individual skill timeouts. */
+  taskTimeoutLimitMs: number
+  /** Maximum repetitions per repeated mining step. */
+  taskRepeatLimit: number
+  /** Complete serialized model-input budget, also used to bound a submitted plan. */
+  inputChars: number
+  /** Maximum consecutive non-admission decisions before returning the plan for replanning. */
+  taskAdmissionLimit: number
+}
+
+/** Existing code, output and task time bounds plus the script binding-call limit. */
+export interface ScriptConfig {
+  /** Maximum serialized script audit input; source is bounded to half this value. */
+  inputChars: number
+  /** Maximum serialized audit record; script output is bounded to half this value. */
+  resultChars: number
+  /** Maximum elapsed milliseconds for tasks and finite Minecraft scripts. */
+  taskTimeoutLimitMs: number
+  /** Maximum guarded tool dispatches per one-shot run or resident handler; each action uses two calls. */
+  scriptCallLimit: number
+  /** Maximum queued observed events for a resident script. */
+  scriptEventQueueLimit: number
+  /** Milliseconds between generated tick events; busy callbacks coalesce ticks. */
+  scriptTickMs: number
+}
+
+/** Deployment capture limits; screenshots are re-renderings, without resource packs or vanilla menus. */
+export interface CameraConfig {
+  /** Absolute browser executable, or empty to use the Playwright installation. */
+  chromiumPath: string
+  /** First-person image width in CSS pixels. */
+  width: number
+  /** First-person image height in CSS pixels. */
+  height: number
+  /** Screenshot JPEG quality from 1 to 100. */
+  jpegQuality: number
+  /** Rendered radius in chunks within the bot's loaded world. */
+  viewDistance: number
+  /** Maximum raw screenshot or player texture bytes. */
+  maxImageBytes: number
+  /** Maximum milliseconds per browser setup, screenshot or texture request. */
+  timeoutMs: number
+}
+
+/** Deployment bounds for held-item activation; server effects require subsequent observation. */
+export interface UseConfig {
+  /** Default milliseconds to hold item activation before releasing it. */
+  useHoldMs: number
+  /** Maximum requested item activation duration in milliseconds. */
+  useHoldLimitMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-minecraft -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-qq -->
+<a id="deepseek-aidsh-experimental-genesis-qq"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-qq`
+
+- `inject`: `llm` · `attachments` · `genesis` · `genesisStatus` · `tools` · `agents` · `agentPresets` · `agentDefaultModel` · `sessions` · `sessionPersistence` · `storageDomain` · `sessionProjections` · `credentials` · `sessionTitle`
+- `source`: [`packages/experimental/genesis-qq/src/config.ts:5`](../packages/experimental/genesis-qq/src/config.ts)
+
+```ts config-catalog
+/** Resolved deployment configuration; relationship estimates never change these permissions. */
+export interface Config {
+  /** Explicit autonomous group destinations; operator-requested outbound lists grant no autonomous permission. */
+  proactiveGroups: string[]
+  /** Explicit autonomous private destinations; empty disables private initiation. */
+  proactiveUsers: string[]
+  /** Groups permitted for explicit operator-requested outbound messages, independently of incoming admission. */
+  outboundGroups: string[]
+  /** Private recipients permitted for explicit operator-requested outbound messages. */
+  outboundUsers: string[]
+  /** Retained cross-conversation receipts; exhaustion refuses new sends without evicting deduplication evidence. */
+  maxMessageReceipts: number
+  /** Maximum retained sleeping-message and replay receipts. */
+  sleepInboxLimit: number
+  /** Maximum complete sleeping-inbox JSON characters. */
+  sleepInboxChars: number
+  /** Maximum text characters introduced in one delayed batch. */
+  sleepInboxBatchChars: number
+  /** Optional loopback OneBot forward-WebSocket URL; empty starts the reverse listener. */
+  wsUrl: string
+  /** Reconnection delay for an explicitly configured forward endpoint. */
+  reconnectMs: number
+  /** Reverse-WebSocket listener port; zero asks the OS to allocate a port. */
+  port: number
+  /** Legacy deployment shared secret for the configured OneBot client. */
+  accessToken: string
+  /** Legacy deployment QQ bot account; incoming frames from a different account are refused. */
+  botQq: string
+  /** Verified operator account, or empty to grant no QQ operator authority. */
+  operatorQq: string
+  /** Explicit allowed groups; empty refuses all groups. */
+  allowGroups: string[]
+  /** Explicit allowed private correspondents; empty refuses private chats unless acceptPrivateFromAnyone is enabled. */
+  allowUsers: string[]
+  /** Accept private text conversations from strangers, without granting tools or operator identity. */
+  acceptPrivateFromAnyone: boolean
+  /** Let the decision model select group replies; mention-only policy applies when disabled. */
+  groupAutoReply: boolean
+  /** Number of recent group messages supplied to decisions and replies. */
+  recentMessages: number
+  /** Complete serialized recent-message page and history-tool result character budget. */
+  historyChars: number
+  /** Maximum messages returned by one current-conversation history query. */
+  historyLimit: number
+  /** Require an actual OneBot mention segment in manual group reply mode. */
+  replyOnlyWhenMentioned: boolean
+  /** Additional QQ conversation preferences, included in logged model context. */
+  extraPrompt: string
+  /** Desired ordinary private conversation capacity in tokens, capped by model capacity. */
+  privateContextTokens: number
+  /** Desired group conversation capacity in tokens, capped by model capacity. */
+  groupContextTokens: number
+  /** Desired verified operator private conversation capacity in tokens. */
+  operatorContextTokens: number
+  /** Per-request QQ output-token ceiling, including reasoning, independent of adapter defaults. */
+  maxCompletionTokens: number
+  /** Maximum additional prompt characters. */
+  maxPromptChars: number
+  /** Registered Genesis life preset. */
+  lifePreset: string
+  /** Absolute dedicated workspace for this channel. */
+  cwd: string
+  /** Maximum combined group and private allowlist entries. */
+  maxAllowedTargets: number
+  /** Maximum recent delivery rows returned to the operator. */
+  statusLimit: number
+  /** Maximum serialized characters returned by channel inspection. */
+  statusChars: number
+  /** Maximum queued transport operations; excess input is visibly refused. */
+  maxPending: number
+  /** Maximum simultaneously opened conversations. */
+  maxLiveSessions: number
+  /** HTTP(S) media origins, optionally with a leftmost *. subdomain wildcard; redirects are refused. */
+  mediaOrigins: string[]
+  /** Maximum files per incoming message or processing request. */
+  maxMediaItems: number
+  /** Maximum bytes per attachment and per outbound media operation. */
+  maxMediaBytes: number
+  /** Maximum decoded text characters from one file. */
+  mediaTextChars: number
+  /** Overall attachment download and conversion deadline. */
+  mediaTimeoutMs: number
+  /** Fixed video frame sample count; audio transcription is not provided. */
+  videoFrames: number
+  /** Seconds between sampled video frames. */
+  videoFrameInterval: number
+  /** Maximum video frame width/height before attachment normalization. */
+  videoFrameSize: number
+  /** Operator-selected frame decoder executable; never taken from messages. */
+  ffmpeg: string
+  /** Operator-selected PDF text extractor executable. */
+  pdftotext: string
+  /** Managed subprocess termination grace interval. */
+  mediaGraceMs: number
+  /** Maximum accepted text input characters. */
+  maxInputChars: number
+  /** Maximum complete assistant reply characters before refusal. */
+  maxOutputChars: number
+  /** Maximum characters per outbound QQ message. */
+  messageChars: number
+  /** Maximum accepted WebSocket frame bytes. */
+  maxFrameBytes: number
+  /** Listener readiness deadline in milliseconds. */
+  startupTimeoutMs: number
+  /** OneBot action acknowledgement deadline in milliseconds; timeout leaves delivery uncertain. */
+  actionTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-qq -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-speech -->
+<a id="deepseek-aidsh-experimental-genesis-speech"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-speech`
+
+- `inject`: `genesis` · `agentPresets` · `tools` · `attachments`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/experimental/genesis-speech/src/index.ts:14`](../packages/experimental/genesis-speech/src/index.ts)
+
+```ts config-catalog
+/** Live route fields are captured once per invocation; budgets apply until completion. */
+export interface Config {
+  /** HTTPS CosyVoice SpeechSynthesizer endpoint, including regional workspace when required. */
+  endpoint: Volatile<string>
+  /** Alibaba model bound to the selected voice. */
+  model: Volatile<string>
+  /** Built-in voice or an already enrolled custom voice ID. */
+  voice: Volatile<string>
+  /** Credential reference resolved per invocation through the provider, or launch environment when no provider is mounted. */
+  keyEnv: Volatile<string>
+  /** Only the operator's configured Life preset may execute speech requests. */
+  lifePreset: string
+  /** Maximum input text characters per billable invocation. */
+  maxTextChars: number
+  /** Maximum downloaded WAV bytes per invocation. */
+  maxAudioBytes: number
+  /** Entire synthesis and download deadline. */
+  timeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-speech -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-video -->
+<a id="deepseek-aidsh-experimental-genesis-video"></a>
+
+## `@deepseek-ai/dsh-experimental-genesis-video`
+
+- `inject`: `agents` · `genesis` · `genesisToolkits` · `agentPresets` · `tools` · `fs` · `sandboxPolicy` · `sandbox` · `subprocess` · `attachments` · `jobs`
+- `source`: [`packages/experimental/genesis-video/src/index.ts:26`](../packages/experimental/genesis-video/src/index.ts)
+
+```ts config-catalog
+/** Trusted local deployment paths and finite editing/rendering budgets. */
+export interface Config {
+  /** Absolute private project directory; this exact directory is granted to operator Life Sessions in workspace-write mode. */
+  dataDir: string
+  /** Only this composed preset can execute video operations. */
+  lifePreset: string
+  /** Already installed Chromium executable; empty disables rendering while retaining editing and inspection. */
+  browserExecutable: string
+  /** Operator-selected ffprobe executable; used only for imported-media metadata. */
+  ffprobeExecutable: string
+  /** Maximum complete serialized model operation input, in characters. */
+  inputChars: number
+  /** Maximum complete serialized tool response, in characters, including metadata. */
+  resultChars: number
+  /** Maximum characters of source JSON returned by each read. */
+  pageChars: number
+  /** Maximum list entries per response. */
+  pageSize: number
+  /** Maximum live projects in dataDir. */
+  maxProjects: number
+  /** Maximum immutable revisions per project. */
+  maxRevisions: number
+  /** Maximum imported assets per project. */
+  maxAssets: number
+  /** Maximum retained render admissions per project. */
+  maxJobs: number
+  /** Wall-clock deadline for media metadata extraction. */
+  probeTimeoutMs: number
+  /** Maximum bytes of one imported media file; buffered by the local file provider. */
+  maxAssetBytes: number
+  /** Maximum bytes admitted for completed output delivery. */
+  maxOutputBytes: number
+  /** Maximum self-contained Player HTML and its embedded asset bytes before compilation. */
+  maxPreviewBytes: number
+  /** Maximum composition duration in seconds. */
+  maxDurationSeconds: number
+  /** Maximum simultaneous local render jobs. */
+  maxConcurrentRenders: number
+  /** Number of Chromium render workers per job. */
+  renderConcurrency: number
+  /** Wall-clock deadline for a render job, including bundling. */
+  renderTimeoutMs: number
+  /** Termination grace period for each managed process range. */
+  graceMs: number
+  /** Per-stream bounded diagnostic collection for child processes. */
+  processOutputBytes: number
+  /** Maximum recent progress characters in status results. */
+  progressChars: number
+  /** Interval between progress samples; does not decide completion. */
+  progressIntervalMs: number
+  /** Resolution multiplier for low-resolution preview exports. */
+  previewScale: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-video -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-inspector -->
 <a id="deepseek-aidsh-experimental-inspector"></a>
@@ -1749,7 +2810,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-host-frontend-static`
 
 - `inject`: `webServer` · `connection`
-- `source`: [`packages/host/frontend-static/src/index.ts:34`](../packages/host/frontend-static/src/index.ts)
+- `source`: [`packages/host/frontend-static/src/index.ts:35`](../packages/host/frontend-static/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the dist anchor. */
@@ -1834,7 +2895,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-host-webserver`
 
-- `source`: [`packages/host/webserver/src/index.ts:97`](../packages/host/webserver/src/index.ts)
+- `source`: [`packages/host/webserver/src/index.ts:106`](../packages/host/webserver/src/index.ts)
 
 ```ts config-catalog
 /** Web server listen, TLS, and response-compression config. */
@@ -1849,6 +2910,8 @@ export interface Config {
    * load: it would expose the port on every interface at once.
    */
   host: string
+  /** Explicitly permit wildcard binding for deployments with configured authentication. Default: false. */
+  allowWildcardHost?: boolean
   /** Listen port; zero requests an OS-assigned port. */
   port: number
   /**
@@ -2380,7 +3443,7 @@ export interface LspLocalServerConfig {
 ## `@deepseek-ai/dsh-mcp-client`
 
 - `inject`: `tools`
-- `source`: [`packages/mcp/mcp-client/src/index.ts:138`](../packages/mcp/mcp-client/src/index.ts)
+- `source`: [`packages/mcp/mcp-client/src/index.ts:142`](../packages/mcp/mcp-client/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for one stdio or Streamable HTTP MCP server. */
@@ -2418,6 +3481,8 @@ export interface StdioConfig {
   maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** Optional upstream tool called with empty arguments before closing an established connection. */
+  shutdownTool?: string
 }
 
 /** Config for connecting to an MCP server over Streamable HTTP (SSE). */
@@ -2448,6 +3513,8 @@ export interface StreamableHttpConfig {
   maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** Optional upstream tool called with empty arguments before closing an established connection. */
+  shutdownTool?: string
 }
 
 /** Automatic reconnect policy for one MCP server connection. */
@@ -2964,7 +4031,7 @@ export interface Config {
 
 - `inject`: `sessionProjections`
 - `refs`: [`SandboxMode`](subsystems/sandbox.zh.md)
-- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:94`](../packages/sandbox/sandbox-policy/src/index.ts)
+- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:95`](../packages/sandbox/sandbox-policy/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -4973,7 +6040,9 @@ export interface Config {
 | `@deepseek-ai/dsh-deepseek-llm-api-extensions` | — | [`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts) |
 | `@deepseek-ai/dsh-deliverable-file-references` | `systemPrompt` | [`packages/deliverables/deliverable-file-references/src/index.ts`](../packages/deliverables/deliverable-file-references/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-auto-review` | `approval` · `llm` · `permissionPresets` · `sessions` · `tools` · `workingDirectory` | [`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-browser-preview` | — | [`packages/experimental/client-ui-browser-preview/src/index.ts`](../packages/experimental/client-ui-browser-preview/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-genesis` | — | [`packages/experimental/client-ui-genesis/src/index.ts`](../packages/experimental/client-ui-genesis/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-stats` | — | [`packages/experimental/client-ui-stats/src/index.ts`](../packages/experimental/client-ui-stats/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |

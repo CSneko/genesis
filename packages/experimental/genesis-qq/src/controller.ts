@@ -10,7 +10,7 @@ import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Config } from './config.ts'
 import type { QqMessageStore } from './message-store.ts'
 import { QqRuntime } from './runtime.ts'
-import { allowsConversation, type QqPreferences } from './preferences.ts'
+import { type QqPreferences } from './preferences.ts'
 import { connectionSchema, type QqConnectionPreferences } from './connection.ts'
 import type { QqDecisionSettings, QqConnection, QqStatus, QqDelivery } from './types.ts'
 
@@ -132,12 +132,8 @@ export class QqController {
       failure: this.failure, pending: 0, liveSessions: 0 }
       : await this.runtime.inspect()
     const state = await this.ctx.genesis.snapshot()
-    const archived = this.ctx.get('workspaceRegistry')?.archivedSessionIds ?? []
-    const hasArchivedRoute = connection.connection.enabled && state.people?.conversations.some((conversation) => {
-      const [, , bot, target] = conversation.id.split(':')
-      return bot === connection.connection.botQq && archived.includes(conversation.sessionId)
-        && allowsConversation(policy.settings, conversation.kind, target!)
-    }) === true
+    sample.operatorQq = state.contacts?.items.find(contact => contact.operator)?.qq
+      ?? (state.contacts?.operatorConfigured ? '' : connection.connection.operatorQq)
     const reservations = state.events.filter(event => event.type === 'qq.reserved')
     const receipts = new Map(state.events.filter(event => event.type === 'qq.receipt')
       .map(event => [`${event.relatedSessionId}:${event.relatedEventId}`, event]))
@@ -148,7 +144,7 @@ export class QqController {
         status: receipt?.payload['status'] === 'confirmed' ? 'confirmed' : 'uncertain',
         acknowledged: receipt === undefined ? 0 : z.array(z.string()).parse(receipt.payload['messageIds']).length }
     })
-    const result: QqStatus = { ...sample, ...connection, failure: sample.failure ?? (hasArchivedRoute ? 'archived' : null),
+    const result: QqStatus = { ...sample, ...connection, failure: sample.failure,
       decision: { ...this.decisions.read(), keyConfigured: (await this.ctx.credentials.resolve(decisionKeyRef)) !== undefined },
       deliveries, omitted: reservations.length - deliveries.length }
     if (JSON.stringify(result).length > this.config.statusChars) throw new GenesisError('capacity', 'QQ status exceeds statusChars. Increase its configured response budget.')

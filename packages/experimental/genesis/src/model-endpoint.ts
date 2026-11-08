@@ -4,6 +4,7 @@ import { assertUsableApiKey } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { z } from 'zod'
 import type { MemoryModelsSettings, EndpointRoute } from './status-types.ts'
+import { LOCAL_DECISION_KEY } from './local-decision.ts'
 import { AuxiliaryRequestError, GenesisError } from './error.ts'
 
 /** Validated update decision; endpoint probabilities remain distinct from emotion intensity. */
@@ -22,6 +23,11 @@ export async function modelHeaders(ctx: Context, route: EndpointRoute): Promise<
     throw new GenesisError('memory-provider', 'Configure an HTTP(S) model endpoint and model name without URL credentials or query parameters.')
   }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (route.keyRef === LOCAL_DECISION_KEY) {
+    const local = ctx.get('genesisLocalDecision')
+    if (local === undefined) throw new GenesisError('memory-provider', 'The managed local decision runtime is not loaded.')
+    return { ...headers, ...local.headers(route.url) }
+  }
   if (route.keyRef !== undefined) {
     const credentials = ctx.get('credentials')
     const stored = await credentials?.resolve(credentialRef(route.keyRef))
@@ -38,7 +44,7 @@ export async function modelHeaders(ctx: Context, route: EndpointRoute): Promise<
  * @param setting - Deployment setting that owns this response limit, included in capacity diagnostics.
  * @returns Parsed, untrusted JSON for protocol-specific validation.
  */
-export async function modelJson(response: Response, limit: number, setting: 'memory.outputChars' | 'modelCatalogChars' | 'minecraft.responseChars'): Promise<unknown> {
+export async function modelJson(response: Response, limit: number, setting: 'memory.outputChars' | 'modelCatalogChars' | 'minecraft.responseChars' | 'localDecision.outputChars'): Promise<unknown> {
   if (!response.ok || response.body === null) {
     await response.body?.cancel()
     if (response.status === 408 || response.status === 429 || response.status >= 500) {

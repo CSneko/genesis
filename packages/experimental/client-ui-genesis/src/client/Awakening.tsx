@@ -97,8 +97,19 @@ function ConfigurationReminder(props: AwakeningProps) {
   return <Modal open title={props.t('awakeningTitle')} onClose={props.complete} headless className={css.dialog as string}>
     <h2>{props.t('awakeningTitle')}</h2>
     <p>{props.t('configureFirst')}</p>
-    <Button variant="outline" onClick={() => { props.openSection('models'); props.complete() }}>{props.t('configureApis')}</Button>
-    <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('configureKnowledge')}</Button>
+    <div className={css.editor}>
+      <h3>{props.t('writerTitle')}</h3><p>{props.t('inheritDshLlm')}</p>
+      <Button variant="outline" onClick={() => { props.openSection('models'); props.complete() }}>{props.t('configureApis')}</Button>
+    </div>
+    <div className={css.editor}>
+      <h3>{props.t('decisionTitle')}</h3>
+      <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('cloudDecision')}</Button>
+      <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('deployLocalDecision')}</Button>
+    </div>
+    <div className={css.editor}>
+      <h3>{props.t('embeddingTitle')}</h3><p>{props.t('embeddingDescription')}</p>
+      <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('configureEmbedding')}</Button>
+    </div>
     <Button variant="outline" disabled={pending} onClick={() => {
       setPending(true); setFailed(false)
       void props.dismissSetup().then((saved) => { if (saved) props.complete(); else setFailed(true) })

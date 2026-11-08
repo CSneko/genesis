@@ -1,7 +1,9 @@
+import { GenesisContactsGateway } from './contacts-gateway.ts'
 import './social-projection.ts'
 import './task-source.ts'
 import './session-evidence.ts'
 import { LifeToolExecutor } from './tool-executor.ts'
+import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { GenesisSessionEvidence } from './session-evidence.ts'
 import { SLEEP_MEMORY_PROMPT, sleepMemoryPlan } from './sleep-memory.ts'
 import { LifeSleep } from './sleep.ts'
@@ -11,6 +13,7 @@ import { GenesisRhythmGateway } from './rhythm-gateway.ts'
 import { auxiliaryCall } from './auxiliary-call.ts'
 import { z } from 'zod'
 /** Optional Genesis Phase 1 Cordis integration; no changes to the Agent Loop. @module */
+import { installBoredom } from './boredom.ts'
 import { installSpontaneity } from './spontaneity.ts'
 import { TemporaryMemoryEngine } from './temporary.ts'
 import { TemporaryStore } from './temporary-store.ts'
@@ -30,6 +33,7 @@ import { SocialInitiative } from './social.ts'
 import { LifeDeliberationEngine, GOAL_CONTEXT_GUIDANCE, agencyContext } from './deliberation.ts'
 import { MemoryConsolidator } from './consolidation.ts'
 import { Config } from './config.ts'
+import { LocalDecision } from './local-decision.ts'
 import { LifeMessageRouter } from './message-routing.ts'
 import { LifeEmotionEngine, EMOTION_GUIDANCE } from './emotion.ts'
 import { emotionSettingsSchema, resolveEmotion, initialEmotion } from './emotion-state.ts'
@@ -50,8 +54,9 @@ import { LifeMemoryEngine, MEMORY_GUIDANCE } from './memory.ts'
 import { backupPath } from './backup.ts'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { ModelPreferences, modelPreferencesDomain } from './model-preferences.ts'
+import { PurgePreferences, purgePreferencesDomain } from './purge-preferences.ts'
 import { EmbeddingPreferences, embeddingPreferencesDomain } from './embedding-preferences.ts'
-import { installLearning, LEARN_TOOL, RECALL_TOOL, LIFE_GUIDANCE } from './awakening.ts'
+import { installLearning, LEARN_TOOL, RECALL_TOOL, LIFE_GUIDANCE, PURGE_GUIDANCE } from './awakening.ts'
 import { WritingRecords } from './records.ts'
 import { writingsDomain } from './records-model.ts'
 import { prepareWritingRoot } from './records-files.ts'
@@ -69,6 +74,7 @@ export { LifeSleep } from './sleep.ts'
 export { GenesisRhythmGateway } from './rhythm-gateway.ts'
 export type { SleepTransition } from './sleep.ts'
 export { LifeDeliberationEngine } from './deliberation.ts'
+export type { IdleConversationProvider } from './spontaneity.ts'
 export { Spontaneity } from './spontaneity.ts'
 export type { ThoughtId, LifeThought, SpontaneityRun } from './spontaneity-state.ts'
 export { SocialInitiative } from './social.ts'
@@ -86,6 +92,7 @@ export type { WritingImportId, WritingTypeId, WritingDraft, WritingReceipt } fro
 export { GenesisAgencyGateway } from './agency-gateway.ts'
 export { GenesisInitiativeGateway } from './initiative-gateway.ts'
 export { GenesisTaskGateway } from './task-gateway.ts'
+export { GenesisContactsGateway } from './contacts-gateway.ts'
 export { GenesisPeopleGateway } from './people-gateway.ts'
 export type { LifeStatus, AgencyStatus } from './status-types.ts'
 export { LifeCore } from './core.ts'
@@ -127,6 +134,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   if (config.socialInitiative !== undefined && (config.deliberation === undefined || config.memory === undefined)) {
     throw new GenesisError('invalid-state', 'Social initiative requires deliberation and the independent memory writer route.')
+  }
+  if (config.spontaneity !== undefined && config.spontaneity.boredomMinIntervalMs > config.spontaneity.boredomMaxIntervalMs) {
+    throw new GenesisError('invalid-state', 'spontaneity.boredomMinIntervalMs must not exceed boredomMaxIntervalMs. Correct the idle opportunity intervals before loading Genesis.')
   }
   if (config.records !== undefined && config.personalDirectory === undefined) {
     throw new GenesisError('invalid-state', 'Recording requires personalDirectory. Configure a private personal directory before enabling records.')
@@ -187,6 +197,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const lifeMode = (agent: Agent | undefined) => config.awakening !== undefined && (config.awakening.lifePreset === undefined
     || (agent !== undefined && ctx.get('agentPresets')?.composedPreset(agent.ctx) === config.awakening.lifePreset))
   const participates = (agent: Agent | undefined) => config.awakening === undefined || lifeMode(agent)
+  if (config.emotion !== undefined) installBoredom(ctx, core, participates)
   ctx.tools.guard(exec => exec.agent !== undefined && core.isSpontaneitySession(exec.agent.id)
     && !ctx.get('genesisSpontaneity')?.admits(exec.agent)
     ? 'Internal cognition is stopped. Inspect its Session; a new opportunity must be explicitly admitted.' : undefined)
@@ -207,16 +218,28 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     registerWritingTool(ctx, records, config.records)
   }
   await ctx.plugin(GenesisRecordsGateway, { records })
+  const purge = new PurgePreferences(await ctx.storageDomain.open(purgePreferencesDomain), config)
+  ctx.effect(() => () => purge.close())
+  purge.read()
   const preferences = new EmbeddingPreferences(await ctx.storageDomain.open(embeddingPreferencesDomain), config)
   ctx.effect(() => () => preferences.close())
-  const models = new ModelPreferences(await ctx.storageDomain.open(modelPreferencesDomain), config)
+  const localDecision = new LocalDecision(ctx, config)
+  ctx.provide('genesisLocalDecision', localDecision)
+  ctx.effect(() => () => localDecision.close())
+  const models = new ModelPreferences(await ctx.storageDomain.open(modelPreferencesDomain), config,
+    () => ctx.get('agentDefaultModel')?.currentSelection(), () => localDecision.route())
   ctx.effect(() => () => models.close())
+  if (models.read().models.localDecision) {
+    try { await localDecision.start(false, new AbortController().signal) } catch (error) {
+      ctx.logger.error(`Genesis local decision restoration failed. Retry deployment in model settings. ${statusFailure(error).message}`)
+    }
+  }
   const temporaryStorage = await ctx.storageDomain.open(temporaryDomain)
   let temporaryStore: TemporaryStore
   try {
     temporaryStore = new TemporaryStore(temporaryStorage, { schemaVersion: 1, lifeId: (await core.snapshot()).identity.id,
       revision: 0, settings: { enabled: config.temporaryMemory.enabled, idleMs: config.temporaryMemory.idleMs,
-        summary: models.read().models.writer }, sessions: [], memories: [] })
+        inheritWriter: true, summary: models.read().models.writer }, sessions: [], memories: [] })
   } catch (error) { await temporaryStorage.close(); throw error }
   ctx.effect(() => () => temporaryStore.close())
   const temporary = new TemporaryMemoryEngine(ctx, core, temporaryStore, config, () => models.read().models, lifeMode)
@@ -277,12 +300,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     : new MemoryConsolidator(ctx, core, memory, config.memory)
   if (memory !== undefined) {
     ctx.effect(() => () => memory.close())
-    ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
+    ctx.on('agent/turn-stopping', ({ agent, turn }) => {
       if (!participates(agent)) return
-      try { await memory.review(agent, turn, signal) } catch (error) {
+      void memory.review(agent, turn).catch((error) => {
         ctx.logger.error(`Genesis memory review failed. A storage or backup failure may follow a committed update; inspect storage before retrying. Otherwise check model and embedding configuration. ${statusFailure(error).message}`)
-        // Memory failures are reported separately; the completed chat reply remains successful.
-      }
+        // Background failure does not change the completed chat outcome.
+      })
     }, { global: true })
   }
   let emotion: LifeEmotionEngine | undefined
@@ -290,11 +313,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     emotion = new LifeEmotionEngine(ctx, core, config.emotion, config.memory, () => models.read().models, config)
     const engine = emotion
     ctx.effect(() => () => engine.close())
-    ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
+    ctx.on('agent/turn-stopping', ({ agent, turn }) => {
       if (!participates(agent)) return
-      try { await engine.review(agent, turn, signal) } catch (error) {
+      void engine.review(agent, turn).catch((error) => {
         ctx.logger.error(`Genesis emotion review failed. Model or validation failures retain the previous anchor. Storage or backup uncertainty stops dependent life operations and may follow a committed update; inspect storage before retrying. ${statusFailure(error).message}`)
-      }
+      })
     }, { global: true })
   }
   let interest: LifeInterestEngine | undefined
@@ -304,11 +327,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     interest = new LifeInterestEngine(ctx, core, interestConfig, memoryConfig, () => models.read().models)
     const engine = interest
     ctx.effect(() => () => engine.close())
-    ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
+    ctx.on('agent/turn-stopping', ({ agent, turn }) => {
       if (!participates(agent)) return
-      try { await engine.review(agent, turn, signal) } catch (error) {
+      void engine.review(agent, turn).catch((error) => {
         ctx.logger.error(`Genesis interest review failed; prior interests remain. Inspect model configuration or life storage before retrying. ${statusFailure(error).message}`)
-      }
+      })
     }, { global: true })
   }
   if (consolidation !== undefined) {
@@ -322,11 +345,33 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   await ctx.plugin(GenesisMemoryGateway, { memory, config, consolidation, participates })
   await ctx.plugin(GenesisPeopleGateway, config)
+  await ctx.plugin(GenesisContactsGateway)
   await ctx.plugin(GenesisAgencyGateway, { config, lifeMode })
   await ctx.plugin(GenesisInitiativeGateway, { config, engine: social,
     applies: (agent: Agent) => config.awakening === undefined || lifeMode(agent) })
-  await ctx.plugin(GenesisStatusGateway, { config, preferences, models, memory, emotion, interest, lifeMode })
+  await ctx.plugin(GenesisStatusGateway, { config, preferences, models, memory, emotion, interest, lifeMode, purge })
   const associations = new Map<object, string>()
+  const selectTools = (agent: Agent, registered: readonly ToolDefinition[]) => {
+    let eligible = [...registered]
+    if (lifeMode(agent)) {
+      const learned = core.learningStatus().tools
+      eligible = eligible.filter(tool => tool.name === LEARN_TOOL || tool.name === RECALL_TOOL
+        || (['genesis_contacts', 'genesis_search_contacts'].includes(tool.name) && core.isOperatorSession(agent.id))
+        || (tool.name === 'genesis_message' && !core.isQqSession(agent.id) && core.isOperatorSession(agent.id))
+        || (core.isQqSession(agent.id) && toolkits.qqAllowed(agent, tool.name, 'advertise'))
+        || (config.deliberation !== undefined && tool.name === 'genesis_plan')
+        || (config.spontaneity !== undefined && ['genesis_thought', 'genesis_socialize'].includes(tool.name))
+        || (tool.name === TOOLKIT_TOOL && toolkits.discoverable(agent))
+        || (learned.includes(tool.name) && toolkits.exposed(agent, tool.name)))
+    }
+    if (core.isQqSession(agent.id)) {
+      if (!core.isOperatorSession(agent.id)) eligible = eligible.filter(tool => toolkits.qqAllowed(agent, tool.name, 'advertise'))
+      const names = new Set(toolkits.retainQqTools(agent, [...registered], eligible).map(tool => tool.name))
+      eligible = registered.filter(tool => names.has(tool.name))
+    }
+    const spontaneous = ctx.get('genesisSpontaneity')
+    return eligible.filter(tool => spontaneous === undefined || spontaneous.advertises(agent, tool.name))
+  }
   const refresh = async (agent: Agent) => {
     if (!participates(agent)) { associations.delete(agent); return [] }
     await core.scan(agent.session.id, ctx.tools.schemas(agent))
@@ -335,8 +380,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     if (lifeMode(agent)) {
       const learned = core.learningStatus().tools
       sections[sections.findIndex(section => section.name === 'genesis:capabilities')] = {
-        name: 'genesis:capabilities', text: `Learned tools currently available: ${boundedJson(ctx.tools.schemas(agent)
-          .filter(tool => learned.includes(tool.name) && toolkits.exposed(agent, tool.name)).map(tool => tool.name), config.capabilityChars)}`,
+        name: 'genesis:capabilities', text: `Learned tools currently available: ${boundedJson(selectTools(agent, ctx.tools.definitions(agent))
+          .filter(tool => learned.includes(tool.name)).map(tool => tool.name), config.capabilityChars)}`,
       }
     }
     return [...sections,
@@ -365,26 +410,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const executors = new Map<Agent, () => void>()
   const installExecutor = (agent: Agent) => {
     if (executors.has(agent) || !lifeMode(agent) && !core.isQqSession(agent.id)) return
-    const executor = new LifeToolExecutor(ctx, (registered) => {
-      let eligible = [...registered]
-      if (lifeMode(agent)) {
-        const learned = core.learningStatus().tools
-        eligible = eligible.filter(tool => tool.name === LEARN_TOOL || tool.name === RECALL_TOOL
-          || (tool.name === 'genesis_message' && !core.isQqSession(agent.id) && core.isOperatorSession(agent.id))
-          || (core.isQqSession(agent.id) && toolkits.qqAllowed(agent, tool.name, 'advertise'))
-          || (config.deliberation !== undefined && tool.name === 'genesis_plan')
-          || (config.spontaneity !== undefined && tool.name === 'genesis_thought')
-          || (tool.name === TOOLKIT_TOOL && toolkits.discoverable(agent))
-          || (learned.includes(tool.name) && toolkits.exposed(agent, tool.name)))
-      }
-      if (core.isQqSession(agent.id)) {
-        if (!core.isOperatorSession(agent.id)) eligible = eligible.filter(tool => toolkits.qqAllowed(agent, tool.name, 'advertise'))
-        const names = new Set(toolkits.retainQqTools(agent, [...registered], eligible).map(tool => tool.name))
-        eligible = registered.filter(tool => names.has(tool.name))
-      }
-      const spontaneous = ctx.get('genesisSpontaneity')
-      return eligible.filter(tool => spontaneous === undefined || spontaneous.advertises(agent, tool.name))
-    })
+    const executor = new LifeToolExecutor(ctx, registered => selectTools(agent, registered))
     executors.set(agent, agent.ctx.tools.setExecutor(executor))
   }
   ctx.effect(() => () => { for (const dispose of executors.values()) dispose(); executors.clear() })
@@ -401,6 +427,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         + (config.emotion === undefined ? '' : `\n${EMOTION_GUIDANCE}`)
         + (config.interest === undefined ? '' : `\n${INTEREST_GUIDANCE}`)
         + deliberationGuidance, interpolate: false }]
+      if (purge.read().enabled) assembled.sections.push({ name: 'genesis:purge', text: PURGE_GUIDANCE, interpolate: false })
       assembled.contexts = []
     }
     if (!participates(context.agent)) {

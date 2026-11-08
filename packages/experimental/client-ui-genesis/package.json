@@ -81,7 +81,8 @@
     "@deepseek-ai/dsh-client-ui-sidebar-documentpreview": "workspace:*",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:*",
     "@deepseek-ai/dsh-util-workspace-path": "workspace:*",
-    "@deepseek-ai/dsh-experimental-genesis-companion": "workspace:*"
+    "@deepseek-ai/dsh-experimental-genesis-companion": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-mail": "workspace:*"
   },
   "files": [
     "lib/index.js",

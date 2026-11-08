@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/genesis-mail-review/guide.md
+/:
+  en: a4b3b79a0577ccff
+  zh: 4d897d0e7e48a8b4
+/genesis-mail-review:
+  en: 13dbfb463073543e
+  zh: cb8cb6295ceefd69
+/genesis-mail-review/change:
+  en: 5bf90e508128da7c
+  zh: 6f39dc3bd8526004
+/genesis-mail-review/migration:
+  en: c7e4ae71c7d9dd8c
+  zh: 3f7186f7cd36e9d5

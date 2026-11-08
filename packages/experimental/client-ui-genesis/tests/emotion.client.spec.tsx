@@ -110,3 +110,13 @@ it('keeps empty numeric drafts invalid and cancels an in-flight mutation when it
   pending.resolve({ ok: true, value: 5 })
   await pending.promise
 })
+
+
+it('shows boredom separately from loneliness without changing the editable immediate emotions', () => {
+  const { props, status } = fixture(true)
+  status.emotion!.boredom = { level: 0.7, mode: 'idle', riseHalfLifeMs: 1800000, fallHalfLifeMs: 300000 }
+  render(<EmotionPanel {...props} />)
+  expect(screen.getAllByRole('meter', { name: '无聊' })[0]?.getAttribute('value')).toBe('0.7')
+  expect(screen.getByRole('meter', { name: zh['emotion.loneliness'] }).getAttribute('value')).toBe('0')
+  expect(screen.getByText(zh.emotionBoredomHint)).toBeTruthy()
+})

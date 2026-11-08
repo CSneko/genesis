@@ -1,4 +1,5 @@
 /** Three-layer affect state, bounded proposals and elapsed-time recovery. @module */
+import { boredomStateSchema, evolveBoredom } from './boredom.ts'
 import { z } from 'zod'
 import type { EmotionConfig } from './config.ts'
 import { personIdSchema } from './people-model.ts'
@@ -62,6 +63,7 @@ export const emotionAdjustmentSchema = z.strictObject({ current: emotionCurrentS
 export type EmotionAdjustment = z.infer<typeof emotionAdjustmentSchema>
 /** Version-three anchors accept either all evolution fields or the legacy independent-recovery representation. */
 export const emotionStateSchema = recoverySchema.extend({ version: z.literal(3), revision: z.number().int().nonnegative(),
+  boredom: boredomStateSchema.optional(),
   updatedAt: z.iso.datetime(), controls: emotionControlsSchema.optional(), current: emotionCurrentSchema, mood: moodSchema,
   needs: needsSchema, relationship: relationshipSchema.nullable() }).refine((state) => {
   const present = [state.offlineChanges, state.moodEmotionScale, state.emotionMoodInfluence].filter(value => value !== undefined).length
@@ -73,6 +75,7 @@ export type EmotionState = z.infer<typeof emotionStateSchema>
 export type StoredEmotionState = EmotionState
 /** Model proposals carry cited evidence and optional object attribution. */
 export const emotionUpdateSchema = z.strictObject({
+  boredomDelta: signed,
   delta: z.strictObject({ happiness: signed, sadness: signed, anger: signed, fear: signed, tenderness: signed,
     gratitude: signed, longing: signed, frustration: signed, disappointment: signed }),
   moodDelta: z.strictObject({ valence: signed, arousal: signed }),
@@ -110,6 +113,7 @@ export function emotionAt(state: EmotionState, now: string): EmotionState {
   const duration = Math.max(0, Date.parse(now) - Date.parse(state.updatedAt))
   const elapsed = duration * state.sensitivity
   Object.assign(result, evolveAffect(state, elapsed))
+  if (state.boredom !== undefined) result.boredom = evolveBoredom(state.boredom, elapsed)
   // Exact integration preserves the result when observation intervals are subdivided.
   const a = Math.LN2 / state.needsHalfLifeMs
   const b = Math.LN2 / state.interactionHalfLifeMs
@@ -135,7 +139,7 @@ export function emotionAt(state: EmotionState, now: string): EmotionState {
  * @returns Strict version-three state.
  */
 export function initialEmotion(config: EmotionConfig, now: string): EmotionState {
-  return { version: 3, revision: 0, updatedAt: now, sensitivity: config.sensitivity,
+  return { version: 3, boredom: { ...config.boredom, level: 0, mode: 'idle' }, revision: 0, updatedAt: now, sensitivity: config.sensitivity,
     offlineChanges: config.offlineChanges, moodEmotionScale: config.moodEmotionScale, emotionMoodInfluence: config.emotionMoodInfluence,
     current: { happiness: 0, sadness: 0, anger: 0, fear: 0, tenderness: 0, gratitude: 0, longing: 0, frustration: 0, disappointment: 0 },
     mood: { ...config.baseline }, baseline: { ...config.baseline }, needs: { ...config.initialNeeds },
@@ -162,16 +166,18 @@ export function emotionContext(state: EmotionState, step: number): string {
     .sort((a, b) => level(b[1]) - level(a[1]))
   const describe = (entries: Array<[string, number]>) => entries.map(([name, value]) => `${name} ${degree(value)}`).join('; ')
   const feelings = ranked(state.current)
-  const priorities = ranked({ connection: lonelinessTarget(state.needs), exploration: state.needs.exploration,
+  const boredom = state.boredom?.level ?? 0
+  const priorities = ranked({ 'finding an engaging activity': boredom, connection: lonelinessTarget(state.needs), exploration: state.needs.exploration,
     autonomy: state.needs.autonomy, creativity: state.needs.creativity,
     caution: Math.max(state.current.fear, state.current.frustration * (1 - state.mood.arousal)) })
   const salient = [...feelings, ['mood valence', state.mood.valence] as [string, number],
-    ['loneliness', state.needs.loneliness] as [string, number]]
+    ['loneliness', state.needs.loneliness] as [string, number], ['boredom', boredom] as [string, number]]
     .sort((a, b) => level(b[1]) - level(a[1]))
   const foreground = [...salient.slice(0, 1), ...priorities.slice(0, 1).map(([name, value]): [string, number] => [`inclination toward ${name}`, value])]
     .filter(([, value]) => level(value) !== 0).sort((a, b) => level(b[1]) - level(a[1]))
   const lines = [
     `Most salient now: ${foreground.length ? foreground.map(([name, value]) => `${name} ${name === 'mood valence' ? valence : degree(value)}`).join('; ') : 'no pronounced feeling or action inclination'}.`,
+    `Boredom: ${degree(boredom)}. Boredom favors finding an engaging activity, including creation, exploration or appropriate conversation; loneliness concerns desired social connection. Neither grants permissions. A plan, tool call or outgoing message alone does not establish fulfillment.`,
     `Immediate feelings, strongest first: ${describe(feelings)}.`,
     `Action inclinations, strongest first: ${describe(priorities)}.`,
     `Longer-term mood: valence ${valence}; arousal ${degree(state.mood.arousal)}.`,

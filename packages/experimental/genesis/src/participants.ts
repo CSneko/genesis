@@ -25,6 +25,7 @@ export interface ModelPerson {
  * @returns QQ account, current nickname and recorded name, with no internal person ID or private identity description.
  */
 export function participantIdentity(state: LifeState, source: PersonSource, operator: OperatorIdentity | undefined = state.operator): ModelPerson {
+  const contact = state.contacts?.items.find(person => person.personId === source.personId)
   const known = state.people?.people.find(person => person.id === source.personId)
   let previous: PersonSource | undefined
   for (const event of state.events.toReversed()) {
@@ -38,7 +39,7 @@ export function participantIdentity(state: LifeState, source: PersonSource, oper
     }
   }
   const isOperator = source.personId === state.people?.operatorPersonId
-  return { qq: source.accountId, nickname: source.name, name: isOperator ? operator?.name ?? null : known?.name ?? previous?.name ?? null,
+  return { qq: source.accountId, nickname: source.name, name: isOperator ? operator?.name ?? null : contact?.name ?? known?.name ?? previous?.name ?? null,
     seenBefore: known !== undefined || previous !== undefined, isOperator }
 }
 
@@ -99,7 +100,7 @@ export function hasRoleReferences(content: string): boolean { return /用户|助
 export interface MemoryRelabel {
   id: MemoryId
   content: string
-  embedding: MemoryEmbedding
+  embedding?: MemoryEmbedding | undefined
   habit?: { cue: string; response: string }
   topics?: string[]
 }

@@ -1,0 +1,15 @@
+[Unit]
+Description=Genesis dedicated Chrome
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=GENESIS_CHROME_PROFILE=%h/.genesis-harness/browser/chrome
+Environment=GENESIS_CHROME_PORT=9222
+ExecStart=/usr/bin/google-chrome --ozone-platform=x11 --remote-debugging-address=127.0.0.1 --remote-debugging-port=${GENESIS_CHROME_PORT} --user-data-dir=${GENESIS_CHROME_PROFILE} --no-first-run --no-default-browser-check about:blank
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

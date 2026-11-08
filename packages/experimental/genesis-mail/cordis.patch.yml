@@ -1,0 +1,6 @@
+# Mailbox settings are available; account network access remains disabled until configured.
+- insert:
+    - id: genesis-mail
+      name: '@deepseek-ai/dsh-experimental-genesis-mail'
+      config:
+        cwd: !!js dshHomePath('mail-workspace')

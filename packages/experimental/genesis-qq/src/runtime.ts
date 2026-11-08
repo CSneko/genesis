@@ -3,7 +3,7 @@ import type { LifeSleep, SleepTransition } from '@deepseek-ai/dsh-experimental-g
 import type { QqSleepInbox } from './sleep-inbox.ts'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 /** Owned QQ transport, Life Session composition, replay-safe admission and real send receipts. @module */
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -65,6 +65,7 @@ export class QqRuntime {
   private pending = 0
   private connections = 0
   private failure: QqStatus['failure'] = null
+  private conversationRegistration: ReturnType<Context['inject']> | undefined
   private readonly detach: Array<() => void> = []
   private connected: Socket | undefined
   private draining = false
@@ -92,7 +93,7 @@ export class QqRuntime {
         throw new GenesisError('invalid-state', 'QQ wsUrl must be a loopback ws:// URL without credentials, query or fragment. Set accessToken separately.')
       }
     }
-    const accounts = [config.botQq, ...config.allowGroups, ...config.allowUsers,
+    const accounts = [config.botQq, ...config.allowGroups, ...config.allowUsers, ...config.proactiveGroups, ...config.proactiveUsers,
       ...(config.operatorQq ? [config.operatorQq] : [])]
     for (const id of accounts) {
       account.parse(id)
@@ -100,10 +101,11 @@ export class QqRuntime {
     }
     this.messenger = new QqMessenger(ctx, config, messages, async (id, source) => {
       const sourceRoute = this.routes.get(source.id)
-      if (sourceRoute === undefined) throw new GenesisError('invalid-source', 'The source QQ route is unavailable.')
+      const socket = sourceRoute?.socket ?? (this.ctx.get('genesisSpontaneity')?.admitsSocial(source) ? this.connected : undefined)
+      if (socket === undefined) throw new GenesisError('invalid-source', 'The source QQ route is unavailable.')
       const [, kind, , account] = id.split(':')
       if (account === undefined || kind !== 'group' && kind !== 'private') throw new GenesisError('invalid-source', 'Invalid QQ destination.')
-      const handle = await this.conversation(id, account, kind, sourceRoute.socket)
+      const handle = await this.conversation(id, account, kind, socket)
       return { id, agent: handle.agent, kind, account }
     }, (id, run) => this.queueMessage(id, run), evidence)
     this.media = new QqMedia(ctx, config)
@@ -123,13 +125,31 @@ export class QqRuntime {
       const workspace = await registry.create(this.config.cwd, 'QQ')
       if (workspace.title !== 'QQ') await workspace.setTitle('QQ')
     }
+    this.conversationRegistration = this.ctx.inject(['genesisSpontaneity'], (child) => {
+      const socket = () => {
+        const connected = this.connected
+        if (this.lifetime.signal.aborted || !this.preferences.read().settings.enabled || connected === undefined || connected.readyState !== connected.OPEN) {
+          throw new GenesisError('invalid-state', 'QQ autonomous conversation requires an enabled, authenticated live connection.')
+        }
+        return connected
+      }
+      const provider = this.messenger.initiativeProvider({
+        directory: kind => this.server.callRaw(socket(), kind === 'group' ? 'get_group_list' : 'get_friend_list'),
+        send: (target, text) => {
+          if (this.ctx.get('workspaceRegistry')?.archivedSessionIds.includes(target.agent.id)) throw new GenesisError('invalid-source', 'The destination conversation is archived.')
+          return this.server.sendSegments(socket(), target.kind, Number(target.account), [{ type: 'text', data: { text } }])
+        },
+      }, () => { socket() })
+      child.effect(() => child.genesisSpontaneity.registerConversation({ ...provider, targets: signal =>
+        this.connected === undefined || !this.preferences.read().settings.enabled ? Promise.resolve([]) : provider.targets(signal) }))
+    })
     this.detach.push(this.ctx.on('compaction/context-window', ({ session }, next) => {
       const capacity = next()
       const route = this.routes.get(session.id)
       if (route === undefined) return capacity
       const settings = this.preferences.read().settings
       const desired = route.type === 'group' ? settings.groupContextTokens
-        : route.target === this.config.operatorQq ? settings.operatorContextTokens : settings.privateContextTokens
+        : this.ctx.genesis.isOperatorPerson(qqPersonId(route.target)) ? settings.operatorContextTokens : settings.privateContextTokens
       return Math.min(capacity, desired)
     }, { global: true }))
     this.detach.push(this.ctx.on('agent/request', async ({ agent, signal }, next) => {
@@ -190,7 +210,7 @@ export class QqRuntime {
   attachSleep(sleep: LifeSleep | undefined): void {
     this.sleepUnsubscribe?.(); this.sleepUnsubscribe = undefined
     if (sleep === undefined || this.lifetime.signal.aborted) return
-    this.sleepUnsubscribe = sleep.onTransition(event => {
+    this.sleepUnsubscribe = sleep.onTransition((event) => {
       if (event.mode === 'awake' || event.mode === 'keep-awake') this.drainSleeping()
       const operation = this.transitionGreeting(sleep, event).catch((error: unknown) => {
         this.ctx.logger.warn(`Sleep greeting was skipped or has an uncertain send: ${String(error)}`)
@@ -316,7 +336,8 @@ export class QqRuntime {
   async inspect(): Promise<Omit<QqStatus, 'connection' | 'connectionRevision' | 'deliveries' | 'omitted'>> {
     const policy = this.preferences.read()
     const address = this.server.address()
-    const result: Omit<QqStatus, 'connection' | 'connectionRevision' | 'deliveries' | 'omitted'> = { ...policy, botQq: this.config.botQq, operatorQq: this.config.operatorQq,
+    const state = await this.ctx.genesis.snapshot()
+    const result: Omit<QqStatus, 'connection' | 'connectionRevision' | 'deliveries' | 'omitted'> = { ...policy, botQq: this.config.botQq, operatorQq: state.contacts?.items.find(contact => contact.operator)?.qq ?? (state.contacts?.operatorConfigured ? '' : this.config.operatorQq),
       endpoint: this.config.wsUrl || `ws://127.0.0.1:${typeof address === 'object' && address !== null ? address.port : this.config.port}`,
       tokenConfigured: this.config.accessToken.length >= 16, failure: this.failure,
       mode: !policy.settings.enabled ? 'paused' : this.failure === 'transport' ? 'failed' : this.connections > 0 ? 'connected'
@@ -344,19 +365,23 @@ export class QqRuntime {
     return true
   }
 
-  private async conversation(id: ConversationId, target: string, kind: 'group' | 'private', socket: Socket): Promise<ConversationAgent> {
+  private async conversation(id: ConversationId, target: string, kind: 'group' | 'private', socket: Socket, renewArchived = false): Promise<ConversationAgent> {
     const state = await this.ctx.genesis.snapshot()
-    const existing = state.people?.conversations.find(item => item.id === id)
-    const sessionId = SessionId(existing?.sessionId ?? `genesis-qq-${createHash('sha256').update(`${state.identity.id}:${id}`).digest('hex')}`)
-    if (this.ctx.get('workspaceRegistry')?.archivedSessionIds.includes(sessionId)) {
-      throw new GenesisError('invalid-source', 'The target QQ conversation is archived. Restore it before contacting it.')
+    const existing = state.people?.conversations.findLast(item => item.id === id)
+    let sessionId = SessionId(existing?.sessionId ?? `genesis-qq-${createHash('sha256').update(`${state.identity.id}:${id}`).digest('hex')}`)
+    const archived = this.ctx.get('workspaceRegistry')?.archivedSessionIds.includes(sessionId) === true
+    if (archived) {
+      if (!renewArchived) throw new GenesisError('invalid-source', 'The target QQ conversation is archived. Wait for new incoming contact or restore it before sending.')
+      const old = this.handles.get(sessionId)
+      old?.releaseTool?.()
+      await old?.release?.()
+      this.handles.delete(sessionId); this.routes.delete(sessionId)
+      sessionId = SessionId(`genesis-qq-${randomUUID()}`)
     }
     const operator = this.config.operatorQq ? qqPersonId(this.config.operatorQq) : undefined
-    if (existing === undefined) await this.ctx.genesis.bindConversation({ id, sessionId, kind,
-      ...(kind === 'private' ? { personId: qqPersonId(target) } : {}) }, operator)
-    else if (operator !== undefined && state.people?.operatorPersonId !== operator) {
-      throw new GenesisError('configuration-conflict', 'QQ operator binding differs from saved life data. Verify the configured operator before accepting messages.')
-    }
+    if (existing === undefined || archived) await this.ctx.genesis.bindConversation({ id, sessionId, kind,
+      ...(kind === 'private' ? { personId: qqPersonId(target) } : {}) }, operator, archived ? existing?.sessionId : undefined)
+
     let handle = this.handles.get(sessionId)
     if (handle !== undefined && this.ctx.agents.get(sessionId) !== handle.agent) {
       handle.releaseTool?.()
@@ -378,9 +403,9 @@ export class QqRuntime {
         const setup = async (agentCtx: Context) => { await this.ctx.agentPresets.mount(agentCtx, this.config.lifePreset) }
         const selection = this.ctx.agentDefaultModel.currentSelection()
         const wasPublished = state.events.some(event => event.dedupKey === `conversation-opened:${sessionId}`)
-        const stored = existing === undefined || wasPublished ? undefined : await this.ctx.sessionPersistence.stat(sessionId)
+        const stored = existing === undefined || archived || wasPublished ? undefined : await this.ctx.sessionPersistence.stat(sessionId)
         try {
-          const owned: AgentHandle = existing === undefined || (!wasPublished && stored === undefined)
+          const owned: AgentHandle = existing === undefined || archived || (!wasPublished && stored === undefined)
             ? await this.ctx.agents.create({ sessionId, meta: { cwd: this.config.cwd, agentPreset: this.config.lifePreset },
               agentOptions: selection, signal: this.lifetime.signal, setup })
             : await this.ctx.agents.resume({ resumeSessionId: sessionId, agentOptions: selection, signal: this.lifetime.signal, setup })
@@ -466,12 +491,7 @@ export class QqRuntime {
     const source = personSourceSchema.parse({ kind: 'genesis-person', platform: 'qq', personId: qqPersonId(raw.user_id),
       conversationId: id, accountId: raw.user_id, name: raw.sender?.card?.trim() || raw.sender?.nickname?.trim() || `QQ ${raw.user_id}`,
       messageId: raw.message_id })
-    const binding = (await this.ctx.genesis.snapshot()).people?.conversations.find(conversation => conversation.id === id)
-    if (binding !== undefined && this.ctx.get('workspaceRegistry')?.archivedSessionIds.includes(binding.sessionId)) {
-      this.ctx.logger.warn('QQ input was not queued: its conversation is archived. Restore it from the sidebar before sending another message.')
-      return
-    }
-    const handle = await this.conversation(id, target, raw.message_type, message.bot)
+    const handle = await this.conversation(id, target, raw.message_type, message.bot, true)
     const sessionId = handle.agent.id
     const state = await this.ctx.genesis.snapshot()
     await this.updateTitle(handle.agent, target, message)
@@ -480,7 +500,7 @@ export class QqRuntime {
     const sleep = this.ctx.get('genesisSleep')
     if (sleep !== undefined && batch === undefined) {
       const original = segments(raw.message).filter(segment => segment.type === 'text').map(segment => z.string().parse(segment.data['text'])).join('')
-      const operator = raw.user_id === this.config.operatorQq && this.ctx.genesis.isOperatorPerson(source.personId)
+      const operator = this.ctx.genesis.isOperatorPerson(source.personId)
       const allowed = await sleep.input(handle.agent, original, `${id}:${source.messageId}`, operator, this.lifetime.signal)
       if (!allowed) {
         if (raw.message_type === 'private') {
@@ -525,7 +545,7 @@ export class QqRuntime {
       const settings = this.preferences.read().settings
       let reply = !settings.replyOnlyWhenMentioned || message.atMe
       let probability: { probability: number; threshold: number } | undefined
-      if (this.ctx.get('genesisSleep')?.conversationAllowed(raw.user_id === this.config.operatorQq && this.ctx.genesis.isOperatorPerson(source.personId)) === false) return
+      if (this.ctx.get('genesisSleep')?.conversationAllowed(this.ctx.genesis.isOperatorPerson(source.personId)) === false) return
       if (settings.groupAutoReply) {
         try {
           const result = await shouldReply(this.ctx, handle.agent, source, message.atMe, this.config, this.lifetime.signal, this.decisions.read().settings)
@@ -707,6 +727,7 @@ export class QqRuntime {
    */
   async close(): Promise<void> {
     this.lifetime.abort()
+    await this.conversationRegistration?.dispose()
     this.sleepUnsubscribe?.(); this.sleepUnsubscribe = undefined
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer)
     this.server.off('bot-disconnect', this.onDisconnect)

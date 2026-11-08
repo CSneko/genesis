@@ -553,48 +553,47 @@ it('reads version-one admission settings with explicit conversation defaults and
   expect(await readFile(path, 'utf8')).toContain('"schemaVersion": 3')
 })
 
-it('reports archived group and private routes, leaves their input unreserved and resumes only after operator restoration', async () => {
+it('starts new group and private Sessions after archival and restores the latest bindings after restart', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-archived-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
-  const { ctx, socket, model } = await boot(root)
-  const signal = new AbortController().signal
+  const { ctx, socket } = await boot(root)
   socket.send(incoming('group', 801))
   await receipt(ctx, 1)
   socket.send(incoming('private', 802))
   await receipt(ctx, 2)
-  const conversations = (await ctx.genesis.snapshot()).people!.conversations
-  const group = conversations.find(item => item.kind === 'group')!
-  const privateChat = conversations.find(item => item.kind === 'private')!
-  const agents = [group, privateChat].map(item => ctx.agents.get(item.sessionId)!)
+  const original = (await ctx.genesis.snapshot()).people!.conversations
+  const agents = original.map(binding => ctx.agents.get(binding.sessionId)!)
   await Promise.all(agents.map(agent => agent.whenIdle()))
-  await ctx.workspaceRegistry.archiveSession(group.sessionId)
-  await ctx.workspaceRegistry.archiveSession(privateChat.sessionId)
-  expect((await ctx.genesisQqSettings.inspect(signal)).failure).toBe('archived')
-  const requests = model.requests.length
+  for (const binding of original) await ctx.workspaceRegistry.archiveSession(binding.sessionId)
   socket.send(incoming('group', 803))
-  socket.send(incoming('private', 804))
-  // A third allowed peer verifies fresh private Session creation while the other routes stay archived.
-  socket.send(incoming('private', 805, 99999))
-  await receipt(ctx, 3)
-  await Promise.all(ctx.agents.list().map(agent => agent.whenIdle()))
-  await expect.poll(async () => (await ctx.genesisQqSettings.inspect(signal)).pending).toBe(0)
-  expect(model.requests.slice(requests).filter(request => request.model === 'chat')).toHaveLength(1)
-  for (const agent of agents) {
-    expect(agent.session.ownEvents().filter(event => event.type === 'user/message'
-      && event.data.source.kind === 'genesis-person')).toHaveLength(1)
-  }
-  await ctx.workspaceRegistry.unarchiveSession(privateChat.sessionId)
-  expect((await ctx.genesisQqSettings.inspect(signal)).failure).toBe('archived')
   socket.send(incoming('private', 804))
   await receipt(ctx, 4)
-  await ctx.workspaceRegistry.unarchiveSession(group.sessionId)
-  expect((await ctx.genesisQqSettings.inspect(signal)).failure).toBeNull()
-  socket.send(incoming('group', 803))
-  await receipt(ctx, 5)
-  for (const agent of agents) {
-    expect(agent.session.ownEvents().filter(event => event.type === 'user/message'
-      && event.data.source.kind === 'genesis-person')).toHaveLength(2)
+  const state = await ctx.genesis.snapshot()
+  for (const binding of original) {
+    const latest = state.people!.conversations.findLast(item => item.id === binding.id)!
+    expect(latest.sessionId).not.toBe(binding.sessionId)
+    expect(latest.personId).toBe(binding.personId)
+    expect(ctx.workspaceRegistry.archivedSessionIds).toContain(binding.sessionId)
+    expect(ctx.genesis.isQqSession(binding.sessionId)).toBe(true)
+    expect(ctx.agents.get(latest.sessionId)!.session.ownEvents().filter(event => event.type === 'user/message'
+      && event.data.source.kind === 'genesis-person')).toHaveLength(1)
   }
+  for (const agent of agents) expect(agent.session.ownEvents().filter(event => event.type === 'user/message'
+    && event.data.source.kind === 'genesis-person')).toHaveLength(1)
+  const group = state.people!.conversations.findLast(item => item.kind === 'group')!
+  await ctx.workspaceRegistry.unarchiveSession(original.find(item => item.kind === 'group')!.sessionId)
+  socket.send(incoming('group', 803))
+  socket.send(incoming('group', 805))
+  await receipt(ctx, 5)
+  expect((await ctx.genesis.snapshot()).people!.conversations.findLast(item => item.kind === 'group')!.sessionId).toBe(group.sessionId)
+  const closed = once(socket, 'close')
+  await ctx.fiber.dispose(); await closed
+  const restarted = await boot(root)
+  restarted.socket.send(incoming('private', 806))
+  await receipt(restarted.ctx, 6)
+  const restored = await restarted.ctx.genesis.snapshot()
+  expect(restored.identity).toEqual(state.identity)
+  expect(restored.people!.conversations).toEqual(state.people!.conversations)
 })
 
 it('summarizes ordinary conversation switches, leaves short QQ tails to inactivity and restores independent progress', async () => {
@@ -803,7 +802,7 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   const navigate = 'mcp__playwright-mcp__browser_navigate'
   const screenshot = 'mcp__playwright-mcp__browser_take_screenshot'
   const evaluate = 'mcp__playwright-mcp__browser_evaluate'
-  const names = ['web_search', 'fixture_public', 'fixture_operator', 'fixture_disabled', navigate, screenshot, evaluate]
+  const names = ['web_search', 'fixture_public', 'fixture_operator', 'fixture_disabled', navigate, screenshot, evaluate, 'fixture_ungrouped']
   const register = (ctx: Context) => names.forEach(name => ctx.tools.register(defineTool({ name, description: 'Test-only read fixture.',
     parameters: { url: { type: 'string' }, filename: { type: 'string' } },
     output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
@@ -885,7 +884,8 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   restored.session.append('compaction/end', { compactionId: CompactionId('qq-idle-tools'), turn: null })
   second.socket.send(incoming('group', 1107))
   await receipt(second.ctx, 7)
-  expect(advertised()).not.toContain('fixture_public')
+  expect(advertised()).toContain('fixture_public')
+  expect((await run('fixture_public')).isError).toBe(true)
   const policy = await second.ctx.genesisQqSettings.inspect(signal)
   await second.ctx.genesisQqSettings.save({ ...policy.settings, allowUsers: ['55555', '12345', '99999'] }, policy.revision, signal)
   second.socket.send(incoming('private', 1108, 55555, '操作者'))
@@ -902,9 +902,16 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(second.ctx, 9)
   expect(advertised()).toContain(evaluate)
   expect(advertised()).toContain('fixture_disabled')
-  expect((await operatorRun('genesis_toolkit', { action: 'disable', id: 'public' })).isError).toBe(false)
+  expect(advertised()).toContain('fixture_ungrouped')
+  operatorAgent.session.append('compaction/end', { compactionId: CompactionId('qq-private-tools'), turn: null })
   second.socket.send(incoming('private', 1110, 55555, '操作者'))
   await receipt(second.ctx, 10)
+  expect(advertised()).toContain(evaluate)
+  expect(advertised()).toContain('fixture_ungrouped')
+  expect((await operatorRun('fixture_ungrouped')).isError).toBe(false)
+  expect((await operatorRun('genesis_toolkit', { action: 'disable', id: 'public' })).isError).toBe(false)
+  second.socket.send(incoming('private', 1111, 55555, '操作者'))
+  await receipt(second.ctx, 11)
   expect(advertised()).not.toContain(evaluate)
 })
 

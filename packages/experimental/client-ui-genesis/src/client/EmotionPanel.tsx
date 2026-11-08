@@ -68,6 +68,15 @@ export function EmotionPanel({ useResource, saveSettings, adjust, refresh, t }: 
             </div>)}
           </dl>
         </section>)}
+        {emotion.boredom === undefined ? null : <section className={emotionCss.card} aria-labelledby={`${id}-boredom`}>
+          <h4 id={`${id}-boredom`}>{t('emotion.boredom')}</h4>
+          <p className={css.secondary}>{t('emotionBoredomHint')}</p>
+          <dl className={emotionCss.meters}><div>
+            <dt id={`${id}-boredom-level`}>{t('emotion.boredom')}</dt>
+            <dd><meter aria-labelledby={`${id}-boredom-level`} min={0} max={1} value={emotion.boredom.level} />
+              <span>{Math.round(emotion.boredom.level * 100)}%</span></dd>
+          </div></dl>
+        </section>}
       </div>
       <p className={css.secondary}>{t('sampled')}{' '}<time dateTime={status.sampledAt}>{new Date(status.sampledAt).toLocaleString()}</time></p>
       {emotion.review === undefined ? <p>{t('emotionNotReviewed')}</p> : emotion.review.state === 'failed'

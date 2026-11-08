@@ -5,6 +5,8 @@ export const NS = 'chat'
 
 /** Simplified Chinese dictionary and key-set source of truth. */
 export const zh = {
+  'message.mediaDownload': '下载文件',
+  'message.mediaFailed': '无法预览，请下载文件',
   'message.stepProcess.thinking': '正在分析请求',
   'message.stepProcess.read': '正在读取文件',
   'message.stepProcess.readImage': '正在读取图片',
@@ -215,6 +217,8 @@ export type ChatKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
+  'message.mediaDownload': 'Download file',
+  'message.mediaFailed': 'Preview unavailable; download the file',
   'message.stepProcess.thinking': 'Analyzing the request',
   'message.stepProcess.read': 'Reading files',
   'message.stepProcess.readImage': 'Reading images',
@@ -422,6 +426,8 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'message.mediaDownload': 'ファイルをダウンロード',
+  'message.mediaFailed': 'プレビューできません。ファイルをダウンロードしてください',
   'message.stepProcess.thinking': 'リクエストを分析中',
   'message.stepProcess.read': 'ファイルを読み取り中',
   'message.stepProcess.readImage': '画像を読み取り中',
@@ -629,6 +635,8 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'message.mediaDownload': 'Descargar archivo',
+  'message.mediaFailed': 'Vista previa no disponible; descarga el archivo',
   'message.stepProcess.thinking': 'Analizando la solicitud',
   'message.stepProcess.read': 'Leyendo archivos',
   'message.stepProcess.readImage': 'Leyendo imágenes',
@@ -836,6 +844,8 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'message.mediaDownload': 'Télécharger le fichier',
+  'message.mediaFailed': 'Aperçu indisponible ; téléchargez le fichier',
   'message.stepProcess.thinking': 'Analyser la demande',
   'message.stepProcess.read': 'Lecture de fichiers',
   'message.stepProcess.readImage': 'Lire des images',
@@ -1043,6 +1053,8 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'message.mediaDownload': 'Datei herunterladen',
+  'message.mediaFailed': 'Vorschau nicht verfügbar; Datei herunterladen',
   'message.stepProcess.thinking': 'Analyse der Anfrage',
   'message.stepProcess.read': 'Dateien lesen',
   'message.stepProcess.readImage': 'Bilder lesen',
@@ -1250,6 +1262,8 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'message.mediaDownload': 'Скачать файл',
+  'message.mediaFailed': 'Предпросмотр недоступен; скачайте файл',
   'message.stepProcess.thinking': 'Анализ запроса',
   'message.stepProcess.read': 'Чтение файлов',
   'message.stepProcess.readImage': 'Чтение изображений',
@@ -1457,6 +1471,8 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'message.mediaDownload': 'Baixar arquivo',
+  'message.mediaFailed': 'Prévia indisponível; baixe o arquivo',
   'message.stepProcess.thinking': 'Analisando a solicitação',
   'message.stepProcess.read': 'Lendo arquivos',
   'message.stepProcess.readImage': 'Lendo imagens',

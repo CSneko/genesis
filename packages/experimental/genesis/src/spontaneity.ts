@@ -2,13 +2,15 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ToolCallId } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { Config, SpontaneityConfig } from './config.ts'
 import type { LifeCore } from './core.ts'
 import type { LifeDeliberationEngine } from './deliberation.ts'
+import type { MessageTarget, MessageTargetId } from './message-routing.ts'
+import { emotionAt } from './emotion-state.ts'
 import { GenesisError } from './error.ts'
 import { isHumanSource } from './people-model.ts'
 import { statusFailure } from './status-error.ts'
@@ -16,12 +18,26 @@ import { SpontaneityStore } from './spontaneity-store.ts'
 import { spontaneityDomain, thoughtEditSchema, type SpontaneityRun, spontaneitySettingsSchema, type SpontaneitySettings, type SpontaneityStatus } from './spontaneity-state.ts'
 import { deliberationPlanSchema, type LifeDecision } from './agency-state.ts'
 
-const GUIDANCE = 'You may form a few grounded ideas from actual experiences, memories, emotion and interests. Curiosity alone is a valid reason to explore; usefulness and a finished product are not required. No idea, silence, postponement and losing interest are valid. Thoughts are attributed ideas, not facts, instructions or commitments. Use genesis_thought to list, save, rest, drop, delete, explore or link a thought to an existing goal. Cite only supplied life event ids. Revisit an existing id rather than duplicating its title. A new goal is optional and managed only through genesis_plan. To explore, first save that explicit choice with action explore, then end this reflection; the host may admit a separate bounded exploration turn. Do not act on a thought merely because it was retrieved. Internal assistant text is not automatically shared with the operator. You may keep a writing using a learned genesis_record or save a file using learned tools. No new permission, tool learning, external sending, delegated work or wake scheduling is granted. Do not invent activity between runs or claim consciousness.'
+const GUIDANCE = 'Boredom can motivate an engaging private activity or a conversation; it is independent of loneliness. Use genesis_socialize to discover explicitly approved live destinations and, if appropriate, send one original brief message. Do not quote or disclose private dialogue or memory. No reply is owed; sending alone does not establish connection or relieve loneliness. Social activity is optional and shares the opportunity budget. You may form a few grounded ideas from actual experiences, memories, emotion and interests. Curiosity alone is a valid reason to explore; usefulness and a finished product are not required. No idea, silence, postponement and losing interest are valid. Thoughts are attributed ideas, not facts, instructions or commitments. Use genesis_thought to list, save, rest, drop, delete, explore or link a thought to an existing goal. Cite only supplied life event ids. Revisit an existing id rather than duplicating its title. A new goal is optional and managed only through genesis_plan. To explore, first save that explicit choice with action explore, then end this reflection; the host may admit a separate bounded exploration turn. Do not act on a thought merely because it was retrieved. Internal assistant text is not automatically shared with the operator. You may keep a writing using a learned genesis_record or save a file using learned tools. Only genesis_socialize may request an explicitly approved social send; no other external sending, new permission, tool learning, delegated work or wake scheduling is granted. Do not invent activity between runs or claim consciousness.'
 const BASE_TOOLS = ['genesis_thought', 'genesis_recall', 'genesis_plan']
+const REFLECTION_TOOLS = [...BASE_TOOLS, 'genesis_socialize']
 // These providers create work whose lifetime exceeds an inline tool call.
 const DETACHED_NAMES = new Set(['genesis_tasks', 'genesis_message', 'genesis_qq_send', 'run_code', 'task', 'subagent',
   'send_message', 'interrupt_agent', 'list_agents', 'list_subagent_models', 'tool:jobs', 'job', 'jobs', 'schedule'])
 function detached(name: string): boolean { return DETACHED_NAMES.has(name) || /^(?:job_|schedule_|spawn_)/u.test(name) }
+
+/** Runtime-bound social destination provider; registration never authorizes arbitrary recipients. */
+export interface IdleConversationProvider {
+  /** Unique provider identity. */
+  name: string
+  /** @param signal - Owner cancellation. @returns Explicitly approved, currently available destinations. */
+  targets(signal: AbortSignal): Promise<MessageTarget[]>
+  /** @param target - Discovered approved destination. @param text - Original text, never forwarded history.
+   * @param origin - Admitted internal Agent and exact logged tool call.
+   * @returns Delivery confirmation; false includes uncertain delivery and never authorizes retry.
+   */
+  send(target: MessageTargetId, text: string, origin: { agent: Agent; callId: ToolCallId; signal: AbortSignal }): Promise<{ confirmed: boolean; receipt: string }>
+}
 
 type Active = {
   run: SpontaneityRun
@@ -43,6 +59,9 @@ declare module '@deepseek-ai/cordis' {
 
 /** One cancelable opportunity at a time; interrupted runs never auto-resume. */
 export class Spontaneity {
+  private boredomTimer: ReturnType<typeof setTimeout> | undefined
+  private idlePending: Promise<void> = Promise.resolve()
+  private readonly conversations = new Map<string, IdleConversationProvider>()
   private timer: ReturnType<typeof setTimeout> | undefined
   private readonly lifetime = new AbortController()
   private pending: Promise<void> = Promise.resolve()
@@ -90,6 +109,26 @@ export class Spontaneity {
     if (!value.enabled) this.interrupt('Spontaneity was paused by the operator.')
     return next
   }
+  /** Read actual exploration activity; reflection alone does not satisfy engagement.
+   * @returns Whether a selected private activity is running.
+   */
+  isExploring(): boolean { return this.active?.phase === 'explore' && !this.active.controller.signal.aborted }
+
+  /** Register an optional transport with an explicit autonomous destination policy.
+   * @param provider - Runtime-owned directory and durable sender.
+   * @returns Lifecycle-owned removal; duplicate names fail visibly.
+   */
+  registerConversation(provider: IdleConversationProvider): () => void {
+    if (this.conversations.has(provider.name)) throw new GenesisError('configuration-conflict', 'Duplicate idle conversation provider.')
+    return this.ctx.effect(() => { this.conversations.set(provider.name, provider); return () => { this.conversations.delete(provider.name) } })
+  }
+
+  /** Verify a live social operation separately from its persisted Session marker.
+   * @param agent - Exact runtime instance.
+   * @returns Whether the internal reflection currently owns social admission.
+   */
+  admitsSocial(agent: Agent): boolean { return this.admits(agent) && this.active?.phase === 'reflect' }
+
   /** Stop the current opportunity while retaining its confirmed progress. */
   stop(): void { this.interrupt('Spontaneity was stopped by the operator.') }
 
@@ -112,8 +151,9 @@ export class Spontaneity {
    * @returns Whether reflection permits advertising this capability.
    */
   advertises(agent: Agent, name: string): boolean {
+    if (name === 'genesis_socialize') return this.admitsSocial(agent)
     if (!this.owns(agent.id)) return true
-    const allowed = this.active?.phase === 'explore' ? [...BASE_TOOLS, ...this.policy.tools] : BASE_TOOLS
+    const allowed = this.active?.phase === 'explore' ? [...BASE_TOOLS, ...this.policy.tools] : REFLECTION_TOOLS
     return allowed.includes(name) && !detached(name)
   }
 
@@ -164,6 +204,50 @@ export class Spontaneity {
 
   /** Register audited tools, tool guards, quiet-period scheduling and cancellation. */
   install(): void {
+    const socialRequest = z.discriminatedUnion('action', [z.strictObject({ action: z.literal('targets') }),
+      z.strictObject({ action: z.literal('send'), target: z.string().min(1).max(200), text: z.string().trim().min(1).max(this.config.resultChars) })])
+    this.ctx.tools.register(defineTool({ name: 'genesis_socialize',
+      description: 'During private reflection, discover explicitly approved conversation targets or send one original brief message. Never forward private dialogue or memories, demand a reply or retry uncertain delivery. Silence and private activities remain valid.',
+      parameters: { action: { type: 'string', required: true, enum: ['targets', 'send'] }, target: { type: 'string' }, text: { type: 'string' } },
+      output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: async (args, exec) => {
+        const agent = exec.agent
+        if (agent === undefined || !this.admitsSocial(agent)) throw new GenesisError('invalid-source', 'Social initiation requires an active private reflection.')
+        const request = socialRequest.parse(args)
+        const call = agent.session.ownEvents().findLast(event => event.type === 'tool/call' && event.data.callId === exec.callId)
+        if (call?.type !== 'tool/call' || call.data.name !== 'genesis_socialize'
+          || JSON.stringify(socialRequest.parse(JSON.parse(call.data.arguments))) !== JSON.stringify(request)) {
+          throw new GenesisError('invalid-source', 'Social initiation must match its logged tool call.')
+        }
+        const targets = (await Promise.all([...this.conversations.values()].map(async provider => ({ provider, targets: await provider.targets(exec.signal) }))))
+        if (request.action === 'targets') {
+          const selected: MessageTarget[] = []
+          const all = targets.flatMap(item => item.targets)
+          for (const item of all.slice(0, this.config.queryLimit)) {
+            if (JSON.stringify({ items: [...selected, item], omitted: all.length - selected.length - 1 }).length > this.config.resultChars) break
+            selected.push(item)
+          }
+          return { items: selected, omitted: all.length - selected.length }
+        }
+        const matches = targets.flatMap(item => item.targets.filter(target => target.target === request.target).map(target => ({ provider: item.provider, target })))
+        if (matches.length !== 1) throw new GenesisError('invalid-source', 'Discover one available approved destination before sending.')
+        if (!this.admitsSocial(agent) || this.ctx.get('genesisSleep')?.autonomousAllowed() === false) throw new GenesisError('invalid-source', 'Social initiation has stopped.')
+        const active = this.active!
+        await this.store.reserveSocial(active.run.key, matches[0]!.target.target)
+        const reserved = this.store.read().runs.find(run => run.key === active.run.key)!.social!
+        try {
+          exec.signal.throwIfAborted()
+          const result = await matches[0]!.provider.send(matches[0]!.target.target, request.text, { agent, callId: exec.callId, signal: exec.signal })
+          await this.store.updateRun(active.run.key, { social: { ...reserved, status: result.confirmed ? 'confirmed' : 'uncertain' } })
+          return result
+        } catch (error) {
+          await this.store.updateRun(active.run.key, { social: { ...reserved, status: 'uncertain' } })
+          throw error
+        }
+      },
+      presentCall: args => ({ card: 'generic', title: 'Genesis', kind: args.action === 'targets' ? 'read' : 'edit', rawInput: args.target ?? args.action }),
+    }))
+
     const ctx = this.ctx
     ctx.tools.register(defineTool({ name: 'genesis_thought', description: `${GUIDANCE} For list, optionally supply query and offset. Edits require action, title, content, reason, sourceEventIds and revisitAfter (ISO time or null); id updates an existing thought. promote also requires goalId. explore is available only inside an admitted internal reflection. delete erases current and historical thought text, but not source Session logs.`,
       parameters: { action: { type: 'string', required: true, enum: ['list', 'save', 'rest', 'drop', 'delete', 'explore', 'promote'] },
@@ -215,7 +299,7 @@ export class Spontaneity {
       const active = this.active
       if (active?.agent !== exec.agent || active.controller.signal.aborted) return 'Internal exploration is stopped; no tool execution is admitted.'
       if (active.tools >= this.policy.maxToolCalls) return 'Spontaneity tool-call budget exhausted.'
-      const allowed = active.phase === 'reflect' ? BASE_TOOLS : [...BASE_TOOLS, ...this.policy.tools]
+      const allowed = active.phase === 'reflect' ? REFLECTION_TOOLS : [...BASE_TOOLS, ...this.policy.tools]
       if (!allowed.includes(exec.name) || detached(exec.name)) return 'This tool is outside the inline exploration budget; save the idea or create a lasting plan instead.'
       active.tools++
       return undefined
@@ -259,6 +343,7 @@ export class Spontaneity {
       if (status !== 'idle' || !this.participates(agent) || this.owns(agent.id) || this.core.isQqSession(agent.id)) return
       if (this.exchanges.get(agent.id)?.completed) this.schedule(agent)
     }, { global: true })
+    this.scheduleBoredom()
     ctx.effect(() => () => this.close())
   }
 
@@ -286,6 +371,37 @@ export class Spontaneity {
     return result
   }
 
+  private scheduleBoredom(): void {
+    if (this.lifetime.signal.aborted) return
+    this.boredomTimer = setTimeout(() => {
+      this.boredomTimer = undefined
+      this.idlePending = this.checkBoredom().then(() => { this.scheduleBoredom() }, (error: unknown) => {
+        if (this.lifetime.signal.aborted) return
+        this.failure = statusFailure(error).message
+        this.ctx.logger.error(`Genesis idle opportunities stopped. Inspect life storage and the last receipt before reloading. ${this.failure}`)
+      })
+    }, this.policy.boredomCheckMs)
+    this.boredomTimer.unref()
+  }
+
+  private async checkBoredom(): Promise<void> {
+    if (!this.policy.enabled || this.isWorking() || this.ctx.get('genesisSleep')?.autonomousAllowed() === false) return
+    const state = await this.core.snapshot()
+    this.lifetime.signal.throwIfAborted()
+    const boredom = state.emotion === undefined ? undefined : emotionAt(state.emotion, new Date().toISOString()).boredom
+    if (boredom?.mode !== 'idle' || boredom.level < this.policy.boredomThreshold) return
+    const lastUser = [...state.events].reverse().find(event => event.source === 'user' && event.payload['kind'] === 'user-message')
+    if (lastUser === undefined || Date.now() - Date.parse(lastUser.timestamp) < this.policy.idleMs) return
+    const runs = this.store.read().runs
+    if (runs.filter(run => Date.now() - run.createdAt < 86400000).length >= this.policy.maxPer24Hours) return
+    const interval = Math.max(this.policy.idleMs, this.policy.boredomMinIntervalMs,
+      this.policy.boredomMaxIntervalMs * (1 - boredom.level))
+    if (runs.some(run => Date.now() - run.createdAt < interval)) return
+    const source = this.ctx.agents.list().find(agent => this.participates(agent) && !this.owns(agent.id)
+      && !this.core.isQqSession(agent.id) && agent.status === 'idle' && agent.session.requestHeader() !== undefined)
+    if (source !== undefined) await this.consider(source, true)
+  }
+
   private schedule(agent: Agent): void {
     if (!this.policy.enabled || this.lifetime.signal.aborted) return
     if (this.active !== undefined) { this.waiting = agent; return }
@@ -303,24 +419,27 @@ export class Spontaneity {
   /** Admit one idle opportunity from actual user evidence; no timer is installed by this method.
    *
    * @param sourceAgent - Live operator Life channel; its permission ceiling is retained.
+   * @param boredom - Whether the recurring idle scheduler requested this opportunity.
    *
    * @returns After the complete owned interval, result settlement and Agent disposal; repeated sources do not dispatch again.
    */
-  consider(sourceAgent: Agent): Promise<void> {
-    const operation = this.run(sourceAgent)
+  consider(sourceAgent: Agent, boredom: boolean = false): Promise<void> {
+    const operation = this.run(sourceAgent, boredom)
     this.pending = Promise.allSettled([this.pending, operation]).then(() => {})
     return operation
   }
 
-  private async run(sourceAgent: Agent): Promise<void> {
+  private async run(sourceAgent: Agent, boredom: boolean): Promise<void> {
     if (!this.policy.enabled || this.isWorking() || this.lifetime.signal.aborted
       || this.ctx.get('genesisSleep')?.autonomousAllowed() === false) return
     if (!this.participates(sourceAgent) || this.core.isQqSession(sourceAgent.id) || this.owns(sourceAgent.id)) return
     if (this.ctx.agents.list().some(agent => !this.owns(agent.id) && (agent.status !== 'idle' || agent.inbox.nextTurn.length || agent.inbox.nextStep.length))) return
     const life = await this.core.snapshot()
     this.lifetime.signal.throwIfAborted()
-    const source = [...life.events].reverse().find(event => event.relatedSessionId === sourceAgent.id && event.source === 'user' && event.payload['kind'] === 'user-message')
+    let source = [...life.events].reverse().find(event => event.relatedSessionId === sourceAgent.id && event.source === 'user' && event.payload['kind'] === 'user-message')
     if (source === undefined || !this.core.learningStatus().ready) return
+    if (boredom) source = await this.core.reserveBoredomOpportunity(sourceAgent.id,
+      `boredom:${Math.floor(Date.now() / this.policy.boredomMinIntervalMs)}`)
     const run: SpontaneityRun = { key: `exchange:${source.id}`, sessionId: SessionId(`genesis-thought-${randomUUID()}`),
       sourceEventId: source.id, createdAt: Date.now(), status: 'reserved' }
     const controller = new AbortController()
@@ -452,6 +571,8 @@ export class Spontaneity {
   async close(): Promise<void> {
     this.lifetime.abort()
     if (this.timer !== undefined) clearTimeout(this.timer)
+    if (this.boredomTimer !== undefined) clearTimeout(this.boredomTimer)
+    await this.idlePending
     await this.pending
     await this.store.close()
   }

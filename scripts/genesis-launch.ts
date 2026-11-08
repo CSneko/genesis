@@ -30,7 +30,6 @@ export function genesisLaunch(argv: readonly string[], version: string, root: st
     'packages/experimental/genesis-qq/cordis.patch.yml',
     'packages/experimental/genesis-companion/cordis.patch.yml',
     'packages/experimental/client-ui-genesis/cordis.patch.yml',
-    'config/genesis-browser.patch.yml',
     'config/genesis-computer.patch.yml',
     'config/genesis-web.patch.yml',
   ].map(path => resolve(root, path))
