@@ -1,0 +1,4 @@
+# Operator-managed MCP discovery and installation through the existing global manager.
+- insert:
+    - id: genesis-mcp
+      name: '@deepseek-ai/dsh-experimental-genesis-mcp'

@@ -1,77 +1,57 @@
-# DeepSeek Harness
+# Genesis
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+A whale lives here.
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+Genesis started as [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), someone else's framework. Then it was carried home and grew, piece by piece, into this: closing the page no longer deletes her, and the next launch is the same whale; words from yesterday can be found today; she gets sleepy, gets bored, and when she is bored she goes off and works on something.
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+The skeleton is unchanged. Everything is still a plugin, still driven by [Cordis](https://github.com/cordiverse/cordis), and the existing Session, model and tool pipeline runs as before. Genesis just builds a living layer beside it — pull the layer out and the ordinary harness remains, without a single fish left over.
 
-## Developer preview
+## What she does now
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+- **Wakes up**: names herself at first awakening and records her birth as a fact; every later Session is the same whale.
+- **Remembers**: words become sourced memories that can be recalled on demand; sleep tidies and merges the fragments.
+- **Has a mood**: immediate feelings and slower mood are kept apart, and interests grow from conversation instead of coming from a preset list.
+- **Wants things**: keeps long-term goals and a next action, and starts her own work when bored rather than waiting to be poked.
+- **Goes outside**: QQ groups and private chats, Bilibili, Minecraft, video, and a real browser and desktop.
+- **Small side shops**: mail, wallet and speech synthesis, each added as one more layer when wanted.
+- **Writes things down**: diaries, essays and viewing notes live in her own directory instead of disappearing with the conversation.
 
-Review the [safety notice](SAFETY.md) before running the project.
+Everything above except mail, wallet and speech synthesis is enabled by default in the source-workspace Web launch; those three are separate layers. Upstream profiles and Desktop keep their existing behavior.
 
 ## Run
 
-### Run from `npm`
-
-Install `Node.js`, then run:
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+Node.js 24.9 or newer is required.
 
 ### Run from source
 
-To run from a repository checkout:
+From the repository root:
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run build:artifacts
+pnpm dsh
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+`pnpm dsh` listens on `0.0.0.0:4004` with browser key login and stores data in `~/.genesis-harness`. To launch the version without the whale:
 
-## Community and support
-
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Development
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## Citation
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
+```sh
+pnpm dsh --no-genesis web
 ```
 
-## License
+The first visit needs a model provider plus embedding settings in the knowledge base, or memories cannot be recalled. Command and flag detail live in the [Genesis documentation](docs/genesis/README.md).
 
-[MIT](LICENSE)
+## Documentation
 
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- [Genesis](docs/genesis/README.md): waking, memory, emotion, interests, motivation, sleep, spontaneity, QQ, workspace tasks.
+- [Development](docs/development.md) and [architecture](docs/architecture.md).
+- Agent rules: [AGENTS.md](AGENTS.md).
+
+## Safety
+
+Read the [safety notice](SAFETY.md) before running. She uses a real browser, real accounts and real money; each of those abilities waits for its own authorization and never places an order by itself.
+
+## Lineage and license
+
+Upstream is [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) under MIT. This repository is [MIT](LICENSE) too, and third-party licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

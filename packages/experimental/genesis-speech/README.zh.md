@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概要
 
-使用阿里云 CosyVoice 将文本生成 WAV 音频，并作为持久对话附件保存。在设置 → 语音合成中配置默认内置音色或自定义音色。请求会将文本发送至配置的服务商，并可能产生费用。本源码工作区的 Genesis Web 组合包含此可选层；普通 Harness profile 保持不变。
+使用阿里云 CosyVoice 将文本生成 WAV 音频，并作为持久对话附件保存。在插件 → Genesis → 语音中配置默认内置音色或自定义音色。请求会将文本发送至配置的服务商，并可能产生费用。本源码工作区的 Genesis Web 组合包含此可选层；普通 Harness profile 保持不变。
 
 ## 目录
 
@@ -22,7 +22,7 @@ kind: "package-bundle"
 
 源码工作区启动器将语音包选入 Genesis Web profile，加载顺序先于用户设置，因此设置页修改可持久保存并在重启后恢复。显式 home 或命令行覆盖仍保留正常优先级。
 
-设置 → 语音合成可以修改完整 HTTPS 接口地址、CosyVoice 模型、默认音色 ID 和API Key 凭据名（`keyEnv`）。路由设置通过标准配置编辑器保存，供后续调用使用。修改主机环境变量需要重启。默认模型为 `cosyvoice-v3-flash`，音色为 `longanyang`，接口为 `https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`；请按阿里云账号要求配置对应地域的业务空间接口。
+插件 → Genesis → 语音可以修改完整 HTTPS 接口地址、CosyVoice 模型、默认音色 ID 和API Key 凭据名（`keyEnv`）。路由设置通过标准配置编辑器保存，供后续调用使用。修改主机环境变量需要重启。默认模型为 `cosyvoice-v3-flash`，音色为 `longanyang`，接口为 `https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`；请按阿里云账号要求配置对应地域的业务空间接口。
 
 工具每次调用均通过标准 Harness 凭据服务解析凭据名：依次优先使用受管 `.credentials.yaml`、继承环境变量、项目 `.env` 和 Harness home `.env`。已保存凭据的修改供下一次调用使用，无须重启插件。未挂载凭据服务的组合只使用启动环境。凭据文件格式如下：
 

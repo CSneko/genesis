@@ -12,18 +12,79 @@ import type {} from '../src/client/mail-mount.ts'
 import { globalProps } from './global-props.client.ts'
 afterEach(cleanup)
 function fixture() {
-  const mail: MailMessage = { id: brandString<MailMessage['id']>('mail-1'), threadKey: 'thread-1', operator: false, authservId: null,
-    direction: 'incoming', from: 'friend@example.org', to: 'life@example.net', subject: 'Hello', text: '<script>not executable</script>\nA plain text letter.', at: 1,
-    messageId: '<one@example.org>', inReplyTo: null, providerKey: '1:1', folder: 'inbox', review: 'allowed', attention: 'pending', delivery: 'received', readAt: null, deferUntil: null,
-    reason: '', sessionId: null, sourceCall: null, notifiedSeq: null }
-  const sample: MailStatus = { settings: { enabled: false, address: '', user: '', imapHost: '', imapPort: 993, smtpHost: '', smtpPort: 465, smtpSecure: true,
-    credentialRef: 'GENESIS_MAIL_PASSWORD', recipientMode: 'unlimited', recipients: [], allowProactive: true, dailySendLimit: 0, operatorAddress: '', trustedAuthservId: '' },
-  pollMs: 60000, revision: 0, credentialPresent: false, awake: false, active: false, failure: null, lastSyncAt: null, pending: 1, uncertain: 0, messages: [mail], total: 1, nextOffset: null }
-  const props: ComponentProps<typeof MailPanel> = { ...globalProps, close() {},
-    t: (key, params) => zh[key].replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? '')),
-    save: vi.fn().mockResolvedValue({ ok: true, value: 1 }), setPassword: vi.fn().mockResolvedValue({ ok: true, value: undefined }), sync: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-    erase: vi.fn().mockResolvedValue({ ok: true, value: undefined }), organize: vi.fn().mockResolvedValue({ ok: true, value: undefined }), refresh: vi.fn(), openSession: vi.fn(),
-    useResource: ((address: string) => ({ status: 'live', value: address.includes('genesis-mail-detail') ? mail : sample, failure: undefined })) as ComponentProps<typeof MailPanel>['useResource'],
+  const mail: MailMessage = {
+    id: brandString<MailMessage['id']>('mail-1'),
+    threadKey: 'thread-1',
+    operator: false,
+    authservId: null,
+    direction: 'incoming',
+    from: 'friend@example.org',
+    to: 'life@example.net',
+    subject: 'Hello',
+    text: '<script>not executable</script>\nA plain text letter.',
+    at: 1,
+    messageId: '<one@example.org>',
+    inReplyTo: null,
+    providerKey: '1:1',
+    folder: 'inbox',
+    review: 'allowed',
+    attention: 'pending',
+    delivery: 'received',
+    readAt: null,
+    deferUntil: null,
+    reason: '',
+    sessionId: null,
+    sourceCall: null,
+    notifiedSeq: null,
+  }
+  const sample: MailStatus = {
+    settings: {
+      enabled: false,
+      address: '',
+      user: '',
+      imapHost: '',
+      imapPort: 993,
+      smtpHost: '',
+      smtpPort: 465,
+      smtpSecure: true,
+      credentialRef: 'GENESIS_MAIL_PASSWORD',
+      recipientMode: 'unlimited',
+      recipients: [],
+      allowProactive: true,
+      dailySendLimit: 0,
+      operatorAddress: '',
+      trustedAuthservId: '',
+    },
+    pollMs: 60000,
+    revision: 0,
+    credentialPresent: false,
+    awake: false,
+    active: false,
+    failure: null,
+    lastSyncAt: null,
+    pending: 1,
+    uncertain: 0,
+    messages: [mail],
+    total: 1,
+    nextOffset: null,
+  }
+  const labels: Record<string, string> = zh
+  const props: ComponentProps<typeof MailPanel> = {
+    ...globalProps,
+    close() {},
+    t: (key, params) => (labels[key] ?? key).replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? '')),
+    save: vi.fn().mockResolvedValue({ ok: true, value: 1 }),
+    setPassword: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+    sync: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+    erase: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+    organize: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+    refresh: vi.fn(),
+    openSession: vi.fn(),
+    useResource: ((address: string) => ({
+      status: 'live',
+      value: address.includes('genesis-mail-detail') ? mail : sample,
+      failure: undefined,
+    })) as ComponentProps<typeof MailPanel>['useResource'],
   }
   return { mail, sample, props }
 }
@@ -37,8 +98,10 @@ it('previews incoming text without marking it read and organizes only on an expl
   expect(document.querySelector('script')).toBeNull()
   expect(mail.readAt).toBeNull()
   expect(props.organize).not.toHaveBeenCalled()
-  fireEvent.click(screen.getAllByRole('button', { name: zh.archive, exact: true }).at(-1)!)
-  await waitFor(() => { expect(props.organize).toHaveBeenCalledWith(mail.id, 'archive') })
+  fireEvent.click(screen.getAllByRole('button', { name: zh.archive }).at(-1)!)
+  await waitFor(() => {
+    expect(props.organize).toHaveBeenCalledWith(mail.id, 'archive')
+  })
   fireEvent.click(screen.getByRole('button', { name: zh.close }))
   expect(document.activeElement).toBe(screen.getByRole('button', { name: /Hello/u }))
 })
@@ -47,18 +110,21 @@ it('saves unlimited recipients and proactive mail explicitly while keeping the p
   render(<MailSettings {...props} />)
   expect(screen.getByLabelText(zh.recipientMode)).toHaveProperty('value', 'unlimited')
   expect(screen.getByLabelText(zh.allowProactive)).toHaveProperty('checked', true)
-  fireEvent.click(screen.getByRole('button', { name: zh.save, exact: true }))
-  await waitFor(() => { expect(props.save).toHaveBeenCalledWith(sample.settings, 0) })
+  fireEvent.click(screen.getByRole('button', { name: zh.save }))
+  await waitFor(() => {
+    expect(props.save).toHaveBeenCalledWith(sample.settings, 0)
+  })
   expect(props.setPassword).not.toHaveBeenCalled()
 })
 
 it('shows blocked mail only as an operator preview without offering to release it', () => {
   const { mail, props } = fixture()
-  mail.review = 'blocked'; mail.folder = 'blocked'
+  mail.review = 'blocked'
+  mail.folder = 'blocked'
   render(<MailPanel {...props} />)
   fireEvent.click(screen.getByRole('button', { name: zh['folder.blocked'] }))
   fireEvent.click(screen.getByRole('button', { name: /Hello/u }))
   expect(screen.getByText(zh.blockedHint)).toBeTruthy()
   expect(screen.getByRole('article').textContent).toContain(mail.text)
-  expect(screen.getAllByRole('button', { name: zh.archive, exact: true }).at(-1)).toHaveProperty('disabled', true)
+  expect(screen.getAllByRole('button', { name: zh.archive }).at(-1)).toHaveProperty('disabled', true)
 })

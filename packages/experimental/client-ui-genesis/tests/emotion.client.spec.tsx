@@ -12,13 +12,37 @@ afterEach(cleanup)
 
 it('shows localized current and mood meters, safe appraisal failures and attributed history while retaining a failed-refresh sample', () => {
   const { props, status } = fixture(true)
-  status.emotion!.review = { state: 'failed', sessionId: 'emotion-ui' as NonNullable<LifeStatus['review']>['sessionId'], turn: 1,
-    failure: { stage: 'writer', code: 'genesis/operation', message: 'HTTP 429' } }
-  status.emotion!.history = [{ id: 'emotion-history' as NonNullable<LifeStatus['emotion']>['history'][number]['id'],
-    kind: 'adjusted', timestamp: '2026-10-24T00:00:00.000Z', source: 'user', reason: 'An explicit adjustment.',
-    current: status.emotion!.current, mood: status.emotion!.mood, needs: status.emotion!.needs, sourceEventIds: [] }]
-  render(<EmotionPanel {...props} useResource={(() => ({ status: 'failed', value: status,
-    failure: new RemoteError('gateway/internal', 'unavailable', {}) })) as typeof props.useResource} />)
+  status.emotion!.review = {
+    state: 'failed',
+    sessionId: 'emotion-ui' as NonNullable<LifeStatus['review']>['sessionId'],
+    turn: 1,
+    failure: { stage: 'writer', code: 'genesis/operation', message: 'HTTP 429' },
+  }
+  status.emotion!.history = [
+    {
+      id: 'emotion-history' as NonNullable<LifeStatus['emotion']>['history'][number]['id'],
+      kind: 'adjusted',
+      timestamp: '2026-10-24T00:00:00.000Z',
+      source: 'user',
+      reason: 'An explicit adjustment.',
+      current: status.emotion!.current,
+      mood: status.emotion!.mood,
+      needs: status.emotion!.needs,
+      sourceEventIds: [],
+    },
+  ]
+  render(
+    <EmotionPanel
+      {...props}
+      useResource={
+        (() => ({
+          status: 'failed',
+          value: status,
+          failure: new RemoteError('gateway/internal', 'unavailable', {}),
+        })) as typeof props.useResource
+      }
+    />,
+  )
   expect(screen.getAllByRole('meter')).toHaveLength(20)
   expect(screen.getByText(zh.emotionCurrent)).toBeTruthy()
   expect(screen.getByText(zh.emotionMood)).toBeTruthy()
@@ -29,8 +53,13 @@ it('shows localized current and mood meters, safe appraisal failures and attribu
 
 it('shows that a no-change emotion appraisal ran, with a localized threshold and completion time', () => {
   const { props, status } = fixture(true)
-  status.emotion!.review = { state: 'skipped', sessionId: 'emotion-ui' as NonNullable<LifeStatus['review']>['sessionId'], turn: 8,
-    completedAt: '2026-10-24T00:00:00.000Z', decision: { probability: 0.05, threshold: 0.5 } }
+  status.emotion!.review = {
+    state: 'skipped',
+    sessionId: 'emotion-ui' as NonNullable<LifeStatus['review']>['sessionId'],
+    turn: 8,
+    completedAt: '2026-10-24T00:00:00.000Z',
+    decision: { probability: 0.05, threshold: 0.5 },
+  }
   render(<EmotionPanel {...props} />)
   expect(screen.getByText(zh.emotionReviewSkipped)).toBeTruthy()
   expect(screen.getByText(/已评估第 8 轮/u).querySelector('time')).toHaveProperty('dateTime', '2026-10-24T00:00:00.000Z')
@@ -55,8 +84,14 @@ it('retains manual drafts after a stale write and background refresh, and only r
   expect(screen.getByLabelText(label)).toHaveProperty('value', '0.4')
   expect(screen.getByLabelText(en.emotionReason)).toHaveProperty('value', 'A deliberate correction.')
   fireEvent.click(screen.getByRole('button', { name: en.emotionSaveAdjustment }))
-  await vi.waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
-  expect(adjust).toHaveBeenLastCalledWith({ current: status.emotion!.current, mood: status.emotion!.mood, needs: status.emotion!.needs, reason: 'A deliberate correction.' }, 7, expect.any(AbortSignal))
+  await vi.waitFor(() => {
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+  expect(adjust).toHaveBeenLastCalledWith(
+    { current: status.emotion!.current, mood: status.emotion!.mood, needs: status.emotion!.needs, reason: 'A deliberate correction.' },
+    7,
+    expect.any(AbortSignal),
+  )
 })
 
 it('edits persisted appraisal settings and validates recovery units before sending a revision-fenced save', async () => {
@@ -84,11 +119,24 @@ it('edits persisted appraisal settings and validates recovery units before sendi
   expect(saveSettings).not.toHaveBeenCalled()
   fireEvent.change(screen.getByLabelText('Valence mood half-life (hours)'), { target: { value: '2' } })
   fireEvent.click(screen.getByRole('button', { name: en.emotionSaveSettings }))
-  await vi.waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
-  expect(saveSettings).toHaveBeenLastCalledWith({ ...status.emotion!.settings, offlineChanges: false, moodEmotionScale: 0.4,
-    emotionMoodInfluence: 0.3, sensitivity: 0.5, enabled: false, windowTurns: 6,
-    shortHalfLifeMs: { ...status.emotion!.shortHalfLifeMs, happiness: 3600000 },
-    moodHalfLifeMs: { ...status.emotion!.moodHalfLifeMs, valence: 7200000 } }, 4, expect.any(AbortSignal))
+  await vi.waitFor(() => {
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+  expect(saveSettings).toHaveBeenLastCalledWith(
+    {
+      ...status.emotion!.settings,
+      offlineChanges: false,
+      moodEmotionScale: 0.4,
+      emotionMoodInfluence: 0.3,
+      sensitivity: 0.5,
+      enabled: false,
+      windowTurns: 6,
+      shortHalfLifeMs: { ...status.emotion!.shortHalfLifeMs, happiness: 3600000 },
+      moodHalfLifeMs: { ...status.emotion!.moodHalfLifeMs, valence: 7200000 },
+    },
+    4,
+    expect.any(AbortSignal),
+  )
 })
 
 it('keeps empty numeric drafts invalid and cancels an in-flight mutation when its editor closes', async () => {
@@ -111,7 +159,6 @@ it('keeps empty numeric drafts invalid and cancels an in-flight mutation when it
   await pending.promise
 })
 
-
 it('shows boredom separately from loneliness without changing the editable immediate emotions', () => {
   const { props, status } = fixture(true)
   status.emotion!.boredom = { level: 0.7, mode: 'idle', riseHalfLifeMs: 1800000, fallHalfLifeMs: 300000 }
@@ -119,4 +166,35 @@ it('shows boredom separately from loneliness without changing the editable immed
   expect(screen.getAllByRole('meter', { name: '无聊' })[0]?.getAttribute('value')).toBe('0.7')
   expect(screen.getByRole('meter', { name: zh['emotion.loneliness'] }).getAttribute('value')).toBe('0')
   expect(screen.getByText(zh.emotionBoredomHint)).toBeTruthy()
+})
+
+it('shows intimacy readings only while enabled and preserves independent emotion readings', () => {
+  const { props, status } = fixture(true)
+  const view = render(<EmotionPanel {...props} />)
+  expect(screen.queryByRole('meter', { name: zh.intimacyDesire })).toBeNull()
+  status.emotion!.intimacy = {
+    version: 1,
+    desire: 0.7,
+    attraction: 0.2,
+    selfUnderstanding: 'An uncertain preference.',
+    settings: {
+      enabled: true,
+      influenceExpression: true,
+      baseline: 0.5,
+      halfLifeMs: 3600000,
+      maxDelta: 0.15,
+      genderIdentity: 'unspecified',
+      sexualOrientation: 'unknown',
+      romanticOrientation: 'unknown',
+      boundaries: 'Adults only.',
+    },
+  }
+  view.rerender(<EmotionPanel {...props} />)
+  expect(screen.getByRole('meter', { name: zh.intimacyDesire })).toHaveProperty('value', 0.7)
+  expect(screen.getByRole('meter', { name: zh.intimacyAttraction })).toHaveProperty('value', 0.2)
+  expect(screen.getByText(/An uncertain preference/u)).toBeTruthy()
+  status.emotion!.intimacy.settings.enabled = false
+  view.rerender(<EmotionPanel {...props} />)
+  expect(screen.queryByRole('meter', { name: zh.intimacyDesire })).toBeNull()
+  expect(screen.getByText(zh.emotionCurrent)).toBeTruthy()
 })

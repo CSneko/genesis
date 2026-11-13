@@ -24,7 +24,7 @@ it('restricts proactive QQ targets to separate allowlists and refuses sends outs
   onTestFinished(() => store.close())
   const config = Config({ cwd: root, botQq: '11111', outboundGroups: ['67890'], proactiveUsers: ['12345'] })
   const messenger = new QqMessenger(fixture.ctx, config, store,
-    async () => { throw new Error('No destination should open before authorization.') }, async (_id, run) => run(), () => undefined)
+    async () => { throw new Error('No destination should open before authorization.') }, async (_id, run) => run(), () => ({ inputs: [], calls: {} }))
   let externalSends = 0
   const provider = messenger.initiativeProvider({
     directory: async kind => kind === 'private' ? [{ user_id: 12345, nickname: 'Allowed' }, { user_id: 99999, nickname: 'Other' }]

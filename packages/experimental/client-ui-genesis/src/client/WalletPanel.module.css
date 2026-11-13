@@ -1,0 +1,6 @@
+.form { display: grid; gap: 12px; min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid var(--dsw-alias-line-tertiary); border-radius: var(--dsw-radius-md); }
+.field { display: grid; gap: 8px; min-width: 0; }
+.form > button { justify-self: start; }
+.feedback { min-height: 32px; }
+.icon { position: relative; display: inline-flex; flex: none; }
+.dot { position: absolute; top: -2px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-state-error-primary); }

@@ -28,10 +28,15 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-genesis-weather": ["./packages/experimental/genesis-weather/src/index.ts"],
       "@deepseek-ai/dsh-experimental-client-ui-genesis": ["./packages/experimental/client-ui-genesis/src/index.ts"],
       "@deepseek-ai/dsh-experimental-client-ui-genesis/client": ["./packages/experimental/client-ui-genesis/src/client/index.ts"],
       "@deepseek-ai/dsh-experimental-genesis/types": ["./packages/experimental/genesis/src/status-types.ts"],
       "@deepseek-ai/dsh-experimental-genesis": ["./packages/experimental/genesis/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-genesis-mcp": ["./packages/experimental/genesis-mcp/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-genesis-mcp/types": ["./packages/experimental/genesis-mcp/src/types.ts"],
+      "@deepseek-ai/dsh-experimental-genesis-wallet": ["./packages/experimental/genesis-wallet/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-genesis-wallet/types": ["./packages/experimental/genesis-wallet/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-mail": ["./packages/experimental/genesis-mail/src/index.ts"],
       "@deepseek-ai/dsh-experimental-genesis-mail/types": ["./packages/experimental/genesis-mail/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-companion": ["./packages/experimental/genesis-companion/src/index.ts"],

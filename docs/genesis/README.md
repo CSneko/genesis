@@ -38,9 +38,10 @@ Use `pnpm dsh --no-genesis web` for ordinary Harness Web. This switch belongs on
 
 Workspace Genesis Web includes the [Bilibili integration](../../packages/experimental/genesis-bili-humanism/README.md). Restart the service with `pnpm dsh web`, then teach its exact tool names through `learn` in Life mode. No extra patch argument is required. The integration keeps upstream personality learning, scheduled fetching and platform writes disabled; Genesis owns the candidate experiences.
 
+<a id="browser-control"></a>
 ### Browser control
 
-Workspace Genesis Web enables the [Playwright browser bundle](../../packages/experimental/browser-use-playwright-mcp/README.md) by default. It connects to a dedicated Chrome running independently on the Genesis server at `http://127.0.0.1:9222`. In **Settings → Browser**, edit **Chrome debugging address** and save. The address is resolved on the server, not your local computer; HTTP(S) and WS(S) debugging URLs are accepted. Profile settings retain the address across restarts. Saving does not test connectivity. Restart Genesis after saving to reconnect the shared provider at the new address.
+Workspace Genesis Web enables the [Playwright browser bundle](../../packages/experimental/browser-use-playwright-mcp/README.md) by default. It connects to a dedicated Chrome running independently on the Genesis server at `http://127.0.0.1:9222`. In **Plugins → Genesis → Browser**, edit **Chrome debugging address** and save. The address is resolved on the server, not your local computer; HTTP(S) and WS(S) debugging URLs are accepted. Profile settings retain the address across restarts. Saving does not test connectivity. Restart Genesis after saving to reconnect the shared provider at the new address.
 
 On a Linux server with Chrome installed and an active graphical session, install the repository's user service:
 

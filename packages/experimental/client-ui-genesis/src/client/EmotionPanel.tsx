@@ -25,94 +25,259 @@ export type EmotionSample = NonNullable<LifeStatus['emotion']>
  * @param props - Framework resource seat, locale and authenticated actions.
  * @returns A wrapping Genesis emotion page that retains its last sample and open drafts on query failure.
  */
-export function EmotionPanel({ useResource, saveSettings, adjust, refresh, t }: PropsRuntime<'genesis.page'> &
-  PropsLocale<'genesis'> & InjectFace<EmotionActions>) {
+export function EmotionPanel({
+  useResource,
+  saveSettings,
+  adjust,
+  refresh,
+  t,
+}: PropsRuntime<'genesis.page'> & PropsLocale<'genesis'> & InjectFace<EmotionActions>) {
   const id = useId()
   const resource = useResource<'genesis'>('dsh-resource://genesis/status')
   const status = resource.value
   const emotion = status?.emotion
+  const intimacy = emotion?.intimacy
   const latestAppraisal = emotion?.history.find(entry => entry.appraisal !== undefined)?.appraisal
   const [editor, setEditor] = useState<'adjust' | 'settings'>()
-  const entries = (vector: AffectValues) => 'tenderness' in vector
-    ? currentFields.map(field => ({ field, value: vector[field] })) : 'valence' in vector
-      ? moodFields.map(field => ({ field, value: vector[field] })) : needsFields.map(field => ({ field, value: vector[field] }))
-  const values = (vector: AffectValues) => entries(vector).map(({ field, value }) => `${t(`emotion.${field}`)} ${Math.round(value * 100)}%`).join(' · ')
-  return <section className={`${css.panel} ${emotionCss.content}`} aria-labelledby={`${id}-title`}>
-    <header className={css.header}>
-      <h3 id={`${id}-title`}>{t('emotionTitle')}</h3>
-      <Button variant="outline" size="sm" onClick={refresh} disabled={resource.status === 'loading'}>{t('refresh')}</Button>
-    </header>
-    <p className={css.secondary}>{t('emotionDescription')}</p>
-    {resource.status === 'loading' && status === undefined ? <div className={css.loading} role="status" aria-label={t('emotionTitle')}><StateDot state="ongoing" /></div> : null}
-    {resource.status === 'failed' ? <p role="alert">{t('failed')}</p> : null}
-    {resource.status === 'none' ? <p role="status">{t('unavailable')}</p> : null}
-    {status === undefined || emotion !== undefined ? null : <p role="status">{t('emotionUnavailable')}</p>}
-    {status === undefined || emotion === undefined ? null : <>
-      <div className={css.header}>
-        <p className={css.status}><StateDot state={emotion.settings.enabled ? 'done' : 'idle'} />
-          {t(emotion.settings.enabled ? 'emotionAutomaticOn' : 'emotionAutomaticOff')}</p>
-        <div className={css.actions}>
-          <Button variant="outline" size="sm" onClick={() => { setEditor('adjust') }}>{t('emotionAdjust')}</Button>
-          <Button variant="outline" size="sm" onClick={() => { setEditor('settings') }}>{t('emotionSettings')}</Button>
+  const entries = (vector: AffectValues) =>
+    'tenderness' in vector
+      ? currentFields.map(field => ({ field, value: vector[field] }))
+      : 'valence' in vector
+        ? moodFields.map(field => ({ field, value: vector[field] }))
+        : needsFields.map(field => ({ field, value: vector[field] }))
+  const values = (vector: AffectValues) =>
+    entries(vector)
+      .map(({ field, value }) => `${t(`emotion.${field}`)} ${Math.round(value * 100)}%`)
+      .join(' · ')
+  return (
+    <section className={`${css.panel} ${emotionCss.content}`} aria-labelledby={`${id}-title`}>
+      <header className={css.header}>
+        <h3 id={`${id}-title`}>{t('emotionTitle')}</h3>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={resource.status === 'loading'}>
+          {t('refresh')}
+        </Button>
+      </header>
+      <p className={css.secondary}>{t('emotionDescription')}</p>
+      {resource.status === 'loading' && status === undefined ? (
+        <div className={css.loading} role="status" aria-label={t('emotionTitle')}>
+          <StateDot state="ongoing" />
         </div>
-      </div>
-      <div className={emotionCss.readings}>
-        {(['current', 'mood', 'needs'] as const).map(layer => <section key={layer} className={emotionCss.card} aria-labelledby={`${id}-${layer}`}>
-          <h4 id={`${id}-${layer}`}>{t(layer === 'current' ? 'emotionCurrent' : layer === 'mood' ? 'emotionMood' : 'emotionNeeds')}</h4>
-          <p className={css.secondary}>{t(layer === 'current' ? 'emotionCurrentHint' : layer === 'mood' ? 'emotionMoodHint' : 'emotionNeedsHint')}</p>
-          <dl className={emotionCss.meters}>
-            {entries(emotion[layer]).map(({ field, value }) => <div key={field}>
-              <dt id={`${id}-${layer}-${field}`}>{t(`emotion.${field}`)}</dt>
-              <dd><meter aria-labelledby={`${id}-${layer}-${field}`} min={field === 'valence' ? -1 : 0} max={1} value={value} />
-                <span>{Math.round(value * 100)}%</span></dd>
-            </div>)}
-          </dl>
-        </section>)}
-        {emotion.boredom === undefined ? null : <section className={emotionCss.card} aria-labelledby={`${id}-boredom`}>
-          <h4 id={`${id}-boredom`}>{t('emotion.boredom')}</h4>
-          <p className={css.secondary}>{t('emotionBoredomHint')}</p>
-          <dl className={emotionCss.meters}><div>
-            <dt id={`${id}-boredom-level`}>{t('emotion.boredom')}</dt>
-            <dd><meter aria-labelledby={`${id}-boredom-level`} min={0} max={1} value={emotion.boredom.level} />
-              <span>{Math.round(emotion.boredom.level * 100)}%</span></dd>
-          </div></dl>
-        </section>}
-      </div>
-      <p className={css.secondary}>{t('sampled')}{' '}<time dateTime={status.sampledAt}>{new Date(status.sampledAt).toLocaleString()}</time></p>
-      {emotion.review === undefined ? <p>{t('emotionNotReviewed')}</p> : emotion.review.state === 'failed'
-        ? <p role="alert">{t('emotionReviewFailed', { stage: t(`emotionStage.${emotion.review.failure.stage}`), reason: emotion.review.failure.message })}</p>
-        : <p role="status">{t(emotion.review.state === 'saved' ? 'emotionReviewSaved' : 'emotionReviewSkipped')}</p>}
-      {emotion.review === undefined ? null : <ReviewDetails review={emotion.review} t={t} />}
-      {latestAppraisal === undefined ? null : <section className={emotionCss.card}>
-        <h4>{t('emotionAppraisal')}</h4>
-        <p>{latestAppraisal.summary}</p>
-        <p className={css.secondary}>{t('appraisalInference')}</p>
-      </section>}
-      <h4>{t('emotionHistory')}</h4>
-      <ul className={css.records}>{emotion.history.map(entry => <li key={entry.id}>
-        <div className={css.header}><span>{t(`emotionHistory.${entry.kind}`)} · {t(`emotionSource.${entry.source}`)}</span>
-          <time className={css.secondary} dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time></div>
-        {entry.appraisal === undefined ? null : <p className={css.secondary}>{t(`appraisalKind.${entry.appraisal.kind}`)} · {t('appraisalImportance', { value: Math.round(entry.appraisal.importance * 100) })}</p>}
-        {entry.reason && entry.reason !== 'operator-settings' ? <p>{entry.reason}</p> : null}
-        <details><summary>{t('emotionHistoryValues')}</summary>
-          <p>{t('emotionCurrent')}: {values(entry.current)}</p><p>{t('emotionMood')}: {values(entry.mood)}</p><p>{t('emotionNeeds')}: {values(entry.needs)}</p>
-          {entry.targets === undefined ? null : <p>{currentFields.filter(field => entry.targets?.[field] !== undefined).map(field => `${t(`emotion.${field}`)}: ${entry.targets![field]}`).join(' · ')}</p>}
-          {entry.appraisal === undefined ? null : <>
-            <p>{t('appraisalDimensions', { novelty: Math.round(entry.appraisal.novelty * 100), expected: entry.appraisal.expectationMatch.toFixed(2),
-              control: Math.round(entry.appraisal.controllability * 100), confidence: Math.round(entry.appraisal.confidence * 100) })}</p>
-            <p>{t('appraisalAttribution', { meaning: t(`appraisalMeaning.${entry.appraisal.relationshipMeaning}`), responsibility: t(`appraisalResponsibility.${entry.appraisal.responsibility}`) })}</p>
-          </>}
-          {entry.effects?.moodEligible === false ? <p className={css.secondary}>{t('appraisalMoodDeferred')}</p> : null}
-          {entry.effects?.repeated ? <p className={css.secondary}>{t('appraisalRepeated')}</p> : null}
-          {entry.sourceEventIds.length ? <p className={css.secondary}>{t('source')}: {entry.sourceEventIds.join(', ')}</p> : null}
-        </details>
-      </li>)}</ul>
-      {emotion.history.length === 0 ? <p>{t('emotionEmptyHistory')}</p> : null}
-      {emotion.omitted ? <p className={css.secondary}>{t('omitted', { count: emotion.omitted })}</p> : null}
-      {editor === 'adjust' ? <EmotionEditor initial={emotion} latest={emotion} adjust={adjust} t={t}
-        close={() => { setEditor(undefined) }} saved={() => { setEditor(undefined); refresh() }} /> : null}
-      {editor === 'settings' ? <EmotionSettingsEditor initial={emotion} latest={emotion} saveSettings={saveSettings} t={t}
-        close={() => { setEditor(undefined) }} saved={() => { setEditor(undefined); refresh() }} /> : null}
-    </>}
-  </section>
+      ) : null}
+      {resource.status === 'failed' ? <p role="alert">{t('failed')}</p> : null}
+      {resource.status === 'none' ? <p role="status">{t('unavailable')}</p> : null}
+      {status === undefined || emotion !== undefined ? null : <p role="status">{t('emotionUnavailable')}</p>}
+      {status === undefined || emotion === undefined ? null : (
+        <>
+          <div className={css.header}>
+            <p className={css.status}>
+              <StateDot state={emotion.settings.enabled ? 'done' : 'idle'} />
+              {t(emotion.settings.enabled ? 'emotionAutomaticOn' : 'emotionAutomaticOff')}
+            </p>
+            <div className={css.actions}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditor('adjust')
+                }}
+              >
+                {t('emotionAdjust')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditor('settings')
+                }}
+              >
+                {t('emotionSettings')}
+              </Button>
+            </div>
+          </div>
+          <div className={emotionCss.readings}>
+            {(['current', 'mood', 'needs'] as const).map(layer => (
+              <section key={layer} className={emotionCss.card} aria-labelledby={`${id}-${layer}`}>
+                <h4 id={`${id}-${layer}`}>
+                  {t(layer === 'current' ? 'emotionCurrent' : layer === 'mood' ? 'emotionMood' : 'emotionNeeds')}
+                </h4>
+                <p className={css.secondary}>
+                  {t(layer === 'current' ? 'emotionCurrentHint' : layer === 'mood' ? 'emotionMoodHint' : 'emotionNeedsHint')}
+                </p>
+                <dl className={emotionCss.meters}>
+                  {entries(emotion[layer]).map(({ field, value }) => (
+                    <div key={field}>
+                      <dt id={`${id}-${layer}-${field}`}>{t(`emotion.${field}`)}</dt>
+                      <dd>
+                        <meter aria-labelledby={`${id}-${layer}-${field}`} min={field === 'valence' ? -1 : 0} max={1} value={value} />
+                        <span>{Math.round(value * 100)}%</span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
+            {emotion.boredom === undefined ? null : (
+              <section className={emotionCss.card} aria-labelledby={`${id}-boredom`}>
+                <h4 id={`${id}-boredom`}>{t('emotion.boredom')}</h4>
+                <p className={css.secondary}>{t('emotionBoredomHint')}</p>
+                <dl className={emotionCss.meters}>
+                  <div>
+                    <dt id={`${id}-boredom-level`}>{t('emotion.boredom')}</dt>
+                    <dd>
+                      <meter aria-labelledby={`${id}-boredom-level`} min={0} max={1} value={emotion.boredom.level} />
+                      <span>{Math.round(emotion.boredom.level * 100)}%</span>
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            )}
+            {intimacy?.settings.enabled ? (
+              <section className={`${emotionCss.card} ${emotionCss.intimacy}`} aria-labelledby={`${id}-intimacy`}>
+                <h4 id={`${id}-intimacy`}>{t('intimacyTitle')}</h4>
+                <p className={css.secondary}>{t('intimacyHint')}</p>
+                <dl className={emotionCss.meters}>
+                  {(['desire', 'attraction'] as const).map(field => (
+                    <div key={field}>
+                      <dt id={`${id}-intimacy-${field}`}>{t(field === 'desire' ? 'intimacyDesire' : 'intimacyAttraction')}</dt>
+                      <dd>
+                        <meter aria-labelledby={`${id}-intimacy-${field}`} min={0} max={1} value={intimacy[field]} />
+                        <span>{Math.round(intimacy[field] * 100)}%</span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {intimacy.selfUnderstanding ? (
+                  <p>
+                    {t('intimacyInterpretation')}: {intimacy.selfUnderstanding}
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+          </div>
+          <p className={css.secondary}>
+            {t('sampled')} <time dateTime={status.sampledAt}>{new Date(status.sampledAt).toLocaleString()}</time>
+          </p>
+          {emotion.review === undefined ? (
+            <p>{t('emotionNotReviewed')}</p>
+          ) : emotion.review.state === 'failed' ? (
+            <p role="alert">
+              {t('emotionReviewFailed', {
+                stage: t(`emotionStage.${emotion.review.failure.stage}`),
+                reason: emotion.review.failure.message,
+              })}
+            </p>
+          ) : (
+            <p role="status">{t(emotion.review.state === 'saved' ? 'emotionReviewSaved' : 'emotionReviewSkipped')}</p>
+          )}
+          {emotion.review === undefined ? null : <ReviewDetails review={emotion.review} t={t} />}
+          {latestAppraisal === undefined ? null : (
+            <section className={emotionCss.card}>
+              <h4>{t('emotionAppraisal')}</h4>
+              <p>{latestAppraisal.summary}</p>
+              <p className={css.secondary}>{t('appraisalInference')}</p>
+            </section>
+          )}
+          <h4>{t('emotionHistory')}</h4>
+          <ul className={css.records}>
+            {emotion.history.map(entry => (
+              <li key={entry.id}>
+                <div className={css.header}>
+                  <span>
+                    {t(`emotionHistory.${entry.kind}`)} · {t(`emotionSource.${entry.source}`)}
+                  </span>
+                  <time className={css.secondary} dateTime={entry.timestamp}>
+                    {new Date(entry.timestamp).toLocaleString()}
+                  </time>
+                </div>
+                {entry.appraisal === undefined ? null : (
+                  <p className={css.secondary}>
+                    {t(`appraisalKind.${entry.appraisal.kind}`)} ·{' '}
+                    {t('appraisalImportance', { value: Math.round(entry.appraisal.importance * 100) })}
+                  </p>
+                )}
+                {entry.reason && entry.reason !== 'operator-settings' ? <p>{entry.reason}</p> : null}
+                <details>
+                  <summary>{t('emotionHistoryValues')}</summary>
+                  <p>
+                    {t('emotionCurrent')}: {values(entry.current)}
+                  </p>
+                  <p>
+                    {t('emotionMood')}: {values(entry.mood)}
+                  </p>
+                  <p>
+                    {t('emotionNeeds')}: {values(entry.needs)}
+                  </p>
+                  {entry.targets === undefined ? null : (
+                    <p>
+                      {currentFields
+                        .filter(field => entry.targets?.[field] !== undefined)
+                        .map(field => `${t(`emotion.${field}`)}: ${entry.targets?.[field]}`)
+                        .join(' · ')}
+                    </p>
+                  )}
+                  {entry.appraisal === undefined ? null : (
+                    <>
+                      <p>
+                        {t('appraisalDimensions', {
+                          novelty: Math.round(entry.appraisal.novelty * 100),
+                          expected: entry.appraisal.expectationMatch.toFixed(2),
+                          control: Math.round(entry.appraisal.controllability * 100),
+                          confidence: Math.round(entry.appraisal.confidence * 100),
+                        })}
+                      </p>
+                      <p>
+                        {t('appraisalAttribution', {
+                          meaning: t(`appraisalMeaning.${entry.appraisal.relationshipMeaning}`),
+                          responsibility: t(`appraisalResponsibility.${entry.appraisal.responsibility}`),
+                        })}
+                      </p>
+                    </>
+                  )}
+                  {entry.effects?.moodEligible === false ? <p className={css.secondary}>{t('appraisalMoodDeferred')}</p> : null}
+                  {entry.effects?.repeated ? <p className={css.secondary}>{t('appraisalRepeated')}</p> : null}
+                  {entry.sourceEventIds.length ? (
+                    <p className={css.secondary}>
+                      {t('source')}: {entry.sourceEventIds.join(', ')}
+                    </p>
+                  ) : null}
+                </details>
+              </li>
+            ))}
+          </ul>
+          {emotion.history.length === 0 ? <p>{t('emotionEmptyHistory')}</p> : null}
+          {emotion.omitted ? <p className={css.secondary}>{t('omitted', { count: emotion.omitted })}</p> : null}
+          {editor === 'adjust' ? (
+            <EmotionEditor
+              initial={emotion}
+              latest={emotion}
+              adjust={adjust}
+              t={t}
+              close={() => {
+                setEditor(undefined)
+              }}
+              saved={() => {
+                setEditor(undefined)
+                refresh()
+              }}
+            />
+          ) : null}
+          {editor === 'settings' ? (
+            <EmotionSettingsEditor
+              initial={emotion}
+              latest={emotion}
+              saveSettings={saveSettings}
+              t={t}
+              close={() => {
+                setEditor(undefined)
+              }}
+              saved={() => {
+                setEditor(undefined)
+                refresh()
+              }}
+            />
+          ) : null}
+        </>
+      )}
+    </section>
+  )
 }

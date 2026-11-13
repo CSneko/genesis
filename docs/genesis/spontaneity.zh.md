@@ -50,11 +50,10 @@ pnpm dsh web --patch packages/experimental/genesis/cordis.spontaneity.patch.yml
 | --- | --- | --- |
 | `idleMs` | 60000 | 对话空闲后的安静等待时间。 |
 | `maxDurationMs` | 180000 | 包含评审的整次机会期限。 |
-| `maxOutputTokens` | 32768 | 主模型、辅助调用及重试共同预留的最大请求输出 Token。 |
-| `requestTokens` | 2048 | 每次主模型调用的最大请求输出。 |
-| `maxRequests` | 6 | 联想与探索合计的主模型请求次数，包含重试。 |
-| `maxToolCalls` | 12 | 接纳的工具调用次数，包含念头编辑和回忆。 |
+| `maxOutputTokens` | 50000000（50M） | 主模型、辅助调用及重试共同预留的最大请求输出 Token。 |
 | `maxPer24Hours` | 6 | 滚动二十四小时内的机会次数。 |
+
+念头页面按 M token（1M = 1,000,000 token）显示和编辑总预算，默认 50M，可设置更大的值。`cordis.yml` 和设置接口中的 `maxOutputTokens` 仍使用整数 token，范围为 1～9,007,199,254,740,991；已有保存值保持原单位与额度。主动认知不额外设置单次输出、请求次数或工具调用次数上限；主模型使用其路由配置或服务声明的默认输出上限，服务未声明时由剩余总预算限定。整次机会期限、每日机会次数、工具授权与停止控制继续生效。
 
 模型实际输出较少时不会退回预留额度。输入 Token 受既有上下文限制，但不计入此输出额度；这不是精确的总账单上限。额度耗尽会在下一次调用前拒绝依赖工作。`contextChars` 限制序列化后的念头和近期对话选择；`maxRecords` 与 `maxStateChars` 限制完整念头存储。`experienceImportance` 控制情节凭据的重要性。
 

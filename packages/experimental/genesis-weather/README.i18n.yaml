@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-weather/README.md
+/:
+  en: 0ecb0ae34521a2a2
+  zh: 9befd2a3da6d3841
+/deepseek-ai-dsh-genesis-weather:
+  en: 1faeb62cfa2d2c19
+  zh: 856668d9ff4205ec
+/deepseek-ai-dsh-genesis-weather/summary:
+  en: 506405cef096d5d8
+  zh: dc021ea2c53b2ce1
+/deepseek-ai-dsh-genesis-weather/table-of-contents:
+  en: a81d45cf0e48b04b
+  zh: 87640924b8b47f2e
+/deepseek-ai-dsh-genesis-weather/use:
+  en: 4e7729f6e07cfe99
+  zh: aed0da0cc94dfcb7
+/deepseek-ai-dsh-genesis-weather/configuration-and-recovery:
+  en: 82c108a57e82352a
+  zh: 7823a4e9ec6798f6
+/deepseek-ai-dsh-genesis-weather/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-genesis-weather/model-experience/weather-tool-and-context:
+  en: 754167acfc482bfc
+  zh: d079bbf48ea770fe
+/deepseek-ai-dsh-genesis-weather/model-experience/weather-tool-and-context/what-the-model-sees:
+  en: 8e819072b2b7b5f3
+  zh: a48d30aefa39a2b4
+/deepseek-ai-dsh-genesis-weather/model-experience/weather-tool-and-context/token-effect:
+  en: 333cfc741a27ce10
+  zh: 401a42e1a9e460e7
+/deepseek-ai-dsh-genesis-weather/model-experience/weather-tool-and-context/kv-cache-effect:
+  en: 75afe44ac9a2e8b6
+  zh: 9ebbfcab16e38509
+/deepseek-ai-dsh-genesis-weather/known-limitations-and-deferred-work:
+  en: c27e1f38d605518f
+  zh: 15310f106c4d648f
+/deepseek-ai-dsh-genesis-weather/dev-note:
+  en: e6cc186e78dde60a
+  zh: 45e76642489dcc3c

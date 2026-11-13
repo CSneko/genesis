@@ -28,3 +28,10 @@
   .meters > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .meters dd { gap: 4px; }
 }
+
+.meters meter { appearance: none; height: 8px; border: 0; border-radius: 4px; overflow: hidden; background: var(--dsw-alias-bg-layer-2); }
+.meters meter::-webkit-meter-bar { background: var(--dsw-alias-bg-layer-2); border: 0; border-radius: 4px; }
+.meters meter::-webkit-meter-optimum-value { background: var(--dsw-alias-state-success-primary); }
+.meters meter::-moz-meter-bar { background: var(--dsw-alias-state-success-primary); }
+.intimacy meter::-webkit-meter-optimum-value { background: #ec4899; }
+.intimacy meter::-moz-meter-bar { background: #ec4899; }

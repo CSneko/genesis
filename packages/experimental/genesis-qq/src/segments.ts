@@ -1,5 +1,7 @@
 /** OneBot segment parsing retains CQ escapes without treating wire metadata as instructions. @module */
 import { z } from 'zod'
+import { required } from './required.ts'
+import { GenesisError } from '@deepseek-ai/dsh-experimental-genesis'
 const segment = z.looseObject({ type: z.string().max(40), data: z.record(z.string(), z.unknown()) })
 /** Validated wire segment; individual fields are parsed by their consumer. */
 export type WireSegment = z.infer<typeof segment>
@@ -16,11 +18,13 @@ export function segments(message: string | unknown[]): WireSegment[] {
   for (const match of message.matchAll(/\[CQ:([a-zA-Z_]+)((?:,[^\]]*)?)\]/gu)) {
     if (match.index > offset) result.push({ type: 'text', data: { text: unescapeCq(message.slice(offset, match.index)) } })
     const data: Record<string, unknown> = {}
-    for (const field of match[2]!.split(',').slice(1)) {
+    const encodedFields = required(match[2], new GenesisError('invalid-state', 'OneBot segment fields are missing.'))
+    for (const field of encodedFields.split(',').slice(1)) {
       const split = field.indexOf('=')
       if (split > 0) data[field.slice(0, split)] = unescapeCq(field.slice(split + 1))
     }
-    result.push({ type: match[1]!, data }); offset = match.index + match[0].length
+    result.push({ type: required(match[1], new GenesisError('invalid-state', 'OneBot segment type is missing.')), data })
+    offset = match.index + match[0].length
   }
   if (offset < message.length) result.push({ type: 'text', data: { text: unescapeCq(message.slice(offset)) } })
   return result
@@ -31,6 +35,11 @@ export function segments(message: string | unknown[]): WireSegment[] {
  * @returns Labels without bearer URLs or local paths.
  */
 export function segmentLabels(message: string | unknown[]): string {
-  return segments(message).flatMap(part => ['image', 'mface', 'video', 'file', 'face', 'reply'].includes(part.type)
-    ? [`[${part.type}${part.type === 'face' && /^\d+$/u.test(String(part.data['id'])) ? `:${String(part.data['id'])}` : ''}]`] : []).join(' ')
+  return segments(message)
+    .flatMap(part =>
+      ['image', 'mface', 'video', 'file', 'face', 'reply', 'forward'].includes(part.type)
+        ? [`[${part.type}${part.type === 'face' && /^\d+$/u.test(String(part.data['id'])) ? `:${String(part.data['id'])}` : ''}]`]
+        : [],
+    )
+    .join(' ')
 }

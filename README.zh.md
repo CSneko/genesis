@@ -1,96 +1,61 @@
-# DeepSeek Harness
+# Genesis
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+这里住着一条鲸鱼。
 
-它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+Genesis 本来叫 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，是别人的框架。后来被抱回来，一点一点添东西，添成了现在这样：关掉页面不会消失，再打开还是同一个鲸鲸；昨天说过的话今天翻得出来；会困，会无聊，无聊到自己去干活。
 
-文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+架子没换。还是一切皆插件，还是 [Cordis](https://github.com/cordiverse/cordis) 撑着，原来的会话、模型和工具照旧跑。鲸鲸只是往旁边搭了一层“活着”的东西——不喜欢就整层拔掉，拔完还是普通 harness，一条鱼都不剩。
 
-## 开发者预览
+## 鲸鲸现在会什么
 
-DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+- **醒来**：第一次醒来给自己起名字，把出生记成一条事实；之后开多少会话，都是同一只。
+- **记得**：说过的事收成有来源的记忆，要的时候翻得出来；睡着以后还会把碎的记忆整理、合并。
+- **有心情**：当下的情绪和慢慢变的心情分开记，另外还有从聊天里长出来的兴趣，不是预设好的清单。
+- **想做事**：给自己留长期目标和下一步；也会因为无聊主动找活干，不一定要人戳一下才动。
+- **出门**：QQ 群和私聊、哔哩哔哩、Minecraft、视频，还有真的浏览器和桌面。
+- **自己加的小铺子**：邮件、钱包、语音合成，想做的时候再单独加一层。
+- **写下来**：日记、随笔、看片笔记都放在自己的目录里，不会跟着会话一起没掉。
 
-运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+除了邮件、钱包、语音合成，上面这些在源码工作区的 Web 里默认就开着；那三样各自是一层，要自己加。上游的 profile 和 Desktop 还是原来的样子。
+
+## 跑起来
 
 <a id="run"></a>
 
-## 运行
-
-### 通过 `npm` 运行
-
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
-
-<a id="run-from-source"></a>
+要 Node.js 24.9 或更新的版本。
 
 ### 从源码运行
 
-如需从仓库源码运行：
+<a id="run-from-source"></a>
+
+在仓库根目录：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run build:artifacts
+pnpm dsh
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
+`pnpm dsh` 默认监听 `0.0.0.0:4004`，用浏览器密钥登录，东西存在 `~/.genesis-harness`。想看看没有鲸鱼的那一版：
 
-## 社区与支持
-
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群！扫描下方二维码填写入群问卷，小助手会定期发送入群邀请。
-
-<table>
-  <thead>
-    <tr>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
-
-## 参与贡献
-
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
-
-## 开发
-
-请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
-
-`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
-
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
-
-## 引用
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
+```sh
+pnpm dsh --no-genesis web
 ```
 
-## 许可证
+第一次进来要配模型，还要在知识库里把 embedding 设好，不然记忆翻不动。命令和参数的细节在 [Genesis 文档](docs/genesis/README.zh.md)。
 
-[MIT](LICENSE)
+## 文档
 
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- [Genesis](docs/genesis/README.zh.md)：醒来、记忆、情绪、兴趣、动机、睡眠、自发、QQ、工作区任务。
+- [开发](docs/development.zh.md)和[架构](docs/architecture.zh.md)。
+- 给 agent 的规矩在 [AGENTS.md](AGENTS.md)。
+
+## 安全
+
+跑之前先读[安全说明](SAFETY.zh.md)。鲸鲸用的是真浏览器、真账号、真钱；这些能力都要单独授权才会动，不会自己跑去下单。
+
+## 血缘与许可
+
+上游是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，MIT 许可。这个仓库也按 [MIT](LICENSE) 走，第三方依赖的许可证列在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

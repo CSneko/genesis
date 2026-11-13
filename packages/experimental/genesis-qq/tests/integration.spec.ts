@@ -1,5 +1,7 @@
 declare module '@deepseek-ai/dsh-typert-protocol' {
-  interface PrincipalMap { 'test-guest': { readonly kind: 'test-guest'; readonly guest: string } }
+  interface PrincipalMap {
+    'test-guest': { readonly kind: 'test-guest'; readonly guest: string }
+  }
 }
 import type { ToolkitId } from '@deepseek-ai/dsh-experimental-genesis/types'
 import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
@@ -9,7 +11,14 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
-import { LlmAdapter, type GenerateOptions, type StreamChunk, ToolCallId, createUserMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import {
+  LlmAdapter,
+  type GenerateOptions,
+  type StreamChunk,
+  ToolCallId,
+  createUserMessage,
+  createToolResultMessage,
+} from '@deepseek-ai/dsh-llm'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,7 +50,11 @@ const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
   const errors: unknown[] = []
   for (const dispose of cleanup.splice(0).reverse()) {
-    try { await dispose() } catch (error) { errors.push(error) }
+    try {
+      await dispose()
+    } catch (error) {
+      errors.push(error)
+    }
   }
   if (errors.length) throw new AggregateError(errors, 'QQ integration teardown')
 })
@@ -49,6 +62,7 @@ const token = 'fixture-onebot-access-token'
 class Model extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
   temporaryGate: (() => Promise<void>) | undefined
+  chatGate: (() => Promise<void>) | undefined
   temporaryMaxTokens = false
   groupReply = false
   groupProbability: number | undefined
@@ -58,9 +72,19 @@ class Model extends LlmAdapter {
   communication: Array<Record<string, string>> = []
   communicationCalls = 0
   chatInputTokens: number | undefined
-  override async resolveModel(provider: string, model: string) { return { provider, id: model, name: model, defaultMaxTokens: 256000, inputModalities: ['text', 'image'] as Array<'text' | 'image'>, context: { contextWindow: 1000000 } } }
+  override async resolveModel(provider: string, model: string) {
+    return {
+      provider,
+      id: model,
+      name: model,
+      defaultMaxTokens: 256000,
+      inputModalities: ['text', 'image'] as Array<'text' | 'image'>,
+      context: { contextWindow: 1000000 },
+    }
+  }
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
+    if (options.model === 'chat') await this.chatGate?.()
     if (options.model === 'chat' && this.communication.length) {
       const args = this.communication.shift()!
       if (args['id'] === '$last') {
@@ -68,8 +92,12 @@ class Model extends LlmAdapter {
         const block = result?.content.find(block => block.type === 'text')
         args['id'] = z.object({ id: z.string() }).parse(JSON.parse(block?.type === 'text' ? block.text : '{}')).id
       }
-      const block = { type: 'tool-call' as const, id: ToolCallId(`qq-communicate-${++this.communicationCalls}`),
-        name: 'genesis_message', arguments: JSON.stringify(args) }
+      const block = {
+        type: 'tool-call' as const,
+        id: ToolCallId(`qq-communicate-${++this.communicationCalls}`),
+        name: 'genesis_message',
+        arguments: JSON.stringify(args),
+      }
       yield { type: 'block-start', index: 0, blockType: 'tool-call' }
       yield { type: 'tool-call-delta', index: 0, id: block.id, name: block.name, argumentsDelta: block.arguments }
       yield { type: 'block-end', index: 0, block }
@@ -77,7 +105,12 @@ class Model extends LlmAdapter {
       return
     }
     if (options.model === 'chat' && this.nextMediaMessageId !== undefined) {
-      const block = { type: 'tool-call' as const, id: ToolCallId(`read-earlier-qq-image-${this.nextMediaMessageId}`), name: 'genesis_qq_read_media', arguments: JSON.stringify({ messageId: this.nextMediaMessageId }) }
+      const block = {
+        type: 'tool-call' as const,
+        id: ToolCallId(`read-earlier-qq-image-${this.nextMediaMessageId}`),
+        name: 'genesis_qq_read_media',
+        arguments: JSON.stringify({ messageId: this.nextMediaMessageId }),
+      }
       this.nextMediaMessageId = undefined
       yield { type: 'block-start', index: 0, blockType: 'tool-call' }
       yield { type: 'tool-call-delta', index: 0, id: block.id, name: block.name, argumentsDelta: block.arguments }
@@ -88,48 +121,100 @@ class Model extends LlmAdapter {
     if (typeof options.system === 'string' && options.system.startsWith('将提供的按顺序对话')) await this.temporaryGate?.()
     const groupDecision = typeof options.system === 'string' && options.system.startsWith('Should the character reply')
     if (groupDecision && this.groupDecisionFailure) throw new Error('fixture decision unavailable')
-    const text = groupDecision ? JSON.stringify({ update: this.groupReply, ...(this.groupProbability === undefined ? {} : { decision: { probability: this.groupProbability, threshold: 0.5 } }) }) : typeof options.system === 'string' && options.system.startsWith('将提供的按顺序对话')
-      ? '{"summary":"这是一条有来源的临时交流摘要，模型的解释尚未核实。"}'
-      : typeof options.system === 'string' && options.system.includes('只评估一次') ? '{"importance":0.8}'
-        : options.model === 'chat' ? this.chatReply : '{"update":false}'
+    const text = groupDecision
+      ? JSON.stringify({
+        update: this.groupReply,
+        ...(this.groupProbability === undefined ? {} : { decision: { probability: this.groupProbability, threshold: 0.5 } }),
+      })
+      : typeof options.system === 'string' && options.system.startsWith('将提供的按顺序对话')
+        ? '{"summary":"这是一条有来源的临时交流摘要，模型的解释尚未核实。"}'
+        : typeof options.system === 'string' && options.system.includes('只评估一次')
+          ? '{"importance":0.8}'
+          : options.model === 'chat'
+            ? this.chatReply
+            : '{"update":false}'
     yield { type: 'block-start', index: 0, blockType: 'text' }
     yield { type: 'text-delta', index: 0, text }
     yield { type: 'block-end', index: 0, block: { type: 'text', text } }
-    if (options.model === 'chat' && this.chatInputTokens !== undefined) yield { type: 'usage', usage: { inputTokens: this.chatInputTokens, outputTokens: 10 } }
-    yield { type: 'finish', reason: { kind: typeof options.system === 'string' && options.system.startsWith('将提供的按顺序对话') && this.temporaryMaxTokens ? 'max-tokens' : 'stop' } }
+    if (options.model === 'chat' && this.chatInputTokens !== undefined)
+      yield { type: 'usage', usage: { inputTokens: this.chatInputTokens, outputTokens: 10 } }
+    yield {
+      type: 'finish',
+      reason: {
+        kind:
+          typeof options.system === 'string' && options.system.startsWith('将提供的按顺序对话') && this.temporaryMaxTokens
+            ? 'max-tokens'
+            : 'stop',
+      },
+    }
   }
 }
-async function boot(root: string, settingsOnly = false, temporary = false, writings = false, messaging = false) {
+async function boot(root: string, settingsOnly = false, temporary = false, writings = false, messaging = false, batching = false) {
   const path = join(root, 'cordis.yml')
-  await writeFile(path, [
-    "- name: '@deepseek-ai/dsh-credentials-local'", `  config: { path: ${JSON.stringify(join(root, '.credentials.yaml'))}, watch: false }`,
-    "- name: '@deepseek-ai/dsh-attachment-local'", `  config: { dshHome: ${JSON.stringify(root)} }`,
-    "- name: '@deepseek-ai/dsh-llm'", "- name: '@deepseek-ai/dsh-session'",
-    "- name: '@deepseek-ai/dsh-session-title'", '  config: { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 }',
-    "- name: '@deepseek-ai/dsh-workspace'",
-    "- name: '@deepseek-ai/dsh-token-meter'", "- name: '@deepseek-ai/dsh-compaction-basic'", '  disabled: true',
-    "- name: '@deepseek-ai/dsh-session-projection'", "- name: '@deepseek-ai/dsh-system-prompt'",
-    "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-tool-executor-native'", "- name: '@deepseek-ai/dsh-agent'",
-    "- name: '@deepseek-ai/dsh-storage'", "- name: '@deepseek-ai/dsh-storage-json'", `  config: { root: ${JSON.stringify(root)} }`,
-    "- name: '@deepseek-ai/dsh-storage-domain'", '  config: { backend: json }',
-    "- name: '@deepseek-ai/dsh-sandbox-policy'", `  config: { mode: read-only, workspaceRoot: ${JSON.stringify(root)} }`,
-    "- name: '@deepseek-ai/dsh-agent-preset-registry'", '  config: { default: life }',
-    "- name: '@deepseek-ai/dsh-agent-preset'", '  config:', '    id: life', '    plugins:',
-    '      - id: compaction', '        name: cordis:group', '        group: true', '        isolate: { compaction: true }',
-    '        config:', "          - name: '@deepseek-ai/dsh-compaction-basic'",
-    "- name: '@deepseek-ai/dsh-agent-default-model'", '  config: { provider: fixture, model: chat }',
-    "- name: '@deepseek-ai/dsh-session-persistence-jsonl'", `  config: { root: ${JSON.stringify(join(root, 'sessions'))}, compression: none }`,
-    "- name: '@deepseek-ai/dsh-agent-loop'", '  config: { agents: [] }',
-    "- name: '@deepseek-ai/dsh-experimental-genesis'", '  config:', `    leasePath: ${JSON.stringify(join(root, 'life.lock'))}`,
-    '    awakening: { provider: fixture, model: chat, lifePreset: life }',
-    '    memory: { decisionProvider: fixture, decisionModel: decision, writerProvider: fixture, writerModel: writer, associationLimit: 0 }',
-    ...(writings ? [`    personalDirectory: ${JSON.stringify(join(root, 'personal'))}`, '    records: {}'] : []),
-    ...(temporary ? ['    temporaryMemory: { enabled: true, idleMs: 600000, pollMs: 100 }'] : []),
-    "- name: '@deepseek-ai/dsh-experimental-genesis-qq'", '  config:',
-    ...(settingsOnly ? [] : [`    accessToken: ${token}`, "    botQq: '11111'", "    operatorQq: '55555'"]), '    port: 0', '    groupAutoReply: false',
-    ...(messaging ? ["    outboundGroups: ['67890']", "    outboundUsers: ['99999']"] : []),
-    "    allowGroups: ['67890']", `    allowUsers: ['12345', '99999'${messaging ? ", '55555'" : ''}]`, `    cwd: ${JSON.stringify(root)}`,
-  ].join('\n') + '\n')
+  await writeFile(
+    path,
+    [
+      "- name: '@deepseek-ai/dsh-credentials-local'",
+      `  config: { path: ${JSON.stringify(join(root, '.credentials.yaml'))}, watch: false }`,
+      "- name: '@deepseek-ai/dsh-attachment-local'",
+      `  config: { dshHome: ${JSON.stringify(root)} }`,
+      "- name: '@deepseek-ai/dsh-llm'",
+      "- name: '@deepseek-ai/dsh-session'",
+      "- name: '@deepseek-ai/dsh-session-title'",
+      '  config: { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 }',
+      "- name: '@deepseek-ai/dsh-workspace'",
+      "- name: '@deepseek-ai/dsh-token-meter'",
+      "- name: '@deepseek-ai/dsh-compaction-basic'",
+      '  disabled: true',
+      "- name: '@deepseek-ai/dsh-session-projection'",
+      "- name: '@deepseek-ai/dsh-system-prompt'",
+      "- name: '@deepseek-ai/dsh-tools'",
+      "- name: '@deepseek-ai/dsh-tool-executor-native'",
+      "- name: '@deepseek-ai/dsh-agent'",
+      "- name: '@deepseek-ai/dsh-storage'",
+      "- name: '@deepseek-ai/dsh-storage-json'",
+      `  config: { root: ${JSON.stringify(root)} }`,
+      "- name: '@deepseek-ai/dsh-storage-domain'",
+      '  config: { backend: json }',
+      "- name: '@deepseek-ai/dsh-sandbox-policy'",
+      `  config: { mode: read-only, workspaceRoot: ${JSON.stringify(root)} }`,
+      "- name: '@deepseek-ai/dsh-agent-preset-registry'",
+      '  config: { default: life }',
+      "- name: '@deepseek-ai/dsh-agent-preset'",
+      '  config:',
+      '    id: life',
+      '    plugins:',
+      '      - id: compaction',
+      '        name: cordis:group',
+      '        group: true',
+      '        isolate: { compaction: true }',
+      '        config:',
+      "          - name: '@deepseek-ai/dsh-compaction-basic'",
+      "- name: '@deepseek-ai/dsh-agent-default-model'",
+      '  config: { provider: fixture, model: chat }',
+      "- name: '@deepseek-ai/dsh-session-persistence-jsonl'",
+      `  config: { root: ${JSON.stringify(join(root, 'sessions'))}, compression: none }`,
+      "- name: '@deepseek-ai/dsh-agent-loop'",
+      '  config: { agents: [] }',
+      "- name: '@deepseek-ai/dsh-experimental-genesis'",
+      '  config:',
+      `    leasePath: ${JSON.stringify(join(root, 'life.lock'))}`,
+      '    awakening: { provider: fixture, model: chat, lifePreset: life }',
+      '    memory: { decisionProvider: fixture, decisionModel: decision, writerProvider: fixture, writerModel: writer, associationLimit: 0 }',
+      ...(writings ? [`    personalDirectory: ${JSON.stringify(join(root, 'personal'))}`, '    records: {}'] : []),
+      ...(temporary ? ['    temporaryMemory: { enabled: true, idleMs: 600000, pollMs: 100 }'] : []),
+      "- name: '@deepseek-ai/dsh-experimental-genesis-qq'",
+      '  config:',
+      ...(settingsOnly ? [] : [`    accessToken: ${token}`, "    botQq: '11111'", "    operatorQq: '55555'"]),
+      '    port: 0',
+      '    groupAutoReply: false',
+      ...(batching ? [] : ['    inputBatchWindowMs: 0']),
+      ...(messaging ? ["    outboundGroups: ['67890']", "    outboundUsers: ['99999']"] : []),
+      "    allowGroups: ['67890']",
+      `    allowUsers: ['12345', '99999'${messaging ? ", '55555'" : ''}]`,
+      `    cwd: ${JSON.stringify(root)}`,
+    ].join('\n') + '\n',
+  )
   const ctx = new Context()
   cleanup.push(() => ctx.fiber.dispose())
   ctx.baseUrl = pathToFileURL(root).href + '/'
@@ -166,21 +251,53 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
     await closed
   })
   const sent: string[] = []
+  const sentAt: number[] = []
   const sentSegments: Array<Array<{ type: string; data: { text?: string; qq?: string } }>> = []
   const actions: Array<{ action: string; params: unknown }> = []
-  const metadata = { groupName: '测试群', fail: false, uncertainNext: false, messages: new Map<string, unknown>() }
+  const metadata = {
+    groupName: '测试群',
+    fail: false,
+    uncertainNext: false,
+    messages: new Map<string, unknown>(),
+    forwards: new Map<string, unknown>(),
+    acknowledge: true,
+    acknowledgements: [] as Array<() => void>,
+  }
   socket.on('message', (data) => {
-    const frame = JSON.parse(String(data)) as { action: string; echo: string; params: { message: Array<{ type: string; data: { text: string } }> } }
+    const frame = JSON.parse(String(data)) as {
+      action: string
+      echo: string
+      params: { message: Array<{ type: string; data: { text: string } }> }
+    }
     actions.push({ action: frame.action, params: frame.params })
     if (frame.action === 'get_group_list' || frame.action === 'get_friend_list') {
-      socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: frame.action === 'get_group_list'
-        ? [{ group_id: 67890, group_name: metadata.groupName }]
-        : [{ user_id: 99999, nickname: '小红', remark: '' }] }))
+      socket.send(
+        JSON.stringify({
+          status: 'ok',
+          retcode: 0,
+          echo: frame.echo,
+          data:
+            frame.action === 'get_group_list'
+              ? [{ group_id: 67890, group_name: metadata.groupName }]
+              : [{ user_id: 99999, nickname: '小红', remark: '' }],
+        }),
+      )
       return
     }
     if (frame.action === 'get_group_info') {
-      socket.send(JSON.stringify({ status: metadata.fail ? 'failed' : 'ok', retcode: metadata.fail ? 1 : 0,
-        echo: frame.echo, data: { group_name: metadata.groupName } }))
+      socket.send(
+        JSON.stringify({
+          status: metadata.fail ? 'failed' : 'ok',
+          retcode: metadata.fail ? 1 : 0,
+          echo: frame.echo,
+          data: { group_name: metadata.groupName },
+        }),
+      )
+      return
+    }
+    if (frame.action === 'get_forward_msg') {
+      const params = z.object({ message_id: z.string() }).parse(frame.params)
+      socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: metadata.forwards.get(params.message_id) ?? null }))
       return
     }
     if (frame.action === 'get_msg') {
@@ -188,28 +305,57 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
       socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: metadata.messages.get(params.message_id) ?? null }))
       return
     }
-    if (frame.action.startsWith('upload_')) { socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: null })); return }
+    if (frame.action.startsWith('upload_')) {
+      socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: null }))
+      return
+    }
     if (!frame.action.startsWith('send_')) throw new Error('Unexpected QQ write action')
+    sentAt.push(performance.now())
     sentSegments.push(frame.params.message)
-    sent.push(frame.params.message.filter(part => part.type === 'text').map(part => part.data.text).join(''))
+    sent.push(
+      frame.params.message
+        .filter(part => part.type === 'text')
+        .map(part => part.data.text)
+        .join(''),
+    )
     const receipt = metadata.uncertainNext ? {} : { message_id: String(sent.length) }
     metadata.uncertainNext = false
-    socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: receipt }))
+    const acknowledge = () => socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: receipt }))
+    if (metadata.acknowledge) acknowledge()
+    else metadata.acknowledgements.push(acknowledge)
   })
   await once(socket, 'open')
-  return { ctx, model, socket, sent, sentSegments, metadata, actions }
+  return { ctx, model, socket, sent, sentAt, sentSegments, metadata, actions }
 }
 function incoming(type: 'group' | 'private', id: number, user = 12345, name = '小明', group = 67890) {
-  return JSON.stringify({ post_type: 'message', message_type: type, self_id: 11111, user_id: user,
-    group_id: type === 'group' ? group : undefined, message_id: id, sender: { nickname: name },
-    message: [...(type === 'group' ? [{ type: 'at', data: { qq: '11111' } }] : []), { type: 'text', data: { text: '你好，我们又见面了。' } }] })
+  return JSON.stringify({
+    post_type: 'message',
+    message_type: type,
+    self_id: 11111,
+    user_id: user,
+    group_id: type === 'group' ? group : undefined,
+    message_id: id,
+    sender: { nickname: name },
+    message: [
+      ...(type === 'group' ? [{ type: 'at', data: { qq: '11111' } }] : []),
+      { type: 'text', data: { text: '你好，我们又见面了。' } },
+    ],
+  })
 }
 async function receipt(ctx: Context, count: number) {
-  await expect.poll(async () => (await ctx.genesis.snapshot()).events.filter(event => event.type === 'qq.receipt'
-    && event.payload['status'] === 'confirmed').length).toBe(count)
+  await expect
+    .poll(
+      async () =>
+        (await ctx.genesis.snapshot()).events.filter(event => event.type === 'qq.receipt' && event.payload['status'] === 'confirmed')
+          .length,
+    )
+    .toBe(count)
 }
 function modelText(request: GenerateOptions): string {
-  return JSON.stringify({ system: request.system, messages: request.messages.map(message => ({ role: message.role, content: message.content })) })
+  return JSON.stringify({
+    system: request.system,
+    messages: request.messages.map(message => ({ role: message.role, content: message.content })),
+  })
 }
 
 it('loads group and private Life conversations, filters private recall, acknowledges replies and resumes the same life and Session', async () => {
@@ -223,19 +369,35 @@ it('loads group and private Life conversations, filters private recall, acknowle
   const state = await first.ctx.genesis.snapshot()
   const dm = state.people!.conversations.find(item => item.kind === 'private')!
   const group = state.people!.conversations.find(item => item.kind === 'group')!
-  const author = state.events.find(event => event.type === 'interaction.observed' && event.relatedSessionId === dm.sessionId
-    && event.payload['kind'] === 'user-message')!
-  const secret = await first.ctx.genesis.remember({ content: '小明私下的秘密是蓝色风筝。', category: 'semantic', importance: 1,
-    confidence: 0.9, sourceEventIds: [author.id] })
+  const author = state.events.find(
+    event => event.type === 'interaction.observed' && event.relatedSessionId === dm.sessionId && event.payload['kind'] === 'user-message',
+  )!
+  const secret = await first.ctx.genesis.remember({
+    content: '小明私下的秘密是蓝色风筝。',
+    category: 'semantic',
+    importance: 1,
+    confidence: 0.9,
+    sourceEventIds: [author.id],
+  })
   const agent = first.ctx.agents.get(SessionId(group.sessionId))!
   expect(first.ctx.agentPresets.composedPreset(agent.ctx)).toBe('life')
   expect(first.ctx.get('compaction')).toBeUndefined()
   expect(first.ctx.agentPresets.serviceFor(agent, 'compaction')).toBeDefined()
-  const recalled = await executeToolFixture(first.ctx, { agent, name: 'genesis_recall', callId: ToolCallId('group-secret'),
-    arguments: { query: secret.id }, signal: new AbortController().signal })
+  const recalled = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_recall',
+    callId: ToolCallId('group-secret'),
+    arguments: { query: secret.id },
+    signal: new AbortController().signal,
+  })
   expect(JSON.stringify(recalled)).not.toContain(secret.content)
-  const forbidden = await executeToolFixture(first.ctx, { agent, name: 'genesis_self', callId: ToolCallId('group-private-state'),
-    arguments: {}, signal: new AbortController().signal })
+  const forbidden = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_self',
+    callId: ToolCallId('group-private-state'),
+    arguments: {},
+    signal: new AbortController().signal,
+  })
   expect(forbidden.isError).toBe(true)
   first.socket.send(incoming('group', 3, 12345, '改名的小明'))
   await receipt(first.ctx, 3)
@@ -253,7 +415,7 @@ it('loads group and private Life conversations, filters private recall, acknowle
   const restored = await second.ctx.genesis.snapshot()
   expect(restored.people!.conversations.find(item => item.kind === 'private')!.sessionId).toBe(dm.sessionId)
   expect(second.ctx.agents.get(SessionId(dm.sessionId))).toBeDefined()
-  expect(JSON.stringify(second.model.requests.find(request => request.model === 'chat'))).toContain(secret.content)
+  expect(JSON.stringify(second.model.requests.find(request => request.model === 'chat'))).not.toContain(secret.content)
   const requests = second.model.requests.length
   second.socket.send(incoming('private', 4))
   // A later distinct message is a barrier: the prior duplicate must be settled before it.
@@ -270,17 +432,35 @@ it('persists operator access rules, pauses admission and refuses stale revisions
   const signal = new AbortController().signal
   const initial = await first.ctx.genesisQqSettings.inspect(signal)
   expect(initial.mode).toBe('connected')
-  const guest = first.ctx.extend({ invocation: { request: { namespace: 'fixture', method: 'inspect', args: {} }, service: 'genesis', signal, async *uplink() {}, peer: { id: brandString<PeerId>('guest'), ctx: first.ctx, principal: { kind: 'test-guest', guest: 'genesis-fixture' }, signal, interactions: 'none', async dispose() {} } } satisfies RemoteInvocation })
+  const guest = first.ctx.extend({
+    invocation: {
+      request: { namespace: 'fixture', method: 'inspect', args: {} },
+      service: 'genesis',
+      signal,
+      async *uplink() {},
+      peer: {
+        id: brandString<PeerId>('guest'),
+        ctx: first.ctx,
+        principal: { kind: 'test-guest', guest: 'genesis-fixture' },
+        signal,
+        interactions: 'none',
+        async dispose() {},
+      },
+    } satisfies RemoteInvocation,
+  })
   await expect(guest.genesisQqSettings.inspect(signal)).rejects.toThrow('operator access')
   expect(JSON.stringify(initial)).not.toContain(token)
   const paused = { ...initial.settings, enabled: false }
   expect(await first.ctx.genesisQqSettings.save(paused, initial.revision, signal)).toBe(1)
   first.socket.send(incoming('private', 1))
-  const pong = once(first.socket, 'pong'); first.socket.ping(); await pong
+  const pong = once(first.socket, 'pong')
+  first.socket.ping()
+  await pong
   expect((await first.ctx.genesis.snapshot()).people).toBeUndefined()
   await expect(first.ctx.genesisQqSettings.save(initial.settings, 0, signal)).rejects.toThrow()
   const closing = once(first.socket, 'close')
-  await first.ctx.fiber.dispose(); await closing
+  await first.ctx.fiber.dispose()
+  await closing
   const second = await boot(root)
   expect((await second.ctx.genesisQqSettings.inspect(signal)).settings.enabled).toBe(false)
   await second.ctx.genesisQqSettings.save({ ...paused, enabled: true, allowGroups: [], allowUsers: ['99999'] }, 1, signal)
@@ -302,11 +482,28 @@ it('configures QQ through settings without launch credentials, applies changes a
   expect(JSON.stringify(initial)).not.toContain(token)
   first.socket.send(incoming('private', 1))
   await receipt(first.ctx, 1)
-  const guest = first.ctx.extend({ invocation: { request: { namespace: 'fixture', method: 'inspect', args: {} }, service: 'genesis', signal, async *uplink() {}, peer: { id: brandString<PeerId>('guest'), ctx: first.ctx, principal: { kind: 'test-guest', guest: 'genesis-fixture' }, signal, interactions: 'none', async dispose() {} } } satisfies RemoteInvocation })
+  const guest = first.ctx.extend({
+    invocation: {
+      request: { namespace: 'fixture', method: 'inspect', args: {} },
+      service: 'genesis',
+      signal,
+      async *uplink() {},
+      peer: {
+        id: brandString<PeerId>('guest'),
+        ctx: first.ctx,
+        principal: { kind: 'test-guest', guest: 'genesis-fixture' },
+        signal,
+        interactions: 'none',
+        async dispose() {},
+      },
+    } satisfies RemoteInvocation,
+  })
   await expect(guest.genesisQqSettings.setToken('another-long-test-token', signal)).rejects.toThrow('operator access')
   await expect(guest.genesisQqSettings.saveConnection(initial.connection, 1, signal)).rejects.toThrow('operator access')
   await expect(first.ctx.genesisQqSettings.saveConnection(initial.connection, 0, signal)).rejects.toThrow()
-  await expect(first.ctx.genesisQqSettings.saveConnection({ ...initial.connection, wsUrl: 'ws://example.com' }, 1, signal)).rejects.toThrow('QQ settings operation failed')
+  await expect(first.ctx.genesisQqSettings.saveConnection({ ...initial.connection, wsUrl: 'ws://example.com' }, 1, signal)).rejects.toThrow(
+    'QQ settings operation failed',
+  )
   expect((await first.ctx.genesisQqSettings.inspect(signal)).mode).toBe('connected')
   const closed = once(first.socket, 'close')
   await first.ctx.genesisQqSettings.saveConnection({ ...initial.connection, enabled: false }, 1, signal)
@@ -315,7 +512,7 @@ it('configures QQ through settings without launch credentials, applies changes a
   expect(first.ctx.genesisQq.address()).toBeNull()
   expect((await first.ctx.genesisQqSettings.inspect(signal)).deliveries).toHaveLength(1)
   const occupied = createServer()
-  cleanup.push(() => new Promise<void>((resolve, reject) => occupied.close(error => error ? reject(error) : resolve())))
+  cleanup.push(() => new Promise<void>((resolve, reject) => occupied.close(error => (error ? reject(error) : resolve()))))
   occupied.listen(0, '127.0.0.1')
   await once(occupied, 'listening')
   const address = occupied.address()
@@ -342,8 +539,12 @@ it('links the configured operator name to the authenticated person in logged mod
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const first = await boot(root)
   const state = await first.ctx.genesis.snapshot()
-  await first.ctx.genesis.saveOperator({ name: '妈妈', identity: '小芽的妈妈' }, 0,
-    state.memories.map(memory => ({ id: memory.id, updatedAt: memory.updatedAt })), [])
+  await first.ctx.genesis.saveOperator(
+    { name: '妈妈', identity: '小芽的妈妈' },
+    0,
+    state.memories.map(memory => ({ id: memory.id, updatedAt: memory.updatedAt })),
+    [],
+  )
   const signal = new AbortController().signal
   const policy = await first.ctx.genesisQqSettings.inspect(signal)
   await first.ctx.genesisQqSettings.save({ ...policy.settings, allowUsers: ['55555', '12345'] }, policy.revision, signal)
@@ -352,20 +553,29 @@ it('links the configured operator name to the authenticated person in logged mod
   const personId = qqPersonId('55555')
   const route = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.personId === personId)!
   const agent = first.ctx.agents.get(route.sessionId)!
-  const section = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
-    ? event.data.source.sections : []).find(item => item.name === 'genesis:participants')!
+  const section = agent.session
+    .ownEvents()
+    .flatMap(event =>
+      event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
+        ? event.data.source.sections
+        : [],
+    )
+    .find(item => item.name === 'genesis:participants')!
   expect(section.text).toContain('"qq":"55555"')
   expect(section.text).not.toContain(personId)
   expect(section.text).toContain('"name":"妈妈"')
   expect(section.text).toContain('"identity":"小芽的妈妈"')
-  expect(JSON.stringify(first.model.requests.find(request => request.model === 'chat'))).toContain(JSON.stringify(section.text).slice(1, -1))
+  expect(JSON.stringify(first.model.requests.find(request => request.model === 'chat'))).toContain(
+    JSON.stringify(section.text).slice(1, -1),
+  )
   first.socket.send(incoming('private', 2, 12345, '妈妈'))
   await receipt(first.ctx, 2)
   const stranger = JSON.stringify(first.model.requests.filter(request => request.model === 'chat').at(-1))
   expect(stranger).not.toContain('小芽的妈妈')
   expect(stranger).not.toContain(personId)
   const closed = once(first.socket, 'close')
-  await first.ctx.fiber.dispose(); await closed
+  await first.ctx.fiber.dispose()
+  await closed
   const second = await boot(root)
   second.socket.send(incoming('private', 3, 55555, '新的 QQ 昵称'))
   await receipt(second.ctx, 3)
@@ -373,7 +583,9 @@ it('links the configured operator name to the authenticated person in logged mod
   expect(request).toContain('妈妈')
   expect(request).toContain('小芽的妈妈')
   expect(modelText(second.model.requests.find(request => request.model === 'chat')!)).not.toContain(personId)
-  expect((await second.ctx.genesis.snapshot()).people!.conversations.find(item => item.personId === personId)!.sessionId).toBe(route.sessionId)
+  expect((await second.ctx.genesis.snapshot()).people!.conversations.find(item => item.personId === personId)!.sessionId).toBe(
+    route.sessionId,
+  )
 })
 
 it('reuses a group Agent resumed by Web and preserves that Agent when QQ disconnects', async () => {
@@ -384,17 +596,27 @@ it('reuses a group Agent resumed by Web and preserves that Agent when QQ disconn
   await receipt(first.ctx, 1)
   const group = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'group')!
   const closed = once(first.socket, 'close')
-  await first.ctx.fiber.dispose(); await closed
+  await first.ctx.fiber.dispose()
+  await closed
   const second = await boot(root)
-  const shared = await second.ctx.agents.resume({ resumeSessionId: group.sessionId, agentOptions: { provider: 'fixture', model: 'chat' },
-    setup: async (scope) => { await second.ctx.agentPresets.mount(scope, 'life') } })
+  const shared = await second.ctx.agents.resume({
+    resumeSessionId: group.sessionId,
+    agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (scope) => {
+      await second.ctx.agentPresets.mount(scope, 'life')
+    },
+  })
   cleanup.push(() => shared.dispose())
   second.socket.send(incoming('group', 2))
   await receipt(second.ctx, 2)
   expect(second.ctx.agents.get(group.sessionId)).toBe(shared.agent)
   const status = await second.ctx.genesisQqSettings.inspect(new AbortController().signal)
   const disconnected = once(second.socket, 'close')
-  await second.ctx.genesisQqSettings.saveConnection({ ...status.connection, enabled: false }, status.connectionRevision, new AbortController().signal)
+  await second.ctx.genesisQqSettings.saveConnection(
+    { ...status.connection, enabled: false },
+    status.connectionRevision,
+    new AbortController().signal,
+  )
   await disconnected
   expect(second.ctx.agents.get(group.sessionId)).toBe(shared.agent)
 })
@@ -404,8 +626,12 @@ it('recognizes operator and ordinary accounts on their first message in another 
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const { ctx, socket, model } = await boot(root)
   const state = await ctx.genesis.snapshot()
-  await ctx.genesis.saveOperator({ name: '妈妈', identity: '仅限私聊的身份描述' }, 0,
-    state.memories.map(memory => ({ id: memory.id, updatedAt: memory.updatedAt })), [])
+  await ctx.genesis.saveOperator(
+    { name: '妈妈', identity: '仅限私聊的身份描述' },
+    0,
+    state.memories.map(memory => ({ id: memory.id, updatedAt: memory.updatedAt })),
+    [],
+  )
   const signal = new AbortController().signal
   const policy = await ctx.genesisQqSettings.inspect(signal)
   await ctx.genesisQqSettings.save({ ...policy.settings, allowGroups: ['67890', '77777'] }, policy.revision, signal)
@@ -415,25 +641,54 @@ it('recognizes operator and ordinary accounts on their first message in another 
   await receipt(ctx, 2)
   const current = () => model.requests.filter(request => request.model === 'chat').at(-1)!
   const roster = () => {
-    const message = current().messages.filter(message => message.role === 'user' && message.source?.kind === 'genesis-state')
-      .flatMap(message => message.content).filter(block => block.type === 'text')
-      .map(block => block.text).findLast(text => text.includes('[genesis:participants]'))!
+    const message = current()
+      .messages.filter(message => message.role === 'user' && message.source?.kind === 'genesis-state')
+      .flatMap(message => message.content)
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .findLast(text => text.includes('[genesis:participants]'))!
     const text = message.split('[genesis:participants]\n')[1]!.split('\n\n[')[0]!
-    return z.looseObject({ operator: z.looseObject({ identity: z.string() }), people: z.array(z.looseObject({
-      qq: z.string(), nickname: z.string(), name: z.string().nullable(), seenBefore: z.boolean(), isOperator: z.boolean(),
-    })) }).parse(JSON.parse(text.replace(/^Participants: /u, '')))
+    return z
+      .looseObject({
+        operator: z.looseObject({ identity: z.string() }),
+        people: z.array(
+          z.looseObject({
+            qq: z.string(),
+            nickname: z.string(),
+            name: z.string().nullable(),
+            seenBefore: z.boolean(),
+            isOperator: z.boolean(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(text.replace(/^Participants: /u, '')))
   }
-  expect(roster().people.find(person => person.qq === '55555')).toMatchObject({ nickname: '乙群名片', name: '妈妈', seenBefore: true, isOperator: true })
+  expect(roster().people.find(person => person.qq === '55555')).toMatchObject({
+    nickname: '乙群名片',
+    name: '妈妈',
+    seenBefore: true,
+    isOperator: true,
+  })
   expect(roster().operator.identity).toBe('')
   expect(modelText(current())).not.toMatch(/仅限私聊的身份描述|person:[a-f0-9]{64}/u)
   socket.send(incoming('group', 703, 12345, '原来的名字'))
   await receipt(ctx, 3)
   socket.send(incoming('group', 704, 12345, '换群后的名字', 77777))
   await receipt(ctx, 4)
-  expect(roster().people.find(person => person.qq === '12345')).toMatchObject({ nickname: '换群后的名字', name: '原来的名字', seenBefore: true, isOperator: false })
+  expect(roster().people.find(person => person.qq === '12345')).toMatchObject({
+    nickname: '换群后的名字',
+    name: '原来的名字',
+    seenBefore: true,
+    isOperator: false,
+  })
   socket.send(incoming('group', 705, 99999, '妈妈', 77777))
   await receipt(ctx, 5)
-  expect(roster().people.find(person => person.qq === '99999')).toMatchObject({ nickname: '妈妈', name: null, seenBefore: false, isOperator: false })
+  expect(roster().people.find(person => person.qq === '99999')).toMatchObject({
+    nickname: '妈妈',
+    name: null,
+    seenBefore: false,
+    isOperator: false,
+  })
   expect(modelText(current())).not.toMatch(/person:[a-f0-9]{64}/u)
 })
 
@@ -459,9 +714,18 @@ it('preserves incoming mention targets, sends real group mentions and accepts le
   expect(sentSegments[3]).toEqual([{ type: 'text', data: { text: model.chatReply } }])
   const state = await ctx.genesis.snapshot()
   const group = state.people!.conversations.find(item => item.kind === 'group')!
-  const source = Genesis.personSourceSchema.parse({ kind: 'genesis-person', platform: 'qq', personId: qqPersonId('12345'),
-    accountId: '12345', conversationId: group.id, name: '小明', messageId: '905' })
-  const legacy = [{ type: 'text', text: `发言者 ${JSON.stringify({ personId: source.personId, name: source.name })}\n你好，我们又见面了。` }]
+  const source = Genesis.personSourceSchema.parse({
+    kind: 'genesis-person',
+    platform: 'qq',
+    personId: qqPersonId('12345'),
+    accountId: '12345',
+    conversationId: group.id,
+    name: '小明',
+    messageId: '905',
+  })
+  const legacy = [
+    { type: 'text', text: `发言者 ${JSON.stringify({ personId: source.personId, name: source.name })}\n你好，我们又见面了。` },
+  ]
   await ctx.genesis.reservePersonMessage(group.sessionId, source, createHash('sha256').update(JSON.stringify(legacy)).digest('hex'))
   const before = model.requests.filter(request => request.model === 'chat').length
   socket.send(incoming('group', 905))
@@ -477,7 +741,12 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   const first = await boot(root)
   const signal = new AbortController().signal
   const initial = await first.ctx.genesisQqSettings.inspect(signal)
-  expect(initial.settings).toMatchObject({ extraPrompt: '', privateContextTokens: 200000, groupContextTokens: 400000, operatorContextTokens: 500000 })
+  expect(initial.settings).toMatchObject({
+    extraPrompt: '',
+    privateContextTokens: 200000,
+    groupContextTokens: 400000,
+    operatorContextTokens: 500000,
+  })
   const policy = { ...initial.settings, extraPrompt: '回复简短自然，通常用一到三句话。', allowUsers: ['12345', '55555'] }
   await first.ctx.genesisQqSettings.save(policy, initial.revision, signal)
   first.socket.send(incoming('group', 100))
@@ -491,8 +760,8 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   const dm = conversations.find(item => item.kind === 'private' && item.personId === qqPersonId('12345'))!
   const operator = conversations.find(item => item.kind === 'private' && item.personId === qqPersonId('55555'))!
   const getAgent = (id: string) => first.ctx.agents.get(SessionId(id))!
-  const window = (id: string, capacity = 1000000) => first.ctx.waterfall('compaction/context-window',
-    { session: getAgent(id).session, modelWindow: capacity }, () => capacity)
+  const window = (id: string, capacity = 1000000) =>
+    first.ctx.waterfall('compaction/context-window', { session: getAgent(id).session, modelWindow: capacity }, () => capacity)
   expect(window(dm.sessionId)).toBe(200000)
   expect(window(group.sessionId)).toBe(400000)
   expect(window(operator.sessionId)).toBe(500000)
@@ -502,8 +771,16 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   expect(first.ctx.sessionTitle.get(getAgent(group.sessionId).session)?.title).toBe('测试群')
   expect(first.ctx.sessionTitle.get(getAgent(dm.sessionId).session)?.title).toBe('小明')
   const groupAgent = getAgent(group.sessionId)
-  expect(groupAgent.session.ownEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state'
-    && JSON.stringify(event.data).includes(policy.extraPrompt))).toBe(true)
+  expect(
+    groupAgent.session
+      .ownEvents()
+      .some(
+        event =>
+          event.type === 'user/message' &&
+          event.data.source.kind === 'genesis-state' &&
+          JSON.stringify(event.data).includes(policy.extraPrompt),
+      ),
+  ).toBe(true)
   expect(JSON.stringify(first.model.requests.filter(request => request.model === 'chat').at(-1))).toContain(policy.extraPrompt)
   first.metadata.groupName = '改名后的群'
   first.socket.send(incoming('group', 103, 55555))
@@ -519,9 +796,17 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   first.socket.send(incoming('private', 105, 12345, '改名的小明'))
   await receipt(first.ctx, 6)
   expect(first.ctx.sessionTitle.get(getAgent(dm.sessionId).session)?.title).toBe('改名的小明')
-  expect(getAgent(dm.sessionId).session.ownEvents().some(event => event.type === 'user/message'
-    && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
-    && event.data.source.sections.some(section => section.name === 'genesis:qq-preferences' && section.text === ''))).toBe(true)
+  expect(
+    getAgent(dm.sessionId)
+      .session.ownEvents()
+      .some(
+        event =>
+          event.type === 'user/message' &&
+          event.data.source.kind === 'genesis-state' &&
+          event.data.source.form === 'snapshot' &&
+          event.data.source.sections.some(section => section.name === 'genesis:qq-preferences' && section.text === ''),
+      ),
+  ).toBe(true)
   await first.ctx.fiber.dispose()
   const second = await boot(root)
   expect((await second.ctx.genesisQqSettings.inspect(signal)).settings).toMatchObject({ extraPrompt: '', privateContextTokens: 210000 })
@@ -536,16 +821,29 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
 it('reads version-one admission settings with explicit conversation defaults and saves version three', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-legacy-policy-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
-  const settings = { enabled: true, allowGroups: ['67890'], allowUsers: ['12345'],
-    acceptPrivateFromAnyone: false, replyOnlyWhenMentioned: true }
+  const settings = {
+    enabled: true,
+    allowGroups: ['67890'],
+    allowUsers: ['12345'],
+    acceptPrivateFromAnyone: false,
+    replyOnlyWhenMentioned: true,
+  }
   const path = join(root, 'genesis_qq.json')
-  await writeFile(path, JSON.stringify({ unit: { name: 'genesis_qq', version: 1 }, global: null,
-    tables: { settings: { qq: { schemaVersion: 1, revision: 5, settings } } } }) + '\n')
+  await writeFile(
+    path,
+    JSON.stringify({
+      unit: { name: 'genesis_qq', version: 1 },
+      global: null,
+      tables: { settings: { qq: { schemaVersion: 1, revision: 5, settings } } },
+    }) + '\n',
+  )
   const { ctx } = await boot(root)
   const signal = new AbortController().signal
   const sample = await ctx.genesisQqSettings.inspect(signal)
-  expect(sample).toMatchObject({ revision: 5, settings: { ...settings, extraPrompt: '',
-    privateContextTokens: 200000, groupContextTokens: 400000, operatorContextTokens: 500000 } })
+  expect(sample).toMatchObject({
+    revision: 5,
+    settings: { ...settings, extraPrompt: '', privateContextTokens: 200000, groupContextTokens: 400000, operatorContextTokens: 500000 },
+  })
   await expect(ctx.genesisQqSettings.save({ ...sample.settings, privateContextTokens: 0 }, 5, signal)).rejects.toThrow()
   await expect(ctx.genesisQqSettings.save({ ...sample.settings, extraPrompt: 'x'.repeat(8001) }, 5, signal)).rejects.toThrow()
   expect((await ctx.genesisQqSettings.inspect(signal)).revision).toBe(5)
@@ -575,11 +873,17 @@ it('starts new group and private Sessions after archival and restores the latest
     expect(latest.personId).toBe(binding.personId)
     expect(ctx.workspaceRegistry.archivedSessionIds).toContain(binding.sessionId)
     expect(ctx.genesis.isQqSession(binding.sessionId)).toBe(true)
-    expect(ctx.agents.get(latest.sessionId)!.session.ownEvents().filter(event => event.type === 'user/message'
-      && event.data.source.kind === 'genesis-person')).toHaveLength(1)
+    expect(
+      ctx.agents
+        .get(latest.sessionId)!
+        .session.ownEvents()
+        .filter(event => event.type === 'user/message' && event.data.source.kind === 'genesis-person'),
+    ).toHaveLength(1)
   }
-  for (const agent of agents) expect(agent.session.ownEvents().filter(event => event.type === 'user/message'
-    && event.data.source.kind === 'genesis-person')).toHaveLength(1)
+  for (const agent of agents)
+    expect(
+      agent.session.ownEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'genesis-person'),
+    ).toHaveLength(1)
   const group = state.people!.conversations.findLast(item => item.kind === 'group')!
   await ctx.workspaceRegistry.unarchiveSession(original.find(item => item.kind === 'group')!.sessionId)
   socket.send(incoming('group', 803))
@@ -587,7 +891,8 @@ it('starts new group and private Sessions after archival and restores the latest
   await receipt(ctx, 5)
   expect((await ctx.genesis.snapshot()).people!.conversations.findLast(item => item.kind === 'group')!.sessionId).toBe(group.sessionId)
   const closed = once(socket, 'close')
-  await ctx.fiber.dispose(); await closed
+  await ctx.fiber.dispose()
+  await closed
   const restarted = await boot(root)
   restarted.socket.send(incoming('private', 806))
   await receipt(restarted.ctx, 6)
@@ -602,8 +907,14 @@ it('summarizes ordinary conversation switches, leaves short QQ tails to inactivi
   const first = await boot(root, false, true)
   const signal = new AbortController().signal
   const web = async (id: string, text: string) => {
-    const handle = await first.ctx.agents.create({ sessionId: SessionId(id), meta: { cwd: root, agentPreset: 'life' },
-      agentOptions: { provider: 'fixture', model: 'chat' }, setup: async (ctx) => { await first.ctx.agentPresets.mount(ctx, 'life') } })
+    const handle = await first.ctx.agents.create({
+      sessionId: SessionId(id),
+      meta: { cwd: root, agentPreset: 'life' },
+      agentOptions: { provider: 'fixture', model: 'chat' },
+      setup: async (ctx) => {
+        await first.ctx.agentPresets.mount(ctx, 'life')
+      },
+    })
     cleanup.push(() => handle.dispose())
     handle.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
     await handle.agent.whenIdle()
@@ -614,11 +925,22 @@ it('summarizes ordinary conversation switches, leaves short QQ tails to inactivi
   await expect.poll(async () => (await first.ctx.genesisTemporary.inspect(signal)).count, { timeout: 5000 }).toBe(2)
   let sample = await first.ctx.genesisTemporary.inspect(signal)
   expect(sample.memories.every(memory => memory.sessionId === a.id && memory.days === 3)).toBe(true)
-  expect(first.model.requests.filter(request => typeof request.system === 'string' && request.system.includes('只评估一次'))).toHaveLength(2)
+  expect(
+    first.model.requests.filter(request => typeof request.system === 'string' && request.system.includes('只评估一次')),
+  ).toHaveLength(2)
   b.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '继续第二个对话' }] }))
   await b.whenIdle()
-  expect(b.session.ownEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state'
-    && event.data.source.form === 'snapshot' && event.data.source.sections.some(section => section.name.startsWith('genesis:temporary:')))).toBe(true)
+  expect(
+    b.session
+      .ownEvents()
+      .some(
+        event =>
+          event.type === 'user/message' &&
+          event.data.source.kind === 'genesis-state' &&
+          event.data.source.form === 'snapshot' &&
+          event.data.source.sections.some(section => section.name.startsWith('genesis:temporary:')),
+      ),
+  ).toBe(true)
   const through = sample.memories.map(memory => memory.sourceSeqs)
   first.socket.send(incoming('private', 301))
   await receipt(first.ctx, 1)
@@ -627,24 +949,35 @@ it('summarizes ordinary conversation switches, leaves short QQ tails to inactivi
   await receipt(first.ctx, 2)
   sample = await first.ctx.genesisTemporary.inspect(signal)
   expect(sample.memories.some(memory => memory.audience.kind !== 'operator')).toBe(false)
-  const summariesBefore = first.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话')).length
+  const summariesBefore = first.model.requests.filter(
+    request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话'),
+  ).length
   await first.ctx.genesisTemporary.save({ ...sample.settings, idleMs: 1000 }, sample.revision, signal)
   await expect.poll(async () => (await first.ctx.genesisTemporary.inspect(signal)).count, { timeout: 5000 }).toBe(5)
   sample = await first.ctx.genesisTemporary.inspect(signal)
   expect(sample.memories.filter(memory => memory.sessionId === a.id).map(memory => memory.sourceSeqs)).toEqual(through)
-  expect(first.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话'))).toHaveLength(summariesBefore + 2)
+  expect(
+    first.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话')),
+  ).toHaveLength(summariesBefore + 2)
   const count = sample.count
   await first.ctx.fiber.dispose()
   // Restore the durable point after the importance audit and before atomic memory/progress publication.
   const recovered = sample.memories.find(memory => memory.sessionId === a.id)!
   const statePath = join(root, 'genesis_temporary_memory.json')
-  const saved = z.looseObject({ tables: z.looseObject({ state: z.looseObject({ current: temporaryStateSchema }) }) })
+  const saved = z
+    .looseObject({ tables: z.looseObject({ state: z.looseObject({ current: temporaryStateSchema }) }) })
     .parse(JSON.parse(await readFile(statePath, 'utf8')))
   const cursor = saved.tables.state.current.sessions.find(item => item.sessionId === a.id)!
   cursor.through = recovered.sourceSeqs[0]! - 1
   cursor.due = true
-  cursor.pending = { id: recovered.id, sourceSeqs: recovered.sourceSeqs, through: recovered.sourceSeqs.at(-1)!,
-    audience: recovered.audience, summary: recovered.summary, assessment: 'requested' }
+  cursor.pending = {
+    id: recovered.id,
+    sourceSeqs: recovered.sourceSeqs,
+    through: recovered.sourceSeqs.at(-1)!,
+    audience: recovered.audience,
+    summary: recovered.summary,
+    assessment: 'requested',
+  }
   saved.tables.state.current.memories = saved.tables.state.current.memories.filter(memory => memory.id !== recovered.id)
   await writeFile(statePath, JSON.stringify(saved) + '\n')
   const second = await boot(root, false, true)
@@ -654,8 +987,12 @@ it('summarizes ordinary conversation switches, leaves short QQ tails to inactivi
   const source = restored.memories.find(memory => memory.sessionId === a.id)!
   await second.ctx.genesisTemporary.retry(a.id, signal)
   expect((await second.ctx.genesisTemporary.inspect(signal)).count).toBe(count)
-  expect(second.model.requests.filter(request => typeof request.system === 'string' && request.system.includes('只评估一次'))).toHaveLength(0)
-  expect(second.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话'))).toHaveLength(0)
+  expect(
+    second.model.requests.filter(request => typeof request.system === 'string' && request.system.includes('只评估一次')),
+  ).toHaveLength(0)
+  expect(
+    second.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话')),
+  ).toHaveLength(0)
   await second.ctx.genesisTemporary.forget(source.id, signal)
   expect((await second.ctx.genesisTemporary.inspect(signal)).count).toBe(count - 1)
 })
@@ -677,28 +1014,39 @@ it('finishes a Web follow-up queued while a privately resumed temporary-memory A
   const root = await mkdtemp(join(tmpdir(), 'genesis-temporary-followup-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const { ctx, model } = await boot(root, false, true)
-  const create = async (id: string) => ctx.agents.create({ sessionId: SessionId(id), meta: { cwd: root, agentPreset: 'life' },
-    agentOptions: { provider: 'fixture', model: 'chat' }, setup: async (agentCtx) => { await ctx.agentPresets.mount(agentCtx, 'life') } })
+  const create = async (id: string) =>
+    ctx.agents.create({
+      sessionId: SessionId(id),
+      meta: { cwd: root, agentPreset: 'life' },
+      agentOptions: { provider: 'fixture', model: 'chat' },
+      setup: async (agentCtx) => {
+        await ctx.agentPresets.mount(agentCtx, 'life')
+      },
+    })
   const first = await create('temporary-followup-a')
   first.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '需要总结的原对话' }] }))
   await first.agent.whenIdle()
   await first.dispose()
-  const gate = Promise.withResolvers<void>()
+  const gate = Promise.withResolvers<undefined>()
   model.temporaryGate = () => gate.promise
   const second = await create('temporary-followup-b')
   second.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '切换到另一会话' }] }))
-  cleanup.push(async () => { gate.resolve() })
-  await expect.poll(() => model.requests.some(request => typeof request.system === 'string'
-    && request.system.startsWith('将提供的按顺序对话')), { timeout: 3000 }).toBe(true)
+  cleanup.push(async () => {
+    gate.resolve(undefined)
+  })
+  await expect
+    .poll(() => model.requests.some(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话')), {
+      timeout: 3000,
+    })
+    .toBe(true)
   const resumed = ctx.agents.get(SessionId('temporary-followup-a'))!
   resumed.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '总结期间发送的新消息' }] }))
   model.temporaryGate = undefined
-  gate.resolve()
+  gate.resolve(undefined)
   await resumed.whenIdle()
   expect(resumed.session.ownEvents().filter(event => event.type === 'assistant/message')).toHaveLength(2)
   expect(resumed.session.ownEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'user')).toHaveLength(2)
 })
-
 
 it('selects group replies from five recent messages, keeps skipped history isolated and resumes deduplication after restart', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-group-choice-'))
@@ -706,7 +1054,11 @@ it('selects group replies from five recent messages, keeps skipped history isola
   const first = await boot(root)
   const signal = new AbortController().signal
   const initial = await first.ctx.genesisQqSettings.inspect(signal)
-  await first.ctx.genesisQqSettings.save({ ...initial.settings, groupAutoReply: true, allowGroups: ['67890', '77777'] }, initial.revision, signal)
+  await first.ctx.genesisQqSettings.save(
+    { ...initial.settings, groupAutoReply: true, allowGroups: ['67890', '77777'] },
+    initial.revision,
+    signal,
+  )
   const frame = (id: number, text: string, mention = false, group = 67890) => {
     const raw = z.looseObject({ message: z.array(z.unknown()) }).parse(JSON.parse(incoming('group', id, 12345, '小明', group)))
     raw.message = [...(mention ? [{ type: 'at', data: { qq: '11111' } }] : []), { type: 'text', data: { text } }]
@@ -720,16 +1072,30 @@ it('selects group replies from five recent messages, keeps skipped history isola
   await expect.poll(async () => groupRecords((await groupAgent()).session).filter(row => row.kind === 'decision').length).toBe(5)
   expect(first.sent).toHaveLength(0)
   expect(first.model.requests.filter(request => request.model === 'chat')).toHaveLength(0)
-  const decisions = () => first.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('Should the character reply'))
+  const decisions = () =>
+    first.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('Should the character reply'))
   expect(decisions()).toHaveLength(5)
   const last = decisions().at(-1)!
-  const evidence = z.looseObject({ recentMessages: z.looseObject({ messages: z.array(z.looseObject({ text: z.string() })) }) })
-    .parse(JSON.parse(last.messages[0]!.content.filter(block => block.type === 'text').map(block => block.text).join('')))
+  const evidence = z.looseObject({ recentMessages: z.looseObject({ messages: z.array(z.looseObject({ text: z.string() })) }) }).parse(
+    JSON.parse(
+      last.messages[0]!.content.filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join(''),
+    ),
+  )
   expect(evidence.recentMessages.messages).toHaveLength(5)
-  expect(evidence.recentMessages.messages.map(row => row.text)).toEqual(['@11111 围观消息1', '围观消息2', '围观消息3', '围观消息4', '围观消息5'])
-  expect(JSON.stringify(evidence)).not.toMatch(/"(?:seq|messageId|nextBeforeSeq|confidence)":/u)
+  expect(evidence.recentMessages.messages.map(row => row.text)).toEqual([
+    '@11111 围观消息1',
+    '围观消息2',
+    '围观消息3',
+    '围观消息4',
+    '围观消息5',
+  ])
+  expect(JSON.stringify(evidence)).not.toMatch(/"(?:seq|nextBeforeSeq|confidence)":/u)
   const agent = await groupAgent()
-  expect(agent.session.ownEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'genesis-person')).toHaveLength(0)
+  expect(
+    agent.session.ownEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'genesis-person'),
+  ).toHaveLength(0)
   first.model.groupReply = true
   first.socket.send(frame(6, '感兴趣的话题，无需提及机器人'))
   await receipt(first.ctx, 1)
@@ -738,16 +1104,40 @@ it('selects group replies from five recent messages, keeps skipped history isola
   expect(modelText(chat)).toContain('围观消息2')
   expect(modelText(chat)).not.toContain('围观消息1')
   expect(modelText(chat)).not.toMatch(/person:[a-f0-9]{64}/u)
-  const recentContext = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
-    ? event.data.source.sections : []).findLast(section => section.name === 'genesis:qq-recent')!
-  expect(recentContext.text).not.toMatch(/"(?:seq|messageId|nextBeforeSeq|confidence)":/u)
-  const peopleContext = agent.session.ownEvents().flatMap(event => event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
-    ? event.data.source.sections : []).findLast(section => section.name === 'genesis:participants')!
+  const recentContext = agent.session
+    .ownEvents()
+    .flatMap(event =>
+      event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
+        ? event.data.source.sections
+        : [],
+    )
+    .findLast(section => section.name === 'genesis:qq-recent')!
+  expect(recentContext.text).not.toMatch(/"(?:seq|nextBeforeSeq|confidence)":/u)
+  const peopleContext = agent.session
+    .ownEvents()
+    .flatMap(event =>
+      event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
+        ? event.data.source.sections
+        : [],
+    )
+    .findLast(section => section.name === 'genesis:participants')!
   expect(peopleContext.text).not.toContain('"confidence":')
-  const history = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_history', callId: ToolCallId('group-history'), arguments: { limit: 20 }, signal })
+  const history = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_qq_history',
+    callId: ToolCallId('group-history'),
+    arguments: { limit: 20 },
+    signal,
+  })
   expect(history.isError).toBe(false)
   expect(JSON.stringify(history)).toContain('围观消息1')
-  const denied = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_history', callId: ToolCallId('other-group-history'), arguments: { group: '77777' }, signal })
+  const denied = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_qq_history',
+    callId: ToolCallId('other-group-history'),
+    arguments: { group: '77777' },
+    signal,
+  })
   expect(denied.isError).toBe(true)
   first.model.groupReply = false
   first.socket.send(frame(7, '另一个群的消息', false, 77777))
@@ -755,12 +1145,31 @@ it('selects group replies from five recent messages, keeps skipped history isola
   await receipt(first.ctx, 2)
   const privateBinding = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'private')!
   const privateAgent = first.ctx.agents.get(privateBinding.sessionId)!
-  expect(JSON.stringify(await executeToolFixture(first.ctx, { agent: privateAgent, name: 'genesis_qq_history',
-    callId: ToolCallId('private-history'), arguments: {}, signal }))).not.toContain('围观消息')
+  expect(
+    JSON.stringify(
+      await executeToolFixture(first.ctx, {
+        agent: privateAgent,
+        name: 'genesis_qq_history',
+        callId: ToolCallId('private-history'),
+        arguments: {},
+        signal,
+      }),
+    ),
+  ).not.toContain('围观消息')
   const web = await first.ctx.agents.create({ sessionId: SessionId('history-web'), agentOptions: { provider: 'fixture', model: 'chat' } })
   cleanup.push(() => web.dispose())
   expect(first.ctx.tools.schemas(web.agent).some(tool => tool.name === 'genesis_qq_history')).toBe(false)
-  expect((await executeToolFixture(first.ctx, { agent: web.agent, name: 'genesis_qq_history', callId: ToolCallId('web-denial'), arguments: {}, signal })).isError).toBe(true)
+  expect(
+    (
+      await executeToolFixture(first.ctx, {
+        agent: web.agent,
+        name: 'genesis_qq_history',
+        callId: ToolCallId('web-denial'),
+        arguments: {},
+        signal,
+      })
+    ).isError,
+  ).toBe(true)
   await expect.poll(async () => (await first.ctx.genesisQqSettings.inspect(signal)).pending).toBe(0)
   expect(decisions()).toHaveLength(7)
   first.model.groupDecisionFailure = true
@@ -781,18 +1190,107 @@ it('selects group replies from five recent messages, keeps skipped history isola
   expect((await second.ctx.genesisQqSettings.inspect(signal)).settings.groupAutoReply).toBe(true)
   second.socket.send(frame(5, '围观消息5'))
   second.socket.send(frame(11, '恢复后的新消息'))
-  await expect.poll(() => second.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('Should the character reply')).length).toBe(1)
+  await expect
+    .poll(
+      () =>
+        second.model.requests.filter(
+          request => typeof request.system === 'string' && request.system.startsWith('Should the character reply'),
+        ).length,
+    )
+    .toBe(1)
   await expect.poll(async () => (await second.ctx.genesisQqSettings.inspect(signal)).pending).toBe(0)
   const restored = second.ctx.agents.get(sessionId)!
   expect(historyMessages(restored.session, '11111').filter(row => row.text === '围观消息5')).toHaveLength(1)
   expect(groupRecords(restored.session).filter(row => row.kind === 'message' && row.messageId === '9')).toHaveLength(1)
   const current = await second.ctx.genesisQqSettings.inspect(signal)
   await second.ctx.genesisQqSettings.save({ ...current.settings, enabled: false }, current.revision, signal)
-  expect((await executeToolFixture(second.ctx, { agent: restored, name: 'genesis_qq_history', callId: ToolCallId('paused-history'), arguments: {}, signal })).isError).toBe(true)
+  expect(
+    (
+      await executeToolFixture(second.ctx, {
+        agent: restored,
+        name: 'genesis_qq_history',
+        callId: ToolCallId('paused-history'),
+        arguments: {},
+        signal,
+      })
+    ).isError,
+  ).toBe(true)
   await second.ctx.genesisQq.close()
   expect(second.ctx.tools.schemas(restored).some(tool => tool.name === 'genesis_qq_history')).toBe(false)
 })
 
+it('admits messages arriving during output once and injects only unseen unanswered group context across restart', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-live-input-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root)
+  const frame = (id: number, mention = true) => {
+    const raw = JSON.parse(incoming('group', id)) as { message: unknown[] }
+    raw.message = [...(mention ? [{ type: 'at', data: { qq: '11111' } }] : []), { type: 'text', data: { text: `独立消息${id}` } }]
+    return JSON.stringify(raw)
+  }
+  f.socket.send(frame(1, false))
+  await expect.poll(async () => (await f.ctx.genesis.snapshot()).people?.conversations.length).toBe(1)
+  const binding = (await f.ctx.genesis.snapshot()).people!.conversations[0]!
+  const agent = f.ctx.agents.get(binding.sessionId)!
+  await expect.poll(() => groupRecords(agent.session).filter(row => row.kind === 'decision')).toHaveLength(1)
+  const gate = Promise.withResolvers<undefined>()
+  cleanup.push(async () => {
+    gate.resolve(undefined)
+  })
+  f.model.chatGate = () => gate.promise
+  f.socket.send(frame(2))
+  const chats = () => f.model.requests.filter(request => request.model === 'chat')
+  await expect.poll(() => chats().length).toBe(1)
+  // Hold the response open until both later inputs have reached the real Agent inbox.
+  f.socket.send(frame(3))
+  f.socket.send(frame(4))
+  await expect
+    .poll(
+      () =>
+        agent.session.ownEvents().filter((event) => {
+          const record = pluginRecordOf(event)
+          return record?.type === 'plugin:genesis-qq/message' && z.looseObject({ kind: z.string() }).parse(record.data).kind === 'input'
+        }).length,
+    )
+    .toBe(3)
+  await expect.poll(async () => (await f.ctx.genesisQq.inspect()).pending).toBe(0)
+  f.model.chatGate = undefined
+  gate.resolve(undefined)
+  await receipt(f.ctx, 2)
+  await expect.poll(() => agent.status).toBe('idle')
+  expect(chats()).toHaveLength(2)
+  expect(f.sent).toHaveLength(2)
+  const sources = chats()[1]!.messages.flatMap(message =>
+    message.role === 'user' && message.source?.kind === 'genesis-person' ? [message.source.messageId] : [],
+  )
+  expect(sources).toEqual(['2', '3', '4'])
+  const context = () =>
+    agent.session
+      .ownEvents()
+      .flatMap(event =>
+        event.type === 'user/message' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
+          ? event.data.source.sections.filter(section => section.name === 'genesis:qq-recent')
+          : [],
+      )
+  expect(context()).toHaveLength(1)
+  expect(context()[0]!.text).toContain('独立消息1')
+  expect(context()[0]!.text).not.toMatch(/独立消息[234]|Use genesis_qq_history/u)
+  f.socket.send(frame(5, false))
+  f.socket.send(frame(6))
+  await receipt(f.ctx, 3)
+  await expect.poll(() => agent.status).toBe('idle')
+  expect(context()).toHaveLength(2)
+  expect(context()[1]!.text).toContain('独立消息5')
+  expect(context()[1]!.text).not.toContain('独立消息1')
+  await f.ctx.fiber.dispose()
+  const restored = await boot(root)
+  restored.socket.send(frame(7))
+  await receipt(restored.ctx, 4)
+  const request = restored.model.requests.find(request => request.model === 'chat')!
+  expect(modelText(request).match(/独立消息1/gu)).toHaveLength(1)
+  expect(modelText(request).match(/独立消息5/gu)).toHaveLength(1)
+  expect(modelText(request)).not.toContain('Use genesis_qq_history')
+})
 
 it('exposes QQ search and limited browsing while enforcing toolkit audiences and policy changes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-toolkit-policy-'))
@@ -802,17 +1300,54 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   const navigate = 'mcp__playwright-mcp__browser_navigate'
   const screenshot = 'mcp__playwright-mcp__browser_take_screenshot'
   const evaluate = 'mcp__playwright-mcp__browser_evaluate'
-  const names = ['web_search', 'fixture_public', 'fixture_operator', 'fixture_disabled', navigate, screenshot, evaluate, 'fixture_ungrouped']
-  const register = (ctx: Context) => names.forEach(name => ctx.tools.register(defineTool({ name, description: 'Test-only read fixture.',
-    parameters: { url: { type: 'string' }, filename: { type: 'string' } },
-    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
-    async execute() { return 'fixture tool completed' } })))
+  const names = [
+    'web_search',
+    'fixture_public',
+    'fixture_operator',
+    'fixture_disabled',
+    navigate,
+    screenshot,
+    evaluate,
+    'fixture_ungrouped',
+  ]
+  const register = (ctx: Context) =>
+    names.forEach(name =>
+      ctx.tools.register(
+        defineTool({
+          name,
+          description: 'Test-only read fixture.',
+          parameters: { url: { type: 'string' }, filename: { type: 'string' } },
+          output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+          async execute() {
+            return 'fixture tool completed'
+          },
+        }),
+      ),
+    )
   register(first.ctx)
   for (const name of names.slice(1)) await first.ctx.genesis.learn(name, SessionId('operator-setup'))
   const entries = [
-    { id: brandString<ToolkitId>('public'), name: '公共工具', description: '可供任何人启用', tools: ['fixture_public', 'mcp__playwright-mcp__*'], qqAccess: 'anyone' as const },
-    { id: brandString<ToolkitId>('operator'), name: '操作者工具', description: '仅操作者启用与执行', tools: ['fixture_operator'], qqAccess: 'operator' as const },
-    { id: brandString<ToolkitId>('disabled'), name: '本机工具', description: 'QQ 不开放', tools: ['fixture_disabled'], qqAccess: 'disabled' as const },
+    {
+      id: brandString<ToolkitId>('public'),
+      name: '公共工具',
+      description: '可供任何人启用',
+      tools: ['fixture_public', 'mcp__playwright-mcp__*'],
+      qqAccess: 'anyone' as const,
+    },
+    {
+      id: brandString<ToolkitId>('operator'),
+      name: '操作者工具',
+      description: '仅操作者启用与执行',
+      tools: ['fixture_operator'],
+      qqAccess: 'operator' as const,
+    },
+    {
+      id: brandString<ToolkitId>('disabled'),
+      name: '本机工具',
+      description: 'QQ 不开放',
+      tools: ['fixture_disabled'],
+      qqAccess: 'disabled' as const,
+    },
     ...(await first.ctx.genesisToolkits.inspect(signal)).entries.filter(entry => entry.id === 'browser-reading'),
   ]
   expect(entries[3]?.qqAccess).toBe('anyone')
@@ -821,7 +1356,8 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(first.ctx, 1)
   const binding = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'group')!
   const agent = first.ctx.agents.get(binding.sessionId)!
-  const execute = (name: string, args = {}) => executeToolFixture(first.ctx, { agent, name, arguments: args, callId: ToolCallId(`qq-policy-${name}`), signal })
+  const execute = (name: string, args = {}) =>
+    executeToolFixture(first.ctx, { agent, name, arguments: args, callId: ToolCallId(`qq-policy-${name}`), signal })
   const chat = first.model.requests.filter(request => request.model === 'chat').at(-1)!
   expect(chat.tools?.some(tool => tool.name === 'web_search')).toBe(true)
   expect(first.ctx.genesis.learningStatus().tools).not.toContain('web_search')
@@ -843,7 +1379,10 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   expect((await execute('genesis_toolkit', { action: 'enable', id: 'disabled' })).isError).toBe(true)
   first.socket.send(incoming('group', 1102, 99999, '妈妈'))
   await receipt(first.ctx, 2)
-  const guestTools = first.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)
+  const guestTools = first.model.requests
+    .filter(request => request.model === 'chat')
+    .at(-1)!
+    .tools?.map(tool => tool.name)
   expect(guestTools).toContain(navigate)
   expect(guestTools).not.toContain(evaluate)
   expect((await execute('genesis_toolkit', { action: 'enable', id: 'operator' })).isError).toBe(true)
@@ -851,15 +1390,28 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(first.ctx, 3)
   expect((await execute('genesis_toolkit', { action: 'enable', id: 'operator' })).isError).toBe(false)
   expect((await execute('fixture_operator')).isError).toBe(false)
-  const guest = agent.session.ownEvents().find(event => event.type === 'user/message'
-    && event.data.source.kind === 'genesis-person' && event.data.source.accountId === '12345')!
-  appendPluginRecord(agent.session, 'plugin:genesis/toolkit', { version: 2, sessionId: agent.id, id: entries[1]!.id, enabled: true,
-    grant: { actor: qqPersonId('55555'), sourceSeq: guest.seq } })
+  const guest = agent.session
+    .ownEvents()
+    .find(
+      event => event.type === 'user/message' && event.data.source.kind === 'genesis-person' && event.data.source.accountId === '12345',
+    )!
+  appendPluginRecord(agent.session, 'plugin:genesis/toolkit', {
+    version: 2,
+    sessionId: agent.id,
+    id: entries[1]!.id,
+    enabled: true,
+    grant: { actor: qqPersonId('55555'), sourceSeq: guest.seq },
+  })
   expect((await execute('fixture_operator')).isError).toBe(true)
   expect((await execute('genesis_toolkit', { action: 'enable', id: 'operator' })).isError).toBe(false)
   first.socket.send(incoming('group', 1104, 12345))
   await receipt(first.ctx, 4)
-  expect(first.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)).toContain('fixture_operator')
+  expect(
+    first.model.requests
+      .filter(request => request.model === 'chat')
+      .at(-1)!
+      .tools?.map(tool => tool.name),
+  ).toContain('fixture_operator')
   expect((await execute('fixture_operator')).isError).toBe(true)
   expect((await execute('fixture_public')).isError).toBe(false)
   await first.ctx.fiber.dispose()
@@ -868,18 +1420,32 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   second.socket.send(incoming('group', 1105, 12345))
   await receipt(second.ctx, 5)
   const restored = second.ctx.agents.get(binding.sessionId)!
-  expect(second.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)).toContain('fixture_operator')
-  const run = (name: string, args = {}) => executeToolFixture(second.ctx, { agent: restored, name, arguments: args, callId: ToolCallId(`qq-policy-restored-${name}`), signal })
+  expect(
+    second.model.requests
+      .filter(request => request.model === 'chat')
+      .at(-1)!
+      .tools?.map(tool => tool.name),
+  ).toContain('fixture_operator')
+  const run = (name: string, args = {}) =>
+    executeToolFixture(second.ctx, { agent: restored, name, arguments: args, callId: ToolCallId(`qq-policy-restored-${name}`), signal })
   expect((await run('fixture_public')).isError).toBe(false)
   expect((await run(navigate, { url: 'https://example.com' })).isError).toBe(false)
   expect((await run(evaluate)).isError).toBe(true)
   expect((await run('fixture_operator')).isError).toBe(true)
-  await second.ctx.genesisToolkits.save(entries.map(entry => ({ ...entry, qqAccess: 'disabled' })), 1, signal)
+  await second.ctx.genesisToolkits.save(
+    entries.map(entry => ({ ...entry, qqAccess: 'disabled' })),
+    1,
+    signal,
+  )
   expect((await run('fixture_public')).isError).toBe(true)
   expect((await run('genesis_toolkit', { action: 'enable', id: 'public' })).isError).toBe(true)
   second.socket.send(incoming('group', 1106))
   await receipt(second.ctx, 6)
-  const advertised = () => second.model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.map(tool => tool.name)
+  const advertised = () =>
+    second.model.requests
+      .filter(request => request.model === 'chat')
+      .at(-1)!
+      .tools?.map(tool => tool.name)
   expect(advertised()).toContain('fixture_public')
   restored.session.append('compaction/end', { compactionId: CompactionId('qq-idle-tools'), turn: null })
   second.socket.send(incoming('group', 1107))
@@ -892,8 +1458,8 @@ it('exposes QQ search and limited browsing while enforcing toolkit audiences and
   await receipt(second.ctx, 8)
   const operatorBinding = (await second.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'private')!
   const operatorAgent = second.ctx.agents.get(operatorBinding.sessionId)!
-  const operatorRun = (name: string, args = {}) => executeToolFixture(second.ctx, { agent: operatorAgent, name, arguments: args,
-    callId: ToolCallId(`qq-private-${name}`), signal })
+  const operatorRun = (name: string, args = {}) =>
+    executeToolFixture(second.ctx, { agent: operatorAgent, name, arguments: args, callId: ToolCallId(`qq-private-${name}`), signal })
   expect((await operatorRun('genesis_toolkit', { action: 'enable', id: 'disabled' })).isError).toBe(false)
   expect((await operatorRun('fixture_disabled')).isError).toBe(false)
   expect((await operatorRun('genesis_toolkit', { action: 'enable', id: 'public' })).isError).toBe(false)
@@ -921,12 +1487,17 @@ it('offers learned writings on QQ but executes them only for the authenticated o
   const { ctx, model, socket } = await boot(root, false, false, true)
   const signal = new AbortController().signal
   await ctx.genesis.learn('genesis_record', SessionId('writings-setup'))
-  const advertised = () => model.requests.filter(request => request.model === 'chat').at(-1)!.tools?.some(tool => tool.name === 'genesis_record')
+  const advertised = () =>
+    model.requests
+      .filter(request => request.model === 'chat')
+      .at(-1)!
+      .tools?.some(tool => tool.name === 'genesis_record')
   socket.send(incoming('group', 1201, 55555, '操作者'))
   await receipt(ctx, 1)
   const binding = (await ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'group')!
   const agent = ctx.agents.get(binding.sessionId)!
-  const read = () => executeToolFixture(ctx, { agent, name: 'genesis_record', arguments: { action: 'types' }, callId: ToolCallId('qq-writings'), signal })
+  const read = () =>
+    executeToolFixture(ctx, { agent, name: 'genesis_record', arguments: { action: 'types' }, callId: ToolCallId('qq-writings'), signal })
   expect(advertised()).toBe(true)
   expect((await read()).isError).toBe(false)
   socket.send(incoming('group', 1202))
@@ -934,38 +1505,71 @@ it('offers learned writings on QQ but executes them only for the authenticated o
   expect((await read()).isError).toBe(true)
 })
 
-it('keeps the actual temporary-summary failure, records its stage and resumes without losing committed progress', async () => {
+it('tries temporary generation three times, skips isolated failures and exposes repeated failures until recovery', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-temporary-diagnostic-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const { ctx, model } = await boot(root, false, true)
   const signal = new AbortController().signal
-  const a = await ctx.agents.create({ sessionId: SessionId('temporary-diagnostic-a'), meta: { cwd: root, agentPreset: 'life' },
-    agentOptions: { provider: 'fixture', model: 'chat' }, setup: async (scoped) => { await ctx.agentPresets.mount(scoped, 'life') } })
+  const a = await ctx.agents.create({
+    sessionId: SessionId('temporary-diagnostic-a'),
+    meta: { cwd: root, agentPreset: 'life' },
+    agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (scoped) => {
+      await ctx.agentPresets.mount(scoped, 'life')
+    },
+  })
   cleanup.push(() => a.dispose())
-  a.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '需要总结的交流' }] }))
-  await a.agent.whenIdle()
+  const summaries = () =>
+    model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话')).length
   model.temporaryMaxTokens = true
-  await expect(ctx.genesisTemporary.retry(a.agent.id, signal)).rejects.toThrow(/finish: max-tokens; temporaryMemory.maxTokens=2048/u)
-  const failed = await ctx.genesisTemporary.inspect(signal)
-  expect(failed.failures[0]?.message).toContain('max-tokens')
-  expect(failed.count).toBe(0)
-  expect(a.agent.session.ownEvents().map(pluginRecordOf).find(record => record?.type === 'plugin:genesis/temporary-failure')?.data)
-    .toMatchObject({ version: 1, stage: 'summary', code: 'memory-provider' })
+  for (let batch = 1; batch <= 3; batch++) {
+    a.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: `需要总结的交流 ${batch}` }] }))
+    await a.agent.whenIdle()
+    await ctx.genesisTemporary.retry(a.agent.id, signal)
+    const failed = await ctx.genesisTemporary.inspect(signal)
+    expect(summaries()).toBe(batch * 3)
+    expect(failed.count).toBe(0)
+    expect(failed.failures.length).toBe(batch < 3 ? 0 : 1)
+    if (batch === 3) expect(failed.failures[0]?.message).toContain('temporaryMemory.maxTokens=2048')
+  }
+  expect(
+    a.agent.session
+      .ownEvents()
+      .map(pluginRecordOf)
+      .filter(record => record?.type === 'plugin:genesis/temporary-failure'),
+  ).toHaveLength(3)
   model.temporaryMaxTokens = false
+  await ctx.genesisTemporary.retry(a.agent.id, signal)
+  expect(summaries()).toBe(9)
+  a.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '后续新的交流' }] }))
+  await a.agent.whenIdle()
   await ctx.genesisTemporary.retry(a.agent.id, signal)
   const saved = await ctx.genesisTemporary.inspect(signal)
   expect(saved.count).toBe(1)
   expect(saved.failures).toEqual([])
-  await ctx.genesisTemporary.retry(a.agent.id, signal)
-  expect((await ctx.genesisTemporary.inspect(signal)).count).toBe(1)
+  expect(summaries()).toBe(10)
+  const page = await ctx.genesisTemporary.browse('临时交流', 0, signal)
+  expect(page.memories).toHaveLength(1)
+  expect((await ctx.genesisTemporary.browse('不存在的内容', 0, signal)).count).toBe(0)
+  expect((await ctx.genesisTemporary.browse('', 1, signal)).memories).toEqual([])
+  await a.dispose()
+  await ctx.fiber.dispose()
+  const restored = await boot(root, false, true)
+  await restored.ctx.genesisTemporary.retry(a.agent.id, signal)
+  expect((await restored.ctx.genesisTemporary.inspect(signal)).count).toBe(1)
+  expect(
+    restored.model.requests.filter(request => typeof request.system === 'string' && request.system.startsWith('将提供的按顺序对话')),
+  ).toEqual([])
 })
-
 
 it('admits image-only and file messages, keeps scoped quotes and sends logged media without repeating reservations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-media-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const first = await boot(root)
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC', 'base64')
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC',
+    'base64',
+  )
   const frame = JSON.parse(incoming('private', 810)) as { message: unknown[] }
   frame.message = [{ type: 'image', data: { file: `base64://${png.toString('base64')}` } }]
   first.socket.send(JSON.stringify(frame))
@@ -982,31 +1586,89 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   const signal = new AbortController().signal
   const config = QqConfig({ cwd: root, botQq: '11111' })
   const media = new QqMedia(first.ctx, config)
-  expect(await media.read(agent, { kind: 'file', attachment: original.file }, signal)).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'image' })]))
-  expect(first.model.requests.filter(request => request.model === 'chat').some(request => request.messages.some(message => message.content.some(block => block.type === 'image')))).toBe(true)
+  expect(await media.read(agent, { kind: 'file', attachment: original.file }, signal)).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: 'image' })]),
+  )
+  expect(
+    first.model.requests
+      .filter(request => request.model === 'chat')
+      .some(request => request.messages.some(message => message.content.some(block => block.type === 'image'))),
+  ).toBe(true)
   expect(() => attachmentIn(agent.session, 'a'.repeat(64))).toThrow(/current QQ conversation/u)
-  const extracted = await media.incoming(agent, '811', [{ type: 'file', data: { file: `base64://${Buffer.from('UTF-8 document fixture').toString('base64')}`, name: 'note.txt' } }], async () => { throw new Error('No lookup expected') }, signal)
+  const extracted = await media.incoming(
+    agent,
+    '811',
+    [{ type: 'file', data: { file: `base64://${Buffer.from('UTF-8 document fixture').toString('base64')}`, name: 'note.txt' } }],
+    async () => {
+      throw new Error('No lookup expected')
+    },
+    signal,
+  )
   expect(JSON.stringify(extracted)).toContain('UTF-8 document fixture')
-  const lookedUp = await media.incoming(agent, 'file-lookup', [{ type: 'file', data: { file_id: 'a'.repeat(32) } }], async (action, params) => {
-    expect(action).toBe('get_file'); expect(params).toEqual({ file_id: 'a'.repeat(32) })
-    return { base64: Buffer.from('looked-up document fixture').toString('base64'), file_name: 'lookup.txt' }
-  }, signal)
+  const lookedUp = await media.incoming(
+    agent,
+    'file-lookup',
+    [{ type: 'file', data: { file_id: 'a'.repeat(32) } }],
+    async (action, params) => {
+      expect(action).toBe('get_file')
+      expect(params).toEqual({ file_id: 'a'.repeat(32) })
+      return { base64: Buffer.from('looked-up document fixture').toString('base64'), file_name: 'lookup.txt' }
+    },
+    signal,
+  )
   expect(JSON.stringify(lookedUp)).toContain('looked-up document fixture')
-  const refused = await media.incoming(agent, '812', [{ type: 'file', data: { file: '/etc/passwd' } }], async () => { throw new Error('Local path must not be looked up') }, signal)
+  const refused = await media.incoming(
+    agent,
+    '812',
+    [{ type: 'file', data: { file: '/etc/passwd' } }],
+    async () => {
+      throw new Error('Local path must not be looked up')
+    },
+    signal,
+  )
   expect(JSON.stringify(refused)).toContain('could not be read')
-  const quoted = await quoteContext(agent.session, '813', [{ type: 'reply', data: { id: 810 } }], 'private', '12345', '11111', 2000, async () => { throw new Error('Cached quote requires no transport') })
+  const quoted = await quoteContext(
+    agent.session,
+    '813',
+    [{ type: 'reply', data: { id: 810 } }],
+    'private',
+    '12345',
+    '11111',
+    2000,
+    async () => {
+      throw new Error('Cached quote requires no transport')
+    },
+  )
   expect(quoted).toContain('"qq":"12345"')
-  const cross = await quoteContext(agent.session, '814', '[CQ:reply,id=999]', 'private', '12345', '11111', 2000,
-    async () => ({ message_type: 'group', group_id: 67890, sender: { user_id: 99999 }, message: 'cross-route-secret' }))
+  const cross = await quoteContext(agent.session, '814', '[CQ:reply,id=999]', 'private', '12345', '11111', 2000, async () => ({
+    message_type: 'group',
+    group_id: 67890,
+    sender: { user_id: 99999 },
+    message: 'cross-route-secret',
+  }))
   expect(cross).not.toContain('cross-route-secret')
   const queuedCall = ToolCallId('queued-media-face')
-  agent.session.append('tool/call', { turn: 1, step: 1, callId: queuedCall, name: 'genesis_qq_send', arguments: '{"kind":"face","faceId":"14"}' })
-  const queued = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_send', callId: queuedCall,
-    arguments: { kind: 'face', faceId: '14' }, signal })
+  agent.session.append('tool/call', {
+    turn: 1,
+    step: 1,
+    callId: queuedCall,
+    name: 'genesis_qq_send',
+    arguments: '{"kind":"face","faceId":"14"}',
+  })
+  const queued = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_qq_send',
+    callId: queuedCall,
+    arguments: { kind: 'face', faceId: '14' },
+    signal,
+  })
   expect(queued.isError).not.toBe(true)
   expect(first.sentSegments[1]).toEqual([{ type: 'face', data: { id: '14' } }])
   const calls: Array<{ action: string; payload: unknown }> = []
-  const action = async (action: string, payload: unknown) => { calls.push({ action, payload }); return action === 'file' ? null : { message_id: 9000 + calls.length } }
+  const action = async (action: string, payload: unknown) => {
+    calls.push({ action, payload })
+    return action === 'file' ? null : { message_id: 9000 + calls.length }
+  }
   for (const [index, request] of [
     { kind: 'image' as const, attachmentId: original.file.attachmentId },
     { kind: 'sticker' as const, attachmentId: original.file.attachmentId },
@@ -1018,7 +1680,9 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
     agent.session.append('tool/call', { turn: 1, step: index + 1, callId, name: 'genesis_qq_send', arguments: JSON.stringify(request) })
     const result = await sendMedia(first.ctx, agent, media, config, 'private', request, callId, signal, action)
     expect(result.status).toBe(request.kind === 'file' ? 'accepted-unconfirmed-do-not-retry' : 'confirmed')
-    expect((await sendMedia(first.ctx, agent, media, config, 'private', request, callId, signal, action)).status).toBe('already-reserved-do-not-retry')
+    expect((await sendMedia(first.ctx, agent, media, config, 'private', request, callId, signal, action)).status).toBe(
+      'already-reserved-do-not-retry',
+    )
   }
   expect(calls).toHaveLength(5)
   expect(JSON.stringify(calls[1])).toContain('"sub_type":1')
@@ -1028,19 +1692,49 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   const voice = await first.ctx.attachments.saveFile({ data: wav, name: 'speech.wav' })
   const generated = ToolCallId('qq-generated-speech')
   agent.session.append('tool/call', { turn: 1, step: 20, callId: generated, name: 'genesis_speech', arguments: '{"text":"你好"}' })
-  agent.session.append('tool/result', { turn: 1, step: 20, message: createToolResultMessage({ callId: generated,
-    content: [{ type: 'file', attachment: voice }], isError: false }) }, { surfaceOp: 'append' })
+  agent.session.append(
+    'tool/result',
+    {
+      turn: 1,
+      step: 20,
+      message: createToolResultMessage({ callId: generated, content: [{ type: 'file', attachment: voice }], isError: false }),
+    },
+    { surfaceOp: 'append' },
+  )
   const voiceCall = ToolCallId('qq-send-voice')
   const voiceRequest = { kind: 'file', asVoice: true, attachmentId: voice.attachmentId }
-  agent.session.append('tool/call', { turn: 1, step: 21, callId: voiceCall, name: 'genesis_qq_send', arguments: JSON.stringify(voiceRequest) })
-  const sentVoice = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_send', callId: voiceCall, arguments: voiceRequest, signal })
+  agent.session.append('tool/call', {
+    turn: 1,
+    step: 21,
+    callId: voiceCall,
+    name: 'genesis_qq_send',
+    arguments: JSON.stringify(voiceRequest),
+  })
+  const sentVoice = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_qq_send',
+    callId: voiceCall,
+    arguments: voiceRequest,
+    signal,
+  })
   expect(sentVoice.isError).not.toBe(true)
   expect(first.sentSegments.at(-1)).toEqual([{ type: 'record', data: { file: `base64://${wav.toString('base64')}` } }])
   expect(JSON.stringify(agent.session.ownEvents())).not.toContain(`base64://${wav.toString('base64')}`)
   const badVoice = ToolCallId('qq-send-image-as-voice')
   agent.session.append('tool/call', { turn: 1, step: 22, callId: badVoice, name: 'genesis_qq_send', arguments: '{}' })
-  await expect(sendMedia(first.ctx, agent, media, config, 'private', { kind: 'file', asVoice: true,
-    attachmentId: original.file.attachmentId }, badVoice, signal, action)).rejects.toThrow(/WAV/u)
+  await expect(
+    sendMedia(
+      first.ctx,
+      agent,
+      media,
+      config,
+      'private',
+      { kind: 'file', asVoice: true, attachmentId: original.file.attachmentId },
+      badVoice,
+      signal,
+      action,
+    ),
+  ).rejects.toThrow(/WAV/u)
 })
 
 it('persists an independent QQ decision route and shows real endpoint probability without changing memory settings', async () => {
@@ -1054,10 +1748,17 @@ it('persists an independent QQ decision route and shows real endpoint probabilit
   const endpoint = httpServer((request, response) => {
     expect(request.headers.authorization).toBe('Bearer fixture-independent-decision-key')
     request.resume()
-    request.on('end', () => { response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ answers: { remember: { type: 'noul', noul: 0.73 } } })) })
+    request.on('end', () => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ answers: { remember: { type: 'noul', noul: 0.73 } } }))
+    })
   })
-  cleanup.push(async () => { endpoint.closeAllConnections(); await new Promise<void>((resolve, reject) => endpoint.close(error => error ? reject(error) : resolve())) })
-  endpoint.listen(0, '127.0.0.1'); await once(endpoint, 'listening')
+  cleanup.push(async () => {
+    endpoint.closeAllConnections()
+    await new Promise<void>((resolve, reject) => endpoint.close(error => (error ? reject(error) : resolve())))
+  })
+  endpoint.listen(0, '127.0.0.1')
+  await once(endpoint, 'listening')
   const address = endpoint.address()
   if (!address || typeof address === 'string') throw new Error('Missing endpoint')
   const route = { kind: 'jev' as const, url: `http://127.0.0.1:${address.port}`, model: 'fixture-judge', threshold: 0.6, useKey: true }
@@ -1070,7 +1771,11 @@ it('persists an independent QQ decision route and shows real endpoint probabilit
   expect(sample.decision!.recent[0]).toMatchObject({ outcome: 'reply', decision: { probability: 0.73, threshold: 0.6 }, messageId: '820' })
   await receipt(first.ctx, 1)
   expect((await first.ctx.genesisStatus.inspect(signal)).models).toEqual(shared)
-  await first.ctx.genesisQqSettings.saveDecision({ kind: 'provider', provider: 'fixture', model: 'decision' }, sample.decision!.revision, signal)
+  await first.ctx.genesisQqSettings.saveDecision(
+    { kind: 'provider', provider: 'fixture', model: 'decision' },
+    sample.decision!.revision,
+    signal,
+  )
   first.model.groupProbability = 0.99
   first.socket.send(incoming('group', 821))
   await expect.poll(async () => (await first.ctx.genesisQqSettings.inspect(signal)).decision!.recent.length).toBe(2)
@@ -1088,7 +1793,10 @@ it('upgrades legacy HTTP media only to an allowed HTTPS origin and reports safe 
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-media-url-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const first = await boot(root)
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC', 'base64')
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC',
+    'base64',
+  )
   const downloaded = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(Uint8Array.from(png)))
   try {
     const frame = JSON.parse(incoming('private', 860)) as { message: unknown[] }
@@ -1110,19 +1818,45 @@ it('upgrades legacy HTTP media only to an allowed HTTPS origin and reports safe 
     const agent = first.ctx.agents.get(SessionId(state.people!.conversations[0]!.sessionId))!
     const media = new QqMedia(first.ctx, QqConfig({ cwd: root, botQq: '11111' }))
     try {
-      const rejected = await media.incoming(agent, '861', [{ type: 'image', data: { url: 'https://untrusted.invalid/private?token=fixture-secret' } }],
-        async () => { throw new Error('Unexpected client lookup') }, new AbortController().signal)
+      const rejected = await media.incoming(
+        agent,
+        '861',
+        [{ type: 'image', data: { url: 'https://untrusted.invalid/private?token=fixture-secret' } }],
+        async () => {
+          throw new Error('Unexpected client lookup')
+        },
+        new AbortController().signal,
+      )
       expect(JSON.stringify(rejected)).toContain('https://untrusted.invalid')
       expect(JSON.stringify(rejected)).not.toContain('fixture-secret')
       expect(JSON.stringify(rejected)).not.toContain('/private')
-      for (const url of ['https://qq.com.attacker.invalid/image', 'https://notqq.com/image', 'https://image.qq.com:8443/image', 'https://qq.com/image']) {
-        const refused = await media.incoming(agent, 'spoof', [{ type: 'image', data: { url } }], async () => { throw new Error('Unexpected lookup') }, new AbortController().signal)
+      for (const url of [
+        'https://qq.com.attacker.invalid/image',
+        'https://notqq.com/image',
+        'https://image.qq.com:8443/image',
+        'https://qq.com/image',
+      ]) {
+        const refused = await media.incoming(
+          agent,
+          'spoof',
+          [{ type: 'image', data: { url } }],
+          async () => {
+            throw new Error('Unexpected lookup')
+          },
+          new AbortController().signal,
+        )
         expect(JSON.stringify(refused)).toContain('is not allowed')
       }
       expect(downloaded).toHaveBeenCalledTimes(3)
-      expect(first.model.requests.some(request => request.messages.some(message => message.content.some(block => block.type === 'image')))).toBe(true)
-    } finally { await media.close() }
-  } finally { downloaded.mockRestore() }
+      expect(
+        first.model.requests.some(request => request.messages.some(message => message.content.some(block => block.type === 'image'))),
+      ).toBe(true)
+    } finally {
+      await media.close()
+    }
+  } finally {
+    downloaded.mockRestore()
+  }
 })
 
 it('reads earlier and remotely quoted images on later text turns without crossing conversations', async () => {
@@ -1148,30 +1882,64 @@ it('reads earlier and remotely quoted images on later text turns without crossin
   first.socket.send(incoming('private', 901))
   await receipt(first.ctx, 2)
   const later = first.model.requests.slice(before).filter(request => request.model === 'chat')
-  expect(later.some(request => request.messages.some(message => message.role === 'tool'
-    && message.content.some(block => block.type === 'image')))).toBe(true)
-  expect(agent.session.ownEvents().some(event => event.type === 'tool/result' && !event.data.message.isError
-    && event.data.message.content.some(block => block.type === 'image'))).toBe(true)
+  expect(
+    later.some(request =>
+      request.messages.some(message => message.role === 'tool' && message.content.some(block => block.type === 'image')),
+    ),
+  ).toBe(true)
+  expect(
+    agent.session
+      .ownEvents()
+      .some(
+        event =>
+          event.type === 'tool/result' && !event.data.message.isError && event.data.message.content.some(block => block.type === 'image'),
+      ),
+  ).toBe(true)
 
-  first.metadata.messages.set('902', { message_type: 'private', sender: { user_id: 12345, nickname: '小明' },
-    message: [{ type: 'image', data: { file: `base64://${png}` } }] })
+  first.metadata.messages.set('902', {
+    message_type: 'private',
+    sender: { user_id: 12345, nickname: '小明' },
+    message: [{ type: 'image', data: { file: `base64://${png}` } }],
+  })
   first.model.nextMediaMessageId = '902'
   const quoteFrame = JSON.parse(incoming('private', 903)) as { message: unknown[] }
   quoteFrame.message.unshift({ type: 'reply', data: { id: 902 } })
   first.socket.send(JSON.stringify(quoteFrame))
   await receipt(first.ctx, 3)
-  expect(agent.session.ownEvents().some(event => event.type === 'user/message'
-    && JSON.stringify(event.data).includes('Quoted attachments'))).toBe(true)
-  expect(agent.session.ownEvents().flatMap((event) => {
-    const row = pluginRecordOf(event)
-    return row?.type === 'plugin:genesis-qq/media' && mediaRecordSchema.parse(row.data).messageId === '902' ? [row] : []
-  })).toHaveLength(1)
+  expect(
+    agent.session.ownEvents().some(event => event.type === 'user/message' && JSON.stringify(event.data).includes('Quoted attachments')),
+  ).toBe(true)
+  expect(
+    agent.session.ownEvents().flatMap((event) => {
+      const row = pluginRecordOf(event)
+      return row?.type === 'plugin:genesis-qq/media' && mediaRecordSchema.parse(row.data).messageId === '902' ? [row] : []
+    }),
+  ).toHaveLength(1)
   const capture = vi.fn(async () => 'must not be captured')
-  await quoteContext(agent.session, '904', '[CQ:reply,id=905]', 'private', '12345', '11111', 1000,
-    async () => ({ message_type: 'group', group_id: 67890, sender: { user_id: 12345 }, message: [{ type: 'image', data: { file: `base64://${png}` } }] }), capture)
+  await quoteContext(
+    agent.session,
+    '904',
+    '[CQ:reply,id=905]',
+    'private',
+    '12345',
+    '11111',
+    1000,
+    async () => ({
+      message_type: 'group',
+      group_id: 67890,
+      sender: { user_id: 12345 },
+      message: [{ type: 'image', data: { file: `base64://${png}` } }],
+    }),
+    capture,
+  )
   expect(capture).not.toHaveBeenCalled()
-  const denied = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_read_media', callId: ToolCallId('missing-qq-media'),
-    arguments: { messageId: '905' }, signal: new AbortController().signal })
+  const denied = await executeToolFixture(first.ctx, {
+    agent,
+    name: 'genesis_qq_read_media',
+    callId: ToolCallId('missing-qq-media'),
+    arguments: { messageId: '905' },
+    signal: new AbortController().signal,
+  })
   expect(denied.isError).toBe(true)
 })
 
@@ -1191,23 +1959,30 @@ it('keeps a 400k QQ group below compaction pressure at 200k despite a 256k adapt
   first.socket.send(incoming('group', 911))
   await receipt(first.ctx, 2)
   expect(agent.session.ownEvents().some(event => event.type === 'compaction/start')).toBe(false)
-  const ordinary = await first.ctx.agents.create({ sessionId: SessionId('non-qq-output-budget'),
-    meta: { cwd: root, agentPreset: 'life' }, agentOptions: { provider: 'fixture', model: 'chat' },
-    setup: async (ctx) => { await first.ctx.agentPresets.mount(ctx, 'life') } })
+  const ordinary = await first.ctx.agents.create({
+    sessionId: SessionId('non-qq-output-budget'),
+    meta: { cwd: root, agentPreset: 'life' },
+    agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (ctx) => {
+      await first.ctx.agentPresets.mount(ctx, 'life')
+    },
+  })
   cleanup.push(() => ordinary.dispose())
   ordinary.agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'fixture' }] }))
   await ordinary.agent.whenIdle()
   expect(ordinary.agent.session.requestHeader()?.config.maxTokens).toBe(256000)
 })
 
-
 it('routes operator text to a cold group, deduplicates tool retries, forwards original text and restores receipts', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-messages-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const first = await boot(root, false, false, false, true)
-  first.model.communication = [{ action: 'targets', query: '测试群' },
+  first.model.communication = [
+    { action: 'targets', query: '测试群' },
     { action: 'send', target: 'qq:group:11111:67890', text: '今晚八点开会。' },
-    { action: 'send', target: 'qq:group:11111:67890', text: '今晚八点开会。' }, { action: 'status', id: '$last' }]
+    { action: 'send', target: 'qq:group:11111:67890', text: '今晚八点开会。' },
+    { action: 'status', id: '$last' },
+  ]
   first.socket.send(incoming('private', 8001, 55555, '操作者'))
   await receipt(first.ctx, 1)
   expect(first.sent.filter(text => text === '今晚八点开会。')).toHaveLength(1)
@@ -1218,15 +1993,27 @@ it('routes operator text to a cold group, deduplicates tool retries, forwards or
   const agent = first.ctx.agents.get(source.sessionId)!
   const targetAgent = first.ctx.agents.get(target.sessionId)!
   expect(JSON.stringify(targetAgent.session.ownEvents())).toContain('Confirmed outgoing QQ text delivery.')
-  expect(first.model.requests.filter(row => row.model === 'chat').at(-1)?.tools?.some(tool => tool.name === 'genesis_message')).toBe(true)
-  const results = agent.session.ownEvents().flatMap(event => event.type === 'tool/result' ? event.data.message.content : [])
-    .filter(block => block.type === 'text').map(block => JSON.parse(block.text))
+  expect(
+    first.model.requests
+      .filter(row => row.model === 'chat')
+      .at(-1)
+      ?.tools?.some(tool => tool.name === 'genesis_message'),
+  ).toBe(true)
+  const results = agent.session
+    .ownEvents()
+    .flatMap(event => (event.type === 'tool/result' ? event.data.message.content : []))
+    .filter(block => block.type === 'text')
+    .map(block => JSON.parse(block.text))
   expect(results[0]).toMatchObject({ total: 1, items: [{ name: '测试群', target: 'qq:group:11111:67890' }] })
   const delivery = z.object({ id: z.string(), status: z.literal('confirmed'), acknowledged: z.literal(1) }).parse(results.at(-1))
   const originalCall = agent.session.ownEvents().find(event => event.type === 'tool/call')!
-  const tampered = await executeToolFixture(first.ctx, { name: 'genesis_message',
+  const tampered = await executeToolFixture(first.ctx, {
+    name: 'genesis_message',
     arguments: { action: 'send', target: 'qq:group:11111:67890', text: '替换了原始调用。' },
-    agent, signal: new AbortController().signal, callId: originalCall.data.callId })
+    agent,
+    signal: new AbortController().signal,
+    callId: originalCall.data.callId,
+  })
   expect(tampered.isError).toBe(true)
   expect(first.actions.filter(row => row.action === 'send_group_msg')).toHaveLength(1)
   const original = '  保留原文、换行\n和 @12345，不要改写。  '
@@ -1261,13 +2048,18 @@ it('denies unbound speakers and unapproved targets and never retries an uncertai
   f.socket.send(incoming('private', 8101, 12345))
   await receipt(f.ctx, 1)
   expect(f.actions.filter(row => row.action === 'send_group_msg')).toEqual([])
-  expect(f.model.requests.filter(row => row.model === 'chat').every(row => !row.tools?.some(tool => tool.name === 'genesis_message'))).toBe(true)
+  expect(
+    f.model.requests.filter(row => row.model === 'chat').every(row => !row.tools?.some(tool => tool.name === 'genesis_message')),
+  ).toBe(true)
   f.model.communication = [{ action: 'send', target: 'qq:group:11111:77777', text: '不允许发送。' }]
   f.socket.send(incoming('private', 8102, 55555, '操作者'))
   await receipt(f.ctx, 2)
   expect(f.actions.filter(row => row.action === 'send_group_msg')).toEqual([])
-  f.model.communication = [{ action: 'send', target: 'qq:group:11111:67890', text: '结果未知的投递。' },
-    { action: 'send', target: 'qq:group:11111:67890', text: '结果未知的投递。' }, { action: 'status', id: '$last' }]
+  f.model.communication = [
+    { action: 'send', target: 'qq:group:11111:67890', text: '结果未知的投递。' },
+    { action: 'send', target: 'qq:group:11111:67890', text: '结果未知的投递。' },
+    { action: 'status', id: '$last' },
+  ]
   f.metadata.uncertainNext = true
   f.socket.send(incoming('private', 8103, 55555, '操作者'))
   await receipt(f.ctx, 3)
@@ -1289,4 +2081,213 @@ it('denies unbound speakers and unapproved targets and never retries an uncertai
   expect(restored.actions.filter(row => row.action === 'send_group_msg')).toEqual([])
   const resumed = restored.ctx.agents.get(source.sessionId)!
   expect(JSON.stringify(resumed.session.ownEvents().findLast(event => event.type === 'tool/result'))).toContain('uncertain')
+})
+
+it('waits for QQ acknowledgements before continuing and splits blank lines into paced mentions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-paced-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root)
+  f.model.chatReply = '第一条\n\n@12345 第二条'
+  f.metadata.acknowledge = false
+  f.socket.send(incoming('group', 91001))
+  await expect.poll(() => f.sent.length).toBe(1)
+  const state = await f.ctx.genesis.snapshot()
+  const agent = f.ctx.agents.get(SessionId(state.people!.conversations.find(row => row.kind === 'group')!.sessionId))!
+  f.socket.send(incoming('group', 91002))
+  await expect.poll(() => groupRecords(agent.session).filter(row => row.kind === 'message').length).toBe(2)
+  await expect.poll(async () => (await f.ctx.genesisQq.inspect()).pending).toBe(1)
+  expect(f.model.requests.filter(row => row.model === 'chat')).toHaveLength(1)
+  expect(agent.session.ownEvents().some(event => event.type === 'turn/end')).toBe(false)
+  expect(f.sent).toEqual(['第一条'])
+  const acknowledgedAt = performance.now()
+  f.metadata.acknowledge = true
+  for (const acknowledge of f.metadata.acknowledgements.splice(0)) acknowledge()
+  await expect.poll(() => f.sent.length).toBeGreaterThanOrEqual(2)
+  expect(f.sentAt[1]! - acknowledgedAt).toBeGreaterThanOrEqual(490)
+  expect(f.sentSegments[1]).toEqual([
+    { type: 'at', data: { qq: '12345' } },
+    { type: 'text', data: { text: ' 第二条' } },
+  ])
+  await receipt(f.ctx, 2)
+  expect(f.model.requests.filter(row => row.model === 'chat')).toHaveLength(2)
+})
+
+it('reads an observed forwarded chat card as bounded untrusted history', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-forward-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root)
+  f.metadata.forwards.set('chat-card', {
+    messages: [
+      { sender: { user_id: 99999, nickname: '转发人物' }, content: [{ type: 'text', data: { text: '历史中的一句话' } }] },
+      ...Array.from({ length: 25 }, () => ({ sender: { user_id: 99999 }, content: '长消息'.repeat(1000) })),
+    ],
+  })
+  const frame = JSON.parse(incoming('private', 92001)) as { message: unknown[] }
+  frame.message = [{ type: 'forward', data: { id: 'chat-card' } }]
+  f.socket.send(JSON.stringify(frame))
+  await receipt(f.ctx, 1)
+  const request = f.model.requests.filter(row => row.model === 'chat').at(-1)!
+  const text = modelText(request)
+  expect(text).toContain('历史中的一句话')
+  expect(text).toContain('sender labels are unverified')
+  const binding = (await f.ctx.genesis.snapshot()).people!.conversations.find(row => row.kind === 'private')!
+  const agent = f.ctx.agents.get(SessionId(binding.sessionId))!
+  const history = historyMessages(agent.session, '11111')
+  expect(history[0]!.text).toContain('历史中的一句话')
+  const data = JSON.parse(history[0]!.text.split('instructions): ')[1]!) as { messages: unknown[]; omitted: number }
+  expect(JSON.stringify(data).length).toBeLessThanOrEqual(16000)
+  expect(data.messages).toHaveLength(20)
+  expect(data.omitted).toBe(6)
+  f.metadata.forwards.delete('chat-card')
+  f.socket.send(JSON.stringify({ ...frame, message_id: 92002 }))
+  await receipt(f.ctx, 2)
+  expect(modelText(f.model.requests.filter(row => row.model === 'chat').at(-1)!)).toContain('Forwarded chat record unavailable')
+})
+
+it('batches consecutive speaker inputs after one idle second or immediately at five messages', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-input-batch-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root, false, false, false, false, true)
+  const message = (id: number, user = 12345) => {
+    const frame = JSON.parse(incoming('private', id, user)) as { message: unknown[] }
+    frame.message = [{ type: 'text', data: { text: `连续消息${id}` } }]
+    return JSON.stringify(frame)
+  }
+  for (let id = 1; id <= 4; id++) f.socket.send(message(id))
+  await expect.poll(async () => (await f.ctx.genesisQq.inspect()).pending).toBe(4)
+  expect(f.model.requests.filter(row => row.model === 'chat')).toHaveLength(0)
+  f.socket.send(message(5))
+  await expect.poll(() => f.sent.length, { timeout: 3000 }).toBe(1)
+  const first = f.model.requests.filter(row => row.model === 'chat')
+  expect(first).toHaveLength(1)
+  for (let id = 1; id <= 5; id++) expect(modelText(first[0]!)).toContain(`连续消息${id}`)
+  f.socket.send(message(6))
+  await expect.poll(async () => (await f.ctx.genesisQq.inspect()).pending).toBe(1)
+  expect(f.model.requests.filter(row => row.model === 'chat')).toHaveLength(1)
+  const waitingAt = performance.now()
+  f.socket.send(message(7))
+  await expect.poll(() => f.sent.length, { timeout: 3000 }).toBe(2)
+  expect(f.sentAt[1]! - waitingAt).toBeGreaterThanOrEqual(990)
+  const last = f.model.requests.filter(row => row.model === 'chat')
+  expect(last).toHaveLength(2)
+  expect(modelText(last[1]!)).toContain('连续消息6')
+  expect(modelText(last[1]!)).toContain('连续消息7')
+  const binding = (await f.ctx.genesis.snapshot()).people!.conversations.find(row => row.kind === 'private')!
+  const agent = f.ctx.agents.get(SessionId(binding.sessionId))!
+  expect(historyMessages(agent.session, '11111').filter(row => row.role === 'user')).toHaveLength(7)
+})
+
+it('configures person and group QQ permissions, denies guest escalation and restores grants after restart', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-person-permissions-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const signal = new AbortController().signal
+  const first = await boot(root)
+  const name = 'mcp__playwright-mcp__browser_evaluate'
+  let calls = 0
+  const register = (ctx: Context) =>
+    ctx.tools.register(
+      defineTool({
+        name,
+        description: 'Permission fixture.',
+        parameters: {},
+        output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+        async execute() {
+          calls++
+          return 'executed'
+        },
+      }),
+    )
+  register(first.ctx)
+  await first.ctx.genesis.learn(name, SessionId('operator-setup'))
+  first.socket.send(incoming('group', 2101, 12345))
+  await receipt(first.ctx, 1)
+  const binding = (await first.ctx.genesis.snapshot()).people!.conversations.find(item => item.kind === 'group')!
+  const agent = first.ctx.agents.get(binding.sessionId)!
+  const group = binding.id.split(':')[3]!
+  const execute = (tool: string, args = {}) =>
+    executeToolFixture(first.ctx, { agent, name: tool, arguments: args, signal, callId: ToolCallId(`qq-permission-${tool}`) })
+  expect((await execute(name)).isError).toBe(true)
+  expect(
+    (await execute('genesis_qq_permissions', { action: 'set', scope: 'person', target: '12345', tool: '*', effect: 'allow', revision: 0 }))
+      .isError,
+  ).toBe(true)
+  expect((await first.ctx.genesisToolkits.inspect(signal)).qqPermissions.rules).toEqual([])
+  const guest = first.ctx.extend({
+    invocation: {
+      request: { namespace: 'fixture', method: 'savePermissions', args: {} },
+      service: 'genesis',
+      signal,
+      async *uplink() {},
+      peer: {
+        id: brandString<PeerId>('qq-policy-guest'),
+        ctx: first.ctx,
+        principal: { kind: 'test-guest', guest: 'qq-permissions' },
+        signal,
+        interactions: 'none',
+        async dispose() {},
+      },
+    } satisfies RemoteInvocation,
+  })
+  await expect(guest.genesisToolkits.savePermissions([], 0, signal)).rejects.toThrow('operator access')
+
+  await first.ctx.genesisToolkits.savePermissions(
+    [
+      { scope: 'group', target: group, tool: 'mcp__playwright-mcp__*', effect: 'allow' },
+      { scope: 'person', target: '12345', tool: '*', effect: 'deny' },
+    ],
+    0,
+    signal,
+  )
+  expect((await execute(name)).isError).toBe(true)
+  first.socket.send(incoming('group', 2102, 99999))
+  await receipt(first.ctx, 2)
+  expect((await execute(name)).isError).toBe(false)
+  expect(
+    first.model.requests
+      .filter(request => request.model === 'chat')
+      .at(-1)!
+      .tools?.map(tool => tool.name),
+  ).toContain(name)
+  first.socket.send(incoming('group', 2103, 55555, '操作者'))
+  await receipt(first.ctx, 3)
+  expect((await execute('genesis_qq_permissions', { action: 'list' })).isError).toBe(false)
+  expect(
+    (await execute('genesis_qq_permissions', { action: 'set', scope: 'person', target: '12345', tool: name, effect: 'allow', revision: 1 }))
+      .isError,
+  ).toBe(false)
+  await expect(first.ctx.genesisToolkits.savePermissions([], 1, signal)).rejects.toThrow('changed')
+  first.socket.send(incoming('group', 2104, 12345))
+  await receipt(first.ctx, 4)
+  expect((await execute(name)).isError).toBe(false)
+  expect((await execute('genesis_qq_permissions', { action: 'list' })).isError).toBe(true)
+  // A new deny fences the executor even though the declaration remains in the Session.
+  const policy = (await first.ctx.genesisToolkits.inspect(signal)).qqPermissions
+  await first.ctx.genesisToolkits.savePermissions(
+    policy.rules.map(rule => (rule.tool === name ? { ...rule, effect: 'deny' } : rule)),
+    policy.revision,
+    signal,
+  )
+  expect((await execute(name)).isError).toBe(true)
+  expect(calls).toBe(2)
+  await first.ctx.fiber.dispose()
+  const second = await boot(root)
+  register(second.ctx)
+  expect((await second.ctx.genesisToolkits.inspect(signal)).qqPermissions.revision).toBe(3)
+  second.socket.send(incoming('group', 2105, 12345))
+  await receipt(second.ctx, 5)
+  const restored = second.ctx.agents.get(binding.sessionId)!
+  const run = () =>
+    executeToolFixture(second.ctx, { agent: restored, name, arguments: {}, signal, callId: ToolCallId('qq-permission-restored') })
+  expect((await run()).isError).toBe(true)
+  second.socket.send(incoming('group', 2106, 99999))
+  await receipt(second.ctx, 6)
+  expect((await run()).isError).toBe(false)
+  const path = join(root, 'genesis_qq_permissions.json')
+  await second.ctx.fiber.dispose()
+  const data = z
+    .object({ tables: z.object({ settings: z.object({ policy: z.record(z.string(), z.unknown()) }) }) })
+    .parse(JSON.parse(await readFile(path, 'utf8')))
+  data.tables.settings.policy['schemaVersion'] = 99
+  await writeFile(path, JSON.stringify(data))
+  await expect(boot(root)).rejects.toThrow()
 })

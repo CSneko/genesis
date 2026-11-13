@@ -1,7 +1,18 @@
 /** Read-only Genesis status projection for authenticated Web settings. @module */
 import type { LifeMotivation, LifeGoal, LifeDecision } from './agency-state.ts'
 export type { LifeGoalId, MotivationId, DecisionId, LifeMotivation, LifeGoal, LifeDecision } from './agency-state.ts'
-import type { LifeIdentity, LifeMemory, GrowthRecord, CapabilityState, MemoryConsolidation, LifeEventId, MemoryId, InterestId, LifeInterest } from './model.ts'
+import type {
+  LifeIdentity,
+  LifeMemory,
+  GrowthRecord,
+  CapabilityState,
+  MemoryConsolidation,
+  LifeEventId,
+  MemoryId,
+  InterestId,
+  LifeInterest,
+} from './model.ts'
+export type { IntimacySettings, IntimacyState, IntimacyStatus } from './intimacy-state.ts'
 export type { EmotionState, Mood, Needs, EmotionCurrent, EmotionSettings, EmotionAdjustment } from './emotion-state.ts'
 export type { RelationshipState, RelationshipVector, RelationshipAdjustment, EmotionAppraisal } from './relationship-state.ts'
 export type { MemoryId, LifeMemory } from './model.ts'
@@ -38,7 +49,18 @@ export interface ManagedTaskCatalog {
   nextOffset: number | null
 }
 import type { Branded } from '@deepseek-ai/dsh-brand'
-export type { WritingId, WritingTypeId, WritingEntry, WritingType, WritingDraft, WritingQuery, WritingMatch, WritingSearch, WritingRead, WritingCatalog } from './records-model.ts'
+export type {
+  WritingId,
+  WritingTypeId,
+  WritingEntry,
+  WritingType,
+  WritingDraft,
+  WritingQuery,
+  WritingMatch,
+  WritingSearch,
+  WritingRead,
+  WritingCatalog,
+} from './records-model.ts'
 import type { InitiativeSettings, InteractionRecord } from './social-state.ts'
 export type { InitiativeSettings, InteractionRecord } from './social-state.ts'
 
@@ -56,7 +78,12 @@ export interface InitiativeStatus {
   lastMessageTruncated: boolean
   channels: Array<{ id: SessionId; idle: boolean }>
   counts: Record<InteractionRecord['status'], number>
-  records: Array<{ record: InteractionRecord; triggerType: string; choice: LifeDecision['candidates'][number]['disposition'] | null; messageTruncated: boolean }>
+  records: Array<{
+    record: InteractionRecord
+    triggerType: string
+    choice: LifeDecision['candidates'][number]['disposition'] | null
+    messageTruncated: boolean
+  }>
   omitted: number
   channelsOmitted: number
 }
@@ -82,9 +109,18 @@ export interface EmbeddingSettings {
 }
 
 /** A model already configured through Harness Models or account sign-in. */
-export interface ProviderRoute { kind: 'provider'; provider: string; model: string }
+export interface ProviderRoute {
+  kind: 'provider'
+  provider: string
+  model: string
+}
 /** A dedicated endpoint; credentials remain in the credential store. */
-export interface EndpointRoute { kind: 'jev' | 'openai'; url: string; model: string; keyRef?: string | undefined }
+export interface EndpointRoute {
+  kind: 'jev' | 'openai'
+  url: string
+  model: string
+  keyRef?: string | undefined
+}
 /** Independent memory routes shared by all conversation modes. */
 export interface MemoryModelsSettings {
   /** Additional auxiliary inference attempts; omission inherits the deployment setting. */
@@ -105,12 +141,16 @@ export interface LocalDecisionStatus {
 export type MemoryKind = 'declarative' | 'non-declarative'
 
 /** Editable operator-authored candidate fields; sources and attribution are assigned by the life core. */
-export type MemoryDraft = Pick<LifeMemory, 'content' | 'category' | 'importance' | 'confidence'> & { kind: MemoryKind }
+export type MemoryDraft = Pick<LifeMemory, 'content' | 'category' | 'importance' | 'confidence' | 'organization'> & { kind: MemoryKind }
 
 /** Memory operation whose failure left a review unconfirmed. */
 export type ReviewStage = 'evidence' | 'configuration' | 'decision' | 'retrieval' | 'writer' | 'embedding' | 'storage'
 /** Safe diagnostic retained for the latest failed review; conversation and credentials are excluded. */
-export interface ReviewFailure { stage: ReviewStage; code: string; message: string }
+export interface ReviewFailure {
+  stage: ReviewStage
+  code: string
+  message: string
+}
 /** Latest live review; failed outcomes carry the actual failing operation and safe cause. */
 export type ReviewOutcome = {
   sessionId: SessionId
@@ -119,9 +159,7 @@ export type ReviewOutcome = {
   completedAt?: string
   /** System One update probability and the threshold actually used; absent for generative decisions. */
   decision?: { probability: number; threshold: number }
-} & (
-  { state: 'saved' | 'skipped' } | { state: 'failed'; failure: ReviewFailure }
-)
+} & ({ state: 'saved' | 'skipped' } | { state: 'failed'; failure: ReviewFailure })
 
 /** One bounded, attributed emotion transition for the settings history. */
 export interface EmotionHistoryEntry {
@@ -149,8 +187,10 @@ export interface EmotionHistoryEntry {
 }
 
 /** Bounded interest state with the latest cited exchange. */
-export type InterestSummary = Pick<LifeInterest, 'id' | 'topic' | 'stage' | 'reason' | 'createdAt' | 'updatedAt'>
-  & { evidenceCount: number; sourceEventIds: LifeEventId[] }
+export type InterestSummary = Pick<LifeInterest, 'id' | 'topic' | 'stage' | 'reason' | 'createdAt' | 'updatedAt'> & {
+  evidenceCount: number
+  sourceEventIds: LifeEventId[]
+}
 /** One append-only transition visible to the operator. */
 export interface InterestHistoryEntry {
   id: LifeEventId
@@ -192,7 +232,11 @@ export interface LifeStatus {
   /** Nonsecret progress of the optional operator-managed local runtime. */
   localDecision?: LocalDecisionStatus
   /** Shared effective routes, saved cloud route, revision and credential availability. */
-  models?: MemoryModelsSettings & { configuredDecision?: MemoryModelsSettings['decision']; revision: number; keys: Record<'decision' | 'writer', { configured: boolean; writable: boolean }> }
+  models?: MemoryModelsSettings & {
+    configuredDecision?: MemoryModelsSettings['decision']
+    revision: number
+    keys: Record<'decision' | 'writer', { configured: boolean; writable: boolean }>
+  }
   /** Persistent maintenance cursor, effective preference and bounded automatic retry state. */
   consolidation?: MemoryConsolidation & { enabled: boolean; maxFailures: number; minHabitSupport: number }
   /** Last review outcome; failures do not stop the conversation. */
@@ -216,6 +260,27 @@ export interface MemoryCatalog {
   items: LifeStatus['memories']
   total: number
   nextOffset: number | null
+  browser?: MemoryBrowserCatalog['browser']
+}
+
+/** Declarative organization selection, independent of the legacy memory category. */
+export interface MemoryBrowserFilter {
+  type?: NonNullable<LifeMemory['organization']>['type'] | undefined
+  path?: string[] | undefined
+  subject?: { name: string; personId?: import('./people-model.ts').PersonId | undefined; memoryId?: MemoryId | undefined } | undefined
+  navigationOffset: number
+}
+/** Immediate knowledge directory or source-grounded person portrait. */
+export type MemoryNavigationItem =
+  | { kind: 'directory'; path: string[]; count: number }
+  | { kind: 'person'; subject: NonNullable<MemoryBrowserFilter['subject']>; overview: string; count: number }
+/** Organization navigation is calculated before record pagination. */
+export interface MemoryBrowserCatalog extends MemoryCatalog {
+  browser: {
+    navigation: MemoryNavigationItem[]
+    navigationTotal: number
+    nextNavigationOffset: number | null
+  }
 }
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
@@ -248,3 +313,5 @@ export type { SleepStatus, SleepSettings, SleepCycle } from './sleep-model.ts'
 export type { SpontaneitySettings, SpontaneityStatus } from './spontaneity-state.ts'
 
 export type { ContactInput, LifeContact, ContactCatalog } from './contacts-model.ts'
+
+export type { QqPermissionRule, QqPermissionStatus } from './qq-permission-types.ts'

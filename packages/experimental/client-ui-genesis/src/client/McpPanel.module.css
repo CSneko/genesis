@@ -1,0 +1,12 @@
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.feedback { min-height: 32px; }
+.detail { display: grid; min-width: 0; gap: 12px; }
+.detail > button, .form > button { justify-self: start; }
+.form { display: grid; min-width: 0; gap: 16px; margin: 16px 0; }
+.field { display: grid; min-width: 0; gap: 8px; }
+.field > * { min-width: 0; max-width: 100%; }
+.form select, .form textarea { width: 100%; box-sizing: border-box; padding: 8px 12px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-line-tertiary); border-radius: var(--dsw-radius-md); font: inherit; }
+.form textarea { min-height: 96px; resize: vertical; }
+.address { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tools { display: grid; gap: 8px; margin-top: 12px; }
+@media (pointer: coarse) { .form input, .form select, .form textarea { font-size: 16px; } }

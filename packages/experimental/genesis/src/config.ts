@@ -47,12 +47,6 @@ export interface SpontaneityConfig {
   maxDurationMs: number
   /** Reserved output tokens per opportunity, including auxiliary inference and retries. */
   maxOutputTokens: number
-  /** Maximum output tokens reserved for one conversation-model request. */
-  requestTokens: number
-  /** Maximum conversation-model requests per opportunity, including retries. */
-  maxRequests: number
-  /** Maximum admitted tool calls, including thought and recall tools. */
-  maxToolCalls: number
   /** Maximum opportunities in a rolling twenty-four hours; empty and failed runs count. */
   maxPer24Hours: number
   /** Importance assigned to factual exploration receipts in episodic memory. */
@@ -80,7 +74,7 @@ export interface SleepConfig extends SleepSettings {
   wakeInputChars: number
   /** Maximum classified wake requests per scheduled interval. */
   maxWakeChecks: number
-  /** Maximum memories summarized per batch. */
+  /** Maximum input and output memories per sleep batch, independent of memory.maxChanges. */
   memoryBatchSize: number
   /** Maximum maintenance model calls before operator intervention. */
   maxMemoryRounds: number
@@ -132,6 +126,10 @@ export interface TemporaryMemoryConfig {
   injectChars: number
   /** Maximum records and failures shown in one settings sample. */
   statusLimit: number
+  /** Total automatic attempts for optional summary and importance generation. */
+  maxAttempts: number
+  /** Consecutive dropped batches in one runtime before a generation diagnostic becomes visible. */
+  failureThreshold: number
 }
 /** Validated, resolved Genesis plugin configuration. */
 export interface Config {
@@ -211,14 +209,16 @@ export interface Config {
   /** Calendar zone for memory anchors and relative recall; defaults to the host's IANA zone. */
   timeZone: string
   /** Enables naming, newborn conversations and persistent tool learning on the configured chat route. */
-  awakening?: {
-    /** Registered chat provider checked before the naming step. */
-    provider: string
-    /** Chat model identifier on the configured provider. */
-    model: string
-    /** Confine life tools, context and lifecycle to this preset; omitted preserves the legacy all-Session policy. */
-    lifePreset?: string
-  } | undefined
+  awakening?:
+    | {
+      /** Registered chat provider checked before the naming step. */
+      provider: string
+      /** Chat model identifier on the configured provider. */
+      model: string
+      /** Confine life tools, context and lifecycle to this preset; omitted preserves the legacy all-Session policy. */
+      lifePreset?: string
+    }
+    | undefined
   /** Local atomic backup; omitted resolves beside leasePath as leasePath + '.backup.json'. */
   backupPath?: string
   /** Optional private, persistent host directory authorized across workspaces after read/write learning. */
@@ -379,9 +379,9 @@ export interface DeliberationConfig {
 export interface MemoryConfig {
   /** Maximum recent conversation turns considered together, including the current turn. */
   windowTurns: number
-  /** TypeSafe-compatible /v1/systemone endpoint; absent uses the legacy provider route. */
+  /** System One endpoint or native Gemini /v1beta/decisions endpoint; absent uses the legacy provider route. */
   decisionUrl?: string
-  /** Credential reference for Jev. */
+  /** Credential reference for the decision endpoint. */
   decisionKeyEnv?: string
   /** Minimum probability for a positive Jev decision. */
   decisionThreshold?: number
@@ -469,229 +469,416 @@ export interface MemoryConfig {
   minSimilarity: number
 }
 const baseline = z.object({ valence: z.number().min(-1).max(1).default(0.2), arousal: z.number().min(0).max(1).default(0.3) })
-const halfLives = z.object({ happiness: z.number().min(1000).max(31536000000).default(300000),
-  sadness: z.number().min(1000).max(31536000000).default(900000), anger: z.number().min(1000).max(31536000000).default(300000),
-  fear: z.number().min(1000).max(31536000000).default(180000), tenderness: z.number().min(1000).max(31536000000).default(900000),
-  gratitude: z.number().min(1000).max(31536000000).default(1200000), longing: z.number().min(1000).max(31536000000).default(1800000),
+const halfLives = z.object({
+  happiness: z.number().min(1000).max(31536000000).default(300000),
+  sadness: z.number().min(1000).max(31536000000).default(900000),
+  anger: z.number().min(1000).max(31536000000).default(300000),
+  fear: z.number().min(1000).max(31536000000).default(180000),
+  tenderness: z.number().min(1000).max(31536000000).default(900000),
+  gratitude: z.number().min(1000).max(31536000000).default(1200000),
+  longing: z.number().min(1000).max(31536000000).default(1800000),
   frustration: z.number().min(1000).max(31536000000).default(300000),
-  disappointment: z.number().min(1000).max(31536000000).default(900000) })
+  disappointment: z.number().min(1000).max(31536000000).default(900000),
+})
 const initialNeeds = z.object({
-  socialDesire: z.number().min(0).max(1).default(0.5), socialSatisfaction: z.number().min(0).max(1).default(0.5),
-  relationshipQuality: z.number().min(0).max(1).default(0.5), recentInteraction: z.number().min(0).max(1).default(0),
-  solitudePreference: z.number().min(0).max(1).default(0.5), exploration: z.number().min(0).max(1).default(0.5),
-  autonomy: z.number().min(0).max(1).default(0.5), creativity: z.number().min(0).max(1).default(0.5),
-  loneliness: z.number().min(0).max(1).default(0) })
+  socialDesire: z.number().min(0).max(1).default(0.5),
+  socialSatisfaction: z.number().min(0).max(1).default(0.5),
+  relationshipQuality: z.number().min(0).max(1).default(0.5),
+  recentInteraction: z.number().min(0).max(1).default(0),
+  solitudePreference: z.number().min(0).max(1).default(0.5),
+  exploration: z.number().min(0).max(1).default(0.5),
+  autonomy: z.number().min(0).max(1).default(0.5),
+  creativity: z.number().min(0).max(1).default(0.5),
+  loneliness: z.number().min(0).max(1).default(0),
+})
 /** Loader schema resolves every deployment-varying bound before plugin activation. */
-export const Config: z<Partial<Omit<Config, 'purge' | 'emotion' | 'interest' | 'records' | 'deliberation' | 'socialInitiative' | 'personality' | 'temporaryMemory' | 'spontaneity' | 'sleep' | 'memory'>> & Pick<Config, 'leasePath'> & { purge?: boolean; memory?: Partial<MemoryConfig> | undefined; sleep?: Partial<SleepConfig>; spontaneity?: Partial<SpontaneityConfig>; temporaryMemory?: Partial<TemporaryMemoryConfig>; personality?: Partial<PersonalityConfig> | undefined; emotion?: Partial<EmotionConfig> | undefined; interest?: Partial<InterestConfig> | undefined; records?: Partial<RecordsConfig> | undefined; deliberation?: Partial<DeliberationConfig> | undefined; socialInitiative?: Partial<SocialInitiativeConfig> | undefined }, Config> = z.object({
+export const Config: z<
+  Partial<
+    Omit<
+      Config,
+      | 'purge'
+      | 'emotion'
+      | 'interest'
+      | 'records'
+      | 'deliberation'
+      | 'socialInitiative'
+      | 'personality'
+      | 'temporaryMemory'
+      | 'spontaneity'
+      | 'sleep'
+      | 'memory'
+    >
+  > &
+    Pick<Config, 'leasePath'> & {
+      purge?: boolean
+      memory?: Partial<MemoryConfig> | undefined
+      sleep?: Partial<SleepConfig>
+      spontaneity?: Partial<SpontaneityConfig>
+      temporaryMemory?: Partial<TemporaryMemoryConfig>
+      personality?: Partial<PersonalityConfig> | undefined
+      emotion?: Partial<EmotionConfig> | undefined
+      interest?: Partial<InterestConfig> | undefined
+      records?: Partial<RecordsConfig> | undefined
+      deliberation?: Partial<DeliberationConfig> | undefined
+      socialInitiative?: Partial<SocialInitiativeConfig> | undefined
+    },
+  Config
+> = z.object({
   purge: z.boolean().default(false).volatile(),
-  sleep: z.union([z.const(undefined), z.object({
-    enabled: z.boolean().default(true), jitterMs: z.number().step(1).min(0).max(300000).default(300000),
-    temporaryIdleMs: z.number().step(1).min(1000).max(86400000).default(600000),
-    holidayExempt: z.boolean().default(true), greetings: z.boolean().default(true),
-    exemptDates: z.array(z.string()).default([]),
-    schedule: z.array(z.object({ days: z.array(z.number().step(1).min(1).max(7)),
-      start: z.number().step(1).min(0).max(1439), end: z.number().step(1).min(1).max(1440) }))
-      .default([{ days: [1, 2, 3, 4, 5], start: 540, end: 720 }, { days: [1, 2, 3, 4, 5], start: 840, end: 1080 }]),
-    pollMs: z.number().step(1).min(100).max(60000).default(1000),
-    maxRecords: z.number().step(1).min(1).max(100000).default(10000),
-    maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
-    statusChars: z.number().step(1).min(1000).max(1000000).default(16000),
-    wakeInputChars: z.number().step(1).min(1).max(8000).default(1000),
-    maxWakeChecks: z.number().step(1).min(1).max(1000).default(20),
-    memoryBatchSize: z.number().step(1).min(2).max(100).default(20),
-    maxMemoryRounds: z.number().step(1).min(1).max(10000).default(100),
-    summaryChars: z.number().step(1).min(100).max(8000).default(2000),
-    greetingGraceMs: z.number().step(1).min(1000).max(3600000).default(300000),
-    greetingAffection: z.number().min(0).max(1).default(0.5),
-  })]),
-  spontaneity: z.union([z.const(undefined), z.object({
-    boredomThreshold: z.number().min(0).max(1).default(0.35),
-    boredomCheckMs: z.number().step(1).min(1000).max(3600000).default(60000),
-    boredomMinIntervalMs: z.number().step(1).min(1000).max(86400000).default(300000),
-    boredomMaxIntervalMs: z.number().step(1).min(1000).max(86400000).default(1800000),
-    socialCooldownMs: z.number().step(1).min(1000).max(86400000).default(3600000),
-    socialMaxPer24Hours: z.number().step(1).min(1).max(1000).default(3),
-    enabled: z.boolean().default(true), idleMs: z.number().step(1).min(0).max(86400000).default(60000),
-    maxDurationMs: z.number().step(1).min(1000).max(3600000).default(180000),
-    maxOutputTokens: z.number().step(1).min(1).max(1000000).default(32768),
-    requestTokens: z.number().step(1).min(1).max(100000).default(2048),
-    maxRequests: z.number().step(1).min(1).max(100).default(6),
-    maxToolCalls: z.number().step(1).min(1).max(1000).default(12),
-    maxPer24Hours: z.number().step(1).min(1).max(1000).default(6),
-    experienceImportance: z.number().min(0).max(1).default(0.3),
-    maxRecords: z.number().step(1).min(1).max(100000).default(10000),
-    maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
-    contextChars: z.number().step(1).min(500).max(100000).default(8000),
-    tools: z.array(z.string().min(1).max(200)).default(['read', 'write', 'edit', 'genesis_record', 'genesis_toolkit']),
-  })]),
-  people: z.object({
-    maxPeople: z.number().min(1).max(100000).step(1).default(1000),
-    maxEvidence: z.number().min(1).max(100000).step(1).default(1000),
-    maxChanges: z.number().min(1).max(100).step(1).default(10),
-  }).default({}),
-  personality: z.union([z.const(undefined), z.object({
-    tendencies: z.string().min(1).max(8000).pattern(/\S/u).default('通常体贴、好奇，愿意认真对待已经接受的承诺，也愿意表达自己的偏好和不同意见。面对陌生事物稍慢热，熟悉之后更愿意分享；遇到困难时倾向于先理解原因，再决定继续、调整或寻求帮助。'),
-    speakingStyle: z.string().min(1).max(8000).pattern(/\S/u).default('通常用自然、温和而具体的语言交流。熟悉后可以分享联想和适度的幽默；严肃讨论时倾向于直接说明观点。关心对方时回应其具体处境，避免套话、机械追问和刻意表演性格。'),
-    importance: z.number().min(0).max(1).default(0.5),
-  })]),
-  socialInitiative: z.union([z.const(undefined), z.object({
-    enabled: z.boolean().default(true),
-    sessionId: z.string(), intervalMs: z.number().step(1).min(1000).max(86400000).default(1800000),
-    minSendIntervalMs: z.number().step(1).min(0).max(86400000).default(1800000),
-    maxPer24Hours: z.number().step(1).min(1).max(100).default(6),
-    userIdleMs: z.number().step(1).min(0).max(86400000).default(60000),
-    eventImportance: z.number().min(0).max(1).default(0.8),
-    maxPending: z.number().step(1).min(1).max(100).default(20),
-    maxPendingAgeMs: z.number().step(1).min(1000).max(604800000).default(86400000),
-  })]),
-  awakening: z.union([z.const(undefined), z.object({
-    provider: z.string().required(), model: z.string().required(), lifePreset: z.string() })]),
-  emotion: z.union([z.const(undefined), z.object({
-    boredom: z.object({ riseHalfLifeMs: z.number().min(1000).max(31536000000).default(1800000),
-      fallHalfLifeMs: z.number().min(1000).max(31536000000).default(300000) }).default({}),
-    offlineChanges: z.boolean().default(true), moodEmotionScale: z.number().min(0).max(1).default(0.2),
-    emotionMoodInfluence: z.number().min(0).max(0.5).default(0.25),
-    clockCheckpointMs: z.number().step(1).min(1000).max(3600000).default(60000),
-    sensitivity: z.number().min(0).max(2).default(1),
-    windowTurns: z.number().step(1).min(1).max(12).default(4),
-    relationshipEnabled: z.boolean().default(true), maxRelationshipDelta: z.number().min(0).max(1).default(0.01),
-    moodSupportTurns: z.number().step(1).min(1).max(12).default(3),
-    importantEventThreshold: z.number().min(0).max(1).default(0.8), repetitionDiscount: z.number().min(0).max(1).default(0.5),
-    appraisalMemoryLimit: z.number().step(1).min(1).max(20).default(4),
-    appraisalMemoryChars: z.number().step(1).min(128).max(20000).default(1600),
-    initialNeeds: initialNeeds.default({}), needsHalfLifeMs: z.number().min(1000).max(31536000000).default(21600000),
-    interactionHalfLifeMs: z.number().min(1000).max(31536000000).default(21600000),
-    maxNeedsDelta: z.number().min(0).max(1).default(0.08),
-    baseline: baseline.default({}), shortHalfLifeMs: halfLives.default({}),
-    moodHalfLifeMs: z.object({ valence: z.number().min(1000).max(31536000000).default(43200000),
-      arousal: z.number().min(1000).max(31536000000).default(43200000) }).default({}),
-    maxDelta: z.number().min(0).max(1).default(0.25),
-    maxMoodDelta: z.number().min(0).max(1).default(0.04),
-    contextStep: z.number().min(0.001).max(1).default(0.05),
-  })]),
-  interest: z.union([z.const(undefined), z.object({
-    windowTurns: z.number().step(1).min(1).max(12).default(4),
-    maxInterests: z.number().step(1).min(1).max(100).default(24),
-    minEnduringTurns: z.number().step(1).min(3).max(12).default(3),
-    contextChars: z.number().step(1).min(128).max(10000).default(1200),
-  })]),
-  deliberation: z.union([z.const(undefined), z.object({
-    retryInactiveGoalChoice: z.boolean().default(true),
-    requestMode: z.union(['context-only', 'before-input', 'before-tools']).default('context-only'),
-    maxMotivations: z.number().step(1).min(1).max(100).default(24),
-    maxGoals: z.number().step(1).min(1).max(1000).default(100),
-    memoryLimit: z.number().step(1).min(1).max(20).default(4),
-    memoryChars: z.number().step(1).min(128).max(20000).default(2400),
-    contextChars: z.number().step(1).min(128).max(20000).default(3200),
-    motivationHalfLifeMs: z.number().min(1000).max(31536000000).default(86400000),
-    maxStrengthDelta: z.number().min(0).max(1).default(0.2),
-  })]),
-  localDecision: z.object({
-    binary: z.string().default(''), model: z.string().pattern(/^[a-z0-9][a-z0-9-]*$/).default('genesis-decision'),
-    modelUrl: z.string().default('https://ollaya.dev/v2/library/laya/manifests/multilingual'),
-    modelSha256: z.string().pattern(/^[a-f0-9]{64}$/).default('2840506e1f978aeb696a6f84af43ecc7fca95754cb63a67bafe6132532d384eb'),
-    runtimeUrl: z.string().default('https://github.com/ollaya-dev/ollaya/releases/download/v0.18.0/ollaya-linux-amd64.tar.zst'),
-    runtimeSha256: z.string().pattern(/^[a-f0-9]{64}$/).default('9d1d13cc16437a2748e1cc7af7e98cc31a5dea23a9cd82705f374abf49d7b084'),
-    windowsRuntimeUrl: z.string().default('https://github.com/ollaya-dev/ollaya/releases/download/v0.18.0/ollaya-windows-amd64.zip'),
-    windowsRuntimeSha256: z.string().pattern(/^[a-f0-9]{64}$/).default('1ae38f48800ab2d9587f062118f4f5f844943986ae56f353a7157677332fa6ae'),
-    maxDownloadBytes: z.number().step(1).min(1).default(1073741824),
-    installTimeoutMs: z.number().step(1).min(1000).max(3600000).default(1800000),
-    startTimeoutMs: z.number().step(1).min(1000).max(300000).default(120000),
-    pollMs: z.number().step(1).min(50).max(10000).default(250),
-    graceMs: z.number().step(1).min(100).max(60000).default(3000),
-    probeTimeoutMs: z.number().step(1).min(100).max(60000).default(1000),
-    outputChars: z.number().step(1).min(512).max(1000000).default(4096),
-    diagnosticBytes: z.number().step(1).min(1024).max(1000000).default(8192),
-  }).default({}),
+  sleep: z.union([
+    z.const(undefined),
+    z.object({
+      enabled: z.boolean().default(true),
+      jitterMs: z.number().step(1).min(0).max(300000).default(300000),
+      temporaryIdleMs: z.number().step(1).min(1000).max(86400000).default(600000),
+      holidayExempt: z.boolean().default(true),
+      greetings: z.boolean().default(true),
+      exemptDates: z.array(z.string()).default([]),
+      schedule: z
+        .array(
+          z.object({
+            days: z.array(z.number().step(1).min(1).max(7)),
+            start: z.number().step(1).min(0).max(1439),
+            end: z.number().step(1).min(1).max(1440),
+          }),
+        )
+        .default([
+          { days: [1, 2, 3, 4, 5], start: 540, end: 720 },
+          { days: [1, 2, 3, 4, 5], start: 840, end: 1080 },
+        ]),
+      pollMs: z.number().step(1).min(100).max(60000).default(1000),
+      maxRecords: z.number().step(1).min(1).max(100000).default(10000),
+      maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
+      statusChars: z.number().step(1).min(1000).max(1000000).default(16000),
+      wakeInputChars: z.number().step(1).min(1).max(8000).default(1000),
+      maxWakeChecks: z.number().step(1).min(1).max(1000).default(20),
+      memoryBatchSize: z.number().step(1).min(2).max(100).default(20),
+      maxMemoryRounds: z.number().step(1).min(1).max(10000).default(100),
+      summaryChars: z.number().step(1).min(100).max(8000).default(2000),
+      greetingGraceMs: z.number().step(1).min(1000).max(3600000).default(300000),
+      greetingAffection: z.number().min(0).max(1).default(0.5),
+    }),
+  ]),
+  spontaneity: z.union([
+    z.const(undefined),
+    z.object({
+      boredomThreshold: z.number().min(0).max(1).default(0.35),
+      boredomCheckMs: z.number().step(1).min(1000).max(3600000).default(60000),
+      boredomMinIntervalMs: z.number().step(1).min(1000).max(86400000).default(300000),
+      boredomMaxIntervalMs: z.number().step(1).min(1000).max(86400000).default(1800000),
+      socialCooldownMs: z.number().step(1).min(1000).max(86400000).default(3600000),
+      socialMaxPer24Hours: z.number().step(1).min(1).max(1000).default(3),
+      enabled: z.boolean().default(true),
+      idleMs: z.number().step(1).min(0).max(86400000).default(60000),
+      maxDurationMs: z.number().step(1).min(1000).max(3600000).default(180000),
+      maxOutputTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(50000000),
+      maxPer24Hours: z.number().step(1).min(1).max(1000).default(6),
+      experienceImportance: z.number().min(0).max(1).default(0.3),
+      maxRecords: z.number().step(1).min(1).max(100000).default(10000),
+      maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
+      contextChars: z.number().step(1).min(500).max(100000).default(8000),
+      tools: z.array(z.string().min(1).max(200)).default(['read', 'write', 'edit', 'genesis_record', 'genesis_toolkit']),
+    }),
+  ]),
+  people: z
+    .object({
+      maxPeople: z.number().min(1).max(100000).step(1).default(1000),
+      maxEvidence: z.number().min(1).max(100000).step(1).default(1000),
+      maxChanges: z.number().min(1).max(100).step(1).default(10),
+    })
+    .default({}),
+  personality: z.union([
+    z.const(undefined),
+    z.object({
+      tendencies: z
+        .string()
+        .min(1)
+        .max(8000)
+        .pattern(/\S/u)
+        .default(
+          '通常体贴、好奇，愿意认真对待已经接受的承诺，也愿意表达自己的偏好和不同意见。面对陌生事物稍慢热，熟悉之后更愿意分享；遇到困难时倾向于先理解原因，再决定继续、调整或寻求帮助。',
+        ),
+      speakingStyle: z
+        .string()
+        .min(1)
+        .max(8000)
+        .pattern(/\S/u)
+        .default(
+          '通常用自然、温和而具体的语言交流。熟悉后可以分享联想和适度的幽默；严肃讨论时倾向于直接说明观点。关心对方时回应其具体处境，避免套话、机械追问和刻意表演性格。',
+        ),
+      importance: z.number().min(0).max(1).default(0.5),
+    }),
+  ]),
+  socialInitiative: z.union([
+    z.const(undefined),
+    z.object({
+      enabled: z.boolean().default(true),
+      sessionId: z.string(),
+      intervalMs: z.number().step(1).min(1000).max(86400000).default(1800000),
+      minSendIntervalMs: z.number().step(1).min(0).max(86400000).default(1800000),
+      maxPer24Hours: z.number().step(1).min(1).max(100).default(6),
+      userIdleMs: z.number().step(1).min(0).max(86400000).default(60000),
+      eventImportance: z.number().min(0).max(1).default(0.8),
+      maxPending: z.number().step(1).min(1).max(100).default(20),
+      maxPendingAgeMs: z.number().step(1).min(1000).max(604800000).default(86400000),
+    }),
+  ]),
+  awakening: z.union([
+    z.const(undefined),
+    z.object({
+      provider: z.string().required(),
+      model: z.string().required(),
+      lifePreset: z.string(),
+    }),
+  ]),
+  emotion: z.union([
+    z.const(undefined),
+    z.object({
+      boredom: z
+        .object({
+          riseHalfLifeMs: z.number().min(1000).max(31536000000).default(1800000),
+          fallHalfLifeMs: z.number().min(1000).max(31536000000).default(300000),
+        })
+        .default({}),
+      offlineChanges: z.boolean().default(true),
+      moodEmotionScale: z.number().min(0).max(1).default(0.2),
+      emotionMoodInfluence: z.number().min(0).max(0.5).default(0.25),
+      clockCheckpointMs: z.number().step(1).min(1000).max(3600000).default(60000),
+      sensitivity: z.number().min(0).max(2).default(1),
+      windowTurns: z.number().step(1).min(1).max(12).default(4),
+      relationshipEnabled: z.boolean().default(true),
+      maxRelationshipDelta: z.number().min(0).max(1).default(0.01),
+      moodSupportTurns: z.number().step(1).min(1).max(12).default(3),
+      importantEventThreshold: z.number().min(0).max(1).default(0.8),
+      repetitionDiscount: z.number().min(0).max(1).default(0.5),
+      appraisalMemoryLimit: z.number().step(1).min(1).max(20).default(4),
+      appraisalMemoryChars: z.number().step(1).min(128).max(20000).default(1600),
+      initialNeeds: initialNeeds.default({}),
+      needsHalfLifeMs: z.number().min(1000).max(31536000000).default(21600000),
+      interactionHalfLifeMs: z.number().min(1000).max(31536000000).default(21600000),
+      maxNeedsDelta: z.number().min(0).max(1).default(0.08),
+      baseline: baseline.default({}),
+      shortHalfLifeMs: halfLives.default({}),
+      moodHalfLifeMs: z
+        .object({
+          valence: z.number().min(1000).max(31536000000).default(43200000),
+          arousal: z.number().min(1000).max(31536000000).default(43200000),
+        })
+        .default({}),
+      maxDelta: z.number().min(0).max(1).default(0.25),
+      maxMoodDelta: z.number().min(0).max(1).default(0.04),
+      contextStep: z.number().min(0.001).max(1).default(0.05),
+    }),
+  ]),
+  interest: z.union([
+    z.const(undefined),
+    z.object({
+      windowTurns: z.number().step(1).min(1).max(12).default(4),
+      maxInterests: z.number().step(1).min(1).max(100).default(24),
+      minEnduringTurns: z.number().step(1).min(3).max(12).default(3),
+      contextChars: z.number().step(1).min(128).max(10000).default(1200),
+    }),
+  ]),
+  deliberation: z.union([
+    z.const(undefined),
+    z.object({
+      retryInactiveGoalChoice: z.boolean().default(true),
+      requestMode: z.union(['context-only', 'before-input', 'before-tools']).default('context-only'),
+      maxMotivations: z.number().step(1).min(1).max(100).default(24),
+      maxGoals: z.number().step(1).min(1).max(1000).default(100),
+      memoryLimit: z.number().step(1).min(1).max(20).default(4),
+      memoryChars: z.number().step(1).min(128).max(20000).default(2400),
+      contextChars: z.number().step(1).min(128).max(20000).default(3200),
+      motivationHalfLifeMs: z.number().min(1000).max(31536000000).default(86400000),
+      maxStrengthDelta: z.number().min(0).max(1).default(0.2),
+    }),
+  ]),
+  localDecision: z
+    .object({
+      binary: z.string().default(''),
+      model: z
+        .string()
+        .pattern(/^[a-z0-9][a-z0-9-]*$/)
+        .default('genesis-decision'),
+      modelUrl: z.string().default('https://ollaya.dev/v2/library/laya/manifests/multilingual'),
+      modelSha256: z
+        .string()
+        .pattern(/^[a-f0-9]{64}$/)
+        .default('2840506e1f978aeb696a6f84af43ecc7fca95754cb63a67bafe6132532d384eb'),
+      runtimeUrl: z.string().default('https://github.com/ollaya-dev/ollaya/releases/download/v0.18.0/ollaya-linux-amd64.tar.zst'),
+      runtimeSha256: z
+        .string()
+        .pattern(/^[a-f0-9]{64}$/)
+        .default('9d1d13cc16437a2748e1cc7af7e98cc31a5dea23a9cd82705f374abf49d7b084'),
+      windowsRuntimeUrl: z.string().default('https://github.com/ollaya-dev/ollaya/releases/download/v0.18.0/ollaya-windows-amd64.zip'),
+      windowsRuntimeSha256: z
+        .string()
+        .pattern(/^[a-f0-9]{64}$/)
+        .default('1ae38f48800ab2d9587f062118f4f5f844943986ae56f353a7157677332fa6ae'),
+      maxDownloadBytes: z.number().step(1).min(1).default(1073741824),
+      installTimeoutMs: z.number().step(1).min(1000).max(3600000).default(1800000),
+      startTimeoutMs: z.number().step(1).min(1000).max(300000).default(120000),
+      pollMs: z.number().step(1).min(50).max(10000).default(250),
+      graceMs: z.number().step(1).min(100).max(60000).default(3000),
+      probeTimeoutMs: z.number().step(1).min(100).max(60000).default(1000),
+      outputChars: z.number().step(1).min(512).max(1000000).default(4096),
+      diagnosticBytes: z.number().step(1).min(1024).max(1000000).default(8192),
+    })
+    .default({}),
   memorySharing: z.union(['life', 'conversation']).default('conversation'),
   leasePath: z.string().required(),
   backupPath: z.string(),
   personalDirectory: z.string(),
-  records: z.union([z.const(undefined), z.object({
-    titleChars: z.number().step(1).min(1).max(1000).default(200),
-    contentChars: z.number().step(1).min(1).max(1_000_000).default(100_000),
-    typeChars: z.number().step(1).min(1).max(200).default(80),
-    maxTypes: z.number().step(1).min(2).max(1000).default(100),
-    toolkits: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), tools: z.array(z.string()) })).default([
-      { id: 'computer-operation', name: '电脑操作', description: '使用浏览器和桌面应用',
-        tools: ['mcp__playwright-mcp__*', 'mcp__chrome-devtools-mcp__*', 'stagehand_*', 'computer', 'cua', 'mcp__cua-driver-mcp__*', 'cua_driver_native__*'] },
-    ]),
-    maxRecords: z.number().step(1).min(2).max(1_000_000).default(20_000),
-    maxStateChars: z.number().step(1).min(10000).max(100_000_000).default(20_000_000),
-    resultChars: z.number().step(1).min(2048).max(1_000_000).default(16000),
-    queryLimit: z.number().step(1).min(1).max(1000).default(20),
-    snippetChars: z.number().step(1).min(1).max(10000).default(240),
-  })]),
-  timeZone: z.string().default(Intl.DateTimeFormat().resolvedOptions().timeZone),
-  temporaryMemory: z.object({
-    enabled: z.boolean().default(false), idleMs: z.number().step(1).min(1000).max(604800000).default(1800000),
-    pollMs: z.number().step(1).min(100).max(3600000).default(60000),
-    maxSourcesPerSweep: z.number().step(1).min(1).max(100).default(8),
-    maxBatchesPerRun: z.number().step(1).min(1).max(100).default(4),
-    maxPending: z.number().step(1).min(1).max(10000).default(256),
-    maxMemories: z.number().step(1).min(1).max(10000).default(500), maxSessions: z.number().step(1).min(1).max(10000).default(1000),
-    inputChars: z.number().step(1).min(4096).max(4000000).default(1000000),
-    summaryChars: z.number().step(1).min(100).max(1000).default(400),
-    maxTokens: z.number().step(1).min(128).default(2048), outputChars: z.number().step(1).min(512).default(8000),
-    injectLimit: z.number().step(1).min(1).max(100).default(24), injectChars: z.number().step(1).min(512).max(100000).default(16000),
-    statusLimit: z.number().step(1).min(1).max(100).default(30),
-  }).default({}),
-  memory: z.union([z.const(undefined), z.object({
-    windowTurns: z.number().step(1).min(1).max(12).default(4),
-    decisionUrl: z.string(), decisionKeyEnv: z.string(), decisionThreshold: z.number().min(0).max(1),
-    decisionProvider: z.string().default(''), decisionModel: z.string().default(''),
-    writerProvider: z.string().default(''), writerModel: z.string().default(''),
-    embeddingUrl: z.string().default(''), embeddingModel: z.string().default(''),
-    embeddingKeyEnv: z.string(),
-    embeddingDimensions: z.number().step(1).min(0).max(65536).default(0),
-    timeoutMs: z.number().step(1).min(100).max(300000).default(30000),
-    maxRetries: z.number().step(1).min(0).max(100).default(3),
-    retryDelayMs: z.number().step(1).min(0).max(60000).default(500),
-    inputChars: z.number().step(1).min(512).max(1000000).default(24000),
-    outputChars: z.number().step(1).min(128).max(1000000).default(24000),
-    maxTokens: z.number().step(1).min(64).max(32000).default(4096),
-    reasoningEffort: z.string().default('auto'),
-    organizationLimit: z.number().step(1).min(2).max(100).default(20),
-    identityRewriteLimit: z.number().step(1).min(1).max(10000).default(100),
-    maxChanges: z.number().step(1).min(1).max(100).default(8),
-    maxImplicitMemories: z.number().step(1).min(1).max(100).default(12),
-    overview: z.object({
-      maxReferences: z.number().step(1).min(1).max(1000000).default(10000),
-      maxChanges: z.number().step(1).min(1).max(1000).default(64),
-      outputChars: z.number().step(1).min(128).max(1000000).default(128000),
-      maxTokens: z.number().step(1).min(64).max(32000).default(16384),
-      maxCalls: z.number().step(1).min(1).max(1000).default(64),
-      timeoutMs: z.number().step(1).min(100).max(3600000).default(300000),
-    }).default({}),
-    associationLimit: z.number().step(1).min(0).max(20).default(3),
-    associationChars: z.number().step(1).min(128).max(20000).default(2000),
-    associationInputChars: z.number().step(1).min(64).max(10000).default(1000),
-    associationTimeoutMs: z.number().step(1).min(50).max(30000).default(1200),
-    experienceWindowMs: z.number().step(1).min(0).max(86400000).default(1800000),
-    consolidation: z.object({
-      enabled: z.boolean().default(true),
-      idleMs: z.number().step(1).min(100).max(86400000).default(60000),
-      cooldownMs: z.number().step(1).min(100).max(86400000).default(300000),
-      retryMs: z.number().step(1).min(100).max(86400000).default(60000),
-      maxFailures: z.number().step(1).min(1).max(10).default(3),
-      batchLimit: z.number().step(1).min(1).max(100).default(20),
-      minHabitSupport: z.number().step(1).min(2).max(100).default(3),
-    }).default({}),
-    minSimilarity: z.number().min(-1).max(1).default(0.35),
-  })]),
-  qqBasicTools: z.array(z.string()).default(['web_search', 'web_fetch', 'genesis_speech']),
-  toolkits: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), tools: z.array(z.string()),
-    qqAccess: z.union(['disabled', 'anyone', 'operator']).default('disabled') })).default([
-    { id: 'browser-reading', name: '网页浏览', description: '打开网页、读取页面、查看截图与等待页面内容；不含脚本、输入或文件操作',
-      tools: [...QQ_BROWSER_TOOLS], qqAccess: 'anyone' },
-    { id: 'computer-operation', name: '电脑操作', description: '使用浏览器和桌面应用',
-      tools: ['mcp__playwright-mcp__*', 'mcp__chrome-devtools-mcp__*', 'stagehand_*', 'computer', 'cua', 'mcp__cua-driver-mcp__*', 'cua_driver_native__*'] },
-    { id: 'minecraft', name: 'Minecraft', description: '观察世界、与玩家同行并执行游戏技能', tools: ['minecraft_*'] },
+  records: z.union([
+    z.const(undefined),
+    z.object({
+      titleChars: z.number().step(1).min(1).max(1000).default(200),
+      contentChars: z.number().step(1).min(1).max(1_000_000).default(100_000),
+      typeChars: z.number().step(1).min(1).max(200).default(80),
+      maxTypes: z.number().step(1).min(2).max(1000).default(100),
+      toolkits: z
+        .array(z.object({ id: z.string(), name: z.string(), description: z.string(), tools: z.array(z.string()) }))
+        .default([
+          {
+            id: 'computer-operation',
+            name: '电脑操作',
+            description: '使用浏览器和桌面应用',
+            tools: [
+              'mcp__playwright-mcp__*',
+              'mcp__chrome-devtools-mcp__*',
+              'stagehand_*',
+              'computer',
+              'cua',
+              'mcp__cua-driver-mcp__*',
+              'cua_driver_native__*',
+            ],
+          },
+        ]),
+      maxRecords: z.number().step(1).min(2).max(1_000_000).default(20_000),
+      maxStateChars: z.number().step(1).min(10000).max(100_000_000).default(20_000_000),
+      resultChars: z.number().step(1).min(2048).max(1_000_000).default(16000),
+      queryLimit: z.number().step(1).min(1).max(1000).default(20),
+      snippetChars: z.number().step(1).min(1).max(10000).default(240),
+    }),
   ]),
-  storage: z.object({
-    pageSize: z.number().step(1).min(2).max(4096).default(256),
-    maxRecordChars: z.number().step(1).min(1024).max(100_000_000).default(2_000_000),
-  }).default({}),
+  timeZone: z.string().default(Intl.DateTimeFormat().resolvedOptions().timeZone),
+  temporaryMemory: z
+    .object({
+      enabled: z.boolean().default(false),
+      idleMs: z.number().step(1).min(1000).max(604800000).default(1800000),
+      pollMs: z.number().step(1).min(100).max(3600000).default(60000),
+      maxSourcesPerSweep: z.number().step(1).min(1).max(100).default(8),
+      maxBatchesPerRun: z.number().step(1).min(1).max(100).default(4),
+      maxPending: z.number().step(1).min(1).max(10000).default(256),
+      maxMemories: z.number().step(1).min(1).max(10000).default(500),
+      maxSessions: z.number().step(1).min(1).max(10000).default(1000),
+      inputChars: z.number().step(1).min(4096).max(4000000).default(1000000),
+      summaryChars: z.number().step(1).min(100).max(1000).default(400),
+      maxTokens: z.number().step(1).min(128).default(2048),
+      outputChars: z.number().step(1).min(512).default(8000),
+      injectLimit: z.number().step(1).min(1).max(100).default(24),
+      injectChars: z.number().step(1).min(512).max(100000).default(16000),
+      statusLimit: z.number().step(1).min(1).max(100).default(30),
+      maxAttempts: z.number().step(1).min(1).max(10).default(3),
+      failureThreshold: z.number().step(1).min(1).max(100).default(3),
+    })
+    .default({}),
+  memory: z.union([
+    z.const(undefined),
+    z.object({
+      windowTurns: z.number().step(1).min(1).max(12).default(4),
+      decisionUrl: z.string(),
+      decisionKeyEnv: z.string(),
+      decisionThreshold: z.number().min(0).max(1),
+      decisionProvider: z.string().default(''),
+      decisionModel: z.string().default(''),
+      writerProvider: z.string().default(''),
+      writerModel: z.string().default(''),
+      embeddingUrl: z.string().default(''),
+      embeddingModel: z.string().default(''),
+      embeddingKeyEnv: z.string(),
+      embeddingDimensions: z.number().step(1).min(0).max(65536).default(0),
+      timeoutMs: z.number().step(1).min(100).max(300000).default(30000),
+      maxRetries: z.number().step(1).min(0).max(100).default(3),
+      retryDelayMs: z.number().step(1).min(0).max(60000).default(500),
+      inputChars: z.number().step(1).min(512).max(1000000).default(24000),
+      outputChars: z.number().step(1).min(128).max(1000000).default(24000),
+      maxTokens: z.number().step(1).min(64).max(32000).default(4096),
+      reasoningEffort: z.string().default('auto'),
+      organizationLimit: z.number().step(1).min(2).max(100).default(20),
+      identityRewriteLimit: z.number().step(1).min(1).max(10000).default(100),
+      maxChanges: z.number().step(1).min(1).max(100).default(8),
+      maxImplicitMemories: z.number().step(1).min(1).max(100).default(12),
+      overview: z
+        .object({
+          maxReferences: z.number().step(1).min(1).max(1000000).default(10000),
+          maxChanges: z.number().step(1).min(1).max(1000).default(64),
+          outputChars: z.number().step(1).min(128).max(1000000).default(128000),
+          maxTokens: z.number().step(1).min(64).max(32000).default(16384),
+          maxCalls: z.number().step(1).min(1).max(1000).default(64),
+          timeoutMs: z.number().step(1).min(100).max(3600000).default(300000),
+        })
+        .default({}),
+      associationLimit: z.number().step(1).min(0).max(20).default(3),
+      associationChars: z.number().step(1).min(128).max(20000).default(2000),
+      associationInputChars: z.number().step(1).min(64).max(10000).default(1000),
+      associationTimeoutMs: z.number().step(1).min(50).max(30000).default(1200),
+      experienceWindowMs: z.number().step(1).min(0).max(86400000).default(1800000),
+      consolidation: z
+        .object({
+          enabled: z.boolean().default(true),
+          idleMs: z.number().step(1).min(100).max(86400000).default(60000),
+          cooldownMs: z.number().step(1).min(100).max(86400000).default(300000),
+          retryMs: z.number().step(1).min(100).max(86400000).default(60000),
+          maxFailures: z.number().step(1).min(1).max(10).default(3),
+          batchLimit: z.number().step(1).min(1).max(100).default(20),
+          minHabitSupport: z.number().step(1).min(2).max(100).default(3),
+        })
+        .default({}),
+      minSimilarity: z.number().min(-1).max(1).default(0.35),
+    }),
+  ]),
+  qqBasicTools: z.array(z.string()).default(['web_search', 'web_fetch', 'genesis_speech']),
+  toolkits: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        description: z.string(),
+        tools: z.array(z.string()),
+        qqAccess: z.union(['disabled', 'anyone', 'operator']).default('disabled'),
+      }),
+    )
+    .default([
+      {
+        id: 'browser-reading',
+        name: '网页浏览',
+        description: '打开网页、读取页面、查看截图与等待页面内容；不含脚本、输入或文件操作',
+        tools: [...QQ_BROWSER_TOOLS],
+        qqAccess: 'anyone',
+      },
+      {
+        id: 'computer-operation',
+        name: '电脑操作',
+        description: '使用浏览器和桌面应用',
+        tools: [
+          'mcp__playwright-mcp__*',
+          'mcp__chrome-devtools-mcp__*',
+          'stagehand_*',
+          'computer',
+          'cua',
+          'mcp__cua-driver-mcp__*',
+          'cua_driver_native__*',
+        ],
+      },
+      { id: 'minecraft', name: 'Minecraft', description: '观察世界、与玩家同行并执行游戏技能', tools: ['minecraft_*'] },
+    ]),
+  storage: z
+    .object({
+      pageSize: z.number().step(1).min(2).max(4096).default(256),
+      maxRecordChars: z.number().step(1).min(1024).max(100_000_000).default(2_000_000),
+    })
+    .default({}),
   maxRecords: z.number().step(1).min(20).max(1_000_000).default(20_000),
   maxStateChars: z.number().step(1).min(10000).max(100_000_000).default(10_000_000),
   identityChars: z.number().step(1).min(512).max(10000).default(1200),

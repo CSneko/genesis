@@ -75,5 +75,6 @@
     "@deepseek-ai/dsh-subprocess": {
       "optional": true
     }
-  }
+  },
+  "author": "@CSNeko"
 }

@@ -21,7 +21,9 @@ export interface TextMatch<T> {
   positions: number[]
 }
 
-function normalize(text: string): string { return text.normalize('NFKC').toLowerCase() }
+function normalize(text: string): string {
+  return text.normalize('NFKC').toLowerCase()
+}
 
 function tokens(text: string, segmenter: Intl.Segmenter): string[] {
   const words: string[] = []
@@ -47,16 +49,21 @@ export function searchText<T>(query: string, documents: SearchDocument<T>[]): Te
   const segmenter = new Intl.Segmenter('zh', { granularity: 'word' })
   const terms = [...new Set(tokens(phrase, segmenter))]
   if (!terms.length) return []
-  const rows = documents.map(document => ({ document, fields: document.fields.map((field) => {
-    const normalized = normalize(field.text)
-    const counts = new Map<string, number>()
-    const words = tokens(field.text, segmenter)
-    for (const word of words) counts.set(word, (counts.get(word) ?? 0) + 1)
-    return { normalized, counts, length: words.length, weight: field.weight }
-  }) }))
+  const rows = documents.map(document => ({
+    document,
+    fields: document.fields.map((field) => {
+      const normalized = normalize(field.text)
+      const counts = new Map<string, number>()
+      const words = tokens(field.text, segmenter)
+      for (const word of words) counts.set(word, (counts.get(word) ?? 0) + 1)
+      return { normalized, counts, length: words.length, weight: field.weight }
+    }),
+  }))
   const average = rows.reduce((sum, row) => sum + row.fields.reduce((n, field) => n + field.length, 0), 0) / Math.max(1, rows.length)
-  const frequencies = terms.map(term => ({ term,
-    count: rows.filter(row => row.fields.some(field => field.normalized.includes(term))).length }))
+  const frequencies = terms.map(term => ({
+    term,
+    count: rows.filter(row => row.fields.some(field => field.normalized.includes(term))).length,
+  }))
   const matches: TextMatch<T>[] = []
   for (const { document, fields } of rows) {
     let score = 0
@@ -72,7 +79,7 @@ export function searchText<T>(query: string, documents: SearchDocument<T>[]): Te
       covered++
       const idf = Math.log(1 + (rows.length - count + 0.5) / (count + 0.5))
       const length = fields.reduce((sum, field) => sum + field.length, 0)
-      score += idf * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * length / Math.max(1, average)))
+      score += (idf * frequency * 2.2) / (frequency + 1.2 * (0.25 + (0.75 * length) / Math.max(1, average)))
     }
     score *= covered / terms.length
     for (const field of fields) if (field.normalized.includes(phrase)) score += field.weight
@@ -102,9 +109,16 @@ export function searchText<T>(query: string, documents: SearchDocument<T>[]): Te
  * @returns Weighted fields with current content preferred over old interpretations.
  */
 export function memoryDocument(memory: LifeMemory): SearchDocument<LifeMemory> {
-  return { value: memory, id: memory.id, fields: [
-    { text: memory.content, weight: 3 }, { text: memory.summary ?? '', weight: 2 },
-    { text: (memory.experience?.topics ?? []).join(' '), weight: 2 },
-    { text: (memory.history ?? []).map(version => version.content).join('\n'), weight: 0.5 },
-  ] }
+  return {
+    value: memory,
+    id: memory.id,
+    fields: [
+      { text: memory.content, weight: 3 },
+      { text: memory.summary ?? '', weight: 2 },
+      { text: (memory.experience?.topics ?? []).join(' '), weight: 2 },
+      { text: (memory.organization?.paths ?? []).flat().join(' '), weight: 2 },
+      { text: (memory.organization?.subjects ?? []).map(subject => `${subject.name} ${subject.personId ?? ''}`).join(' '), weight: 2 },
+      { text: (memory.history ?? []).map(version => version.content).join('\n'), weight: 0.5 },
+    ],
+  }
 }

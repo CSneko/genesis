@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-wallet/README.md
+/:
+  en: 3c41b39e9d8ca025
+  zh: 9ac196f117c38b0e
+/deepseek-ai-dsh-experimental-genesis-wallet:
+  en: 823d949fb7751642
+  zh: f33fb6d574c3d1b8
+/deepseek-ai-dsh-experimental-genesis-wallet/summary:
+  en: 4faadc06b7d61fb3
+  zh: b7d53a2f8ec56fbc
+/deepseek-ai-dsh-experimental-genesis-wallet/table-of-contents:
+  en: 056ecf2ff819ec83
+  zh: 3842bf4458eea44b
+/deepseek-ai-dsh-experimental-genesis-wallet/use:
+  en: a9d63fe786cf8b6a
+  zh: f1d9520ffbf1291b
+/deepseek-ai-dsh-experimental-genesis-wallet/use/built-in-taobao-source:
+  en: fa7b1bf083e8d2bf
+  zh: 5084a402427a22f4
+/deepseek-ai-dsh-experimental-genesis-wallet/use/custom-information-adapter:
+  en: 04028e7012cbf407
+  zh: dad4620ece1af75e
+/deepseek-ai-dsh-experimental-genesis-wallet/implementation:
+  en: c4e0a2a55c3bf305
+  zh: f444942955a3c0a6
+/deepseek-ai-dsh-experimental-genesis-wallet/model-experience:
+  en: c62bbf0cb6a2e9bd
+  zh: 0cee85c80917f1aa
+/deepseek-ai-dsh-experimental-genesis-wallet/known-limitations-and-deferred-work:
+  en: ba33b082ec09861c
+  zh: f1e7d69f7f7c1f44
+/deepseek-ai-dsh-experimental-genesis-wallet/dev-note:
+  en: 3a35e102e65d5dfd
+  zh: c47809e6db906921

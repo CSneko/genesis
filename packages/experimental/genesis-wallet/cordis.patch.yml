@@ -1,0 +1,4 @@
+# Virtual balances with a built-in read-only Taobao catalog; a provider key is optional.
+- insert:
+    - id: genesis-wallet
+      name: '@deepseek-ai/dsh-experimental-genesis-wallet'

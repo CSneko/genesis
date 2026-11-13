@@ -1,0 +1,8 @@
+# Weather is enabled by default; location remains an explicit operator choice.
+- insert:
+    - id: genesis-weather
+      name: '@deepseek-ai/dsh-genesis-weather'
+      config:
+        enabled: true
+        toolEnabled: true
+        contextEnabled: true

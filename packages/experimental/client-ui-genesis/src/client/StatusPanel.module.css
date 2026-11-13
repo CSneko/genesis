@@ -32,8 +32,10 @@
 .counts { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
 .counts div { display: grid; gap: 4px; min-width: 100px; }
 .counts strong { font-size: 20px; font-weight: 500; }
-.records { padding: 0; margin: 8px 0; list-style: none; }
-.records li { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px solid var(--dsw-alias-line-tertiary); }
+.records { display: grid; gap: 12px; padding: 0; margin: 12px 0; list-style: none; }
+.records li { display: grid; gap: 8px; min-width: 0; padding: 16px; border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); }
+.records li > p { margin: 0; }
+.records li > button { justify-self: start; }
 .records p { white-space: pre-wrap; }
 .notice { color: var(--dsw-alias-label-primary); }
 .loading { min-height: 96px; display: grid; place-items: center; }
@@ -49,8 +51,16 @@
   .facts dd { margin-bottom: 8px; }
 }
 
-.modelFields { min-width: 0; margin: 0; padding: 16px; display: grid; gap: 12px; border: 1px solid var(--dsw-alias-line-tertiary); border-radius: 8px; }
+.modelFields { min-width: 0; margin: 0; padding: 16px; display: grid; gap: 12px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 8px; }
 .modelFields legend { font-weight: 500; }
 .minecraftImage { display: block; width: 100%; max-width: 640px; height: auto; border-radius: 8px; }
 .minecraftField { display: grid; gap: 8px; min-width: 0; }
 .minecraftField > * { min-width: 0; max-width: 100%; }
+
+.sectionBlock { min-width: 0; margin: 24px 0; padding: 16px; border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); }
+.sectionBlock > h4:first-child { margin-top: 0; }
+.editor > .sectionBlock { margin: 0; }
+.sectionBlock > .modelFields { padding: 0; border: 0; }
+.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+
+.memoryBrowser { display: grid; min-width: 0; gap: 16px; margin: 16px 0; }

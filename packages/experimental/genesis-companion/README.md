@@ -24,7 +24,7 @@ Start the supported source-workspace entry point:
 pnpm dsh web
 ```
 
-In AstrBot, create a OneBot v11 reverse-WebSocket adapter with a loopback listener and a shared token of at least 16 characters. In **Settings → AI companion**, save the same token, set its URL (normally `ws://127.0.0.1:6199/ws`), enable connection and internal conversations, then save. Check the sampled connection status. Select a topic explicitly and choose **Start one conversation**; connecting or waking alone never starts a model. Refresh to inspect progress and use **Stop conversation** to cancel. The [AstrBot documentation](https://docs.astrbot.app/en/platform/aiocqhttp.html) owns its adapter setup.
+In AstrBot, create a OneBot v11 reverse-WebSocket adapter with a loopback listener and a shared token of at least 16 characters. In **Plugins → Genesis → Companion**, save the same token, set its URL (normally `ws://127.0.0.1:6199/ws`), enable connection and internal conversations, then save. Check the sampled connection status. Select a topic explicitly and choose **Start one conversation**; connecting or waking alone never starts a model. Refresh to inspect progress and use **Stop conversation** to cancel. The [AstrBot documentation](https://docs.astrbot.app/en/platform/aiocqhttp.html) owns its adapter setup.
 
 Only loopback `ws:` endpoints without credentials, query or fragment are accepted. The shared secret belongs to the existing credential provider as `GENESIS_COMPANION_TOKEN`; settings return only its presence. Removing the managed secret does not remove an inherited environment value. A failed or disconnected connection requires saving settings to reconnect; there is no automatic conversation replay.
 

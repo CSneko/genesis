@@ -1,6 +1,6 @@
-/** Browser operations eligible for ordinary QQ speakers; toolkit permission remains separate. @module */
+/** Default browser restrictions for QQ speakers without an explicit operator override. @module */
 
-/** Exact browsing operations; scripts, input, uploads, downloads and tab management are excluded. */
+/** Default browsing operations; explicit per-person or per-group grants are checked by the caller. */
 export const QQ_BROWSER_TOOLS: readonly string[] = Object.freeze([
   'mcp__playwright-mcp__browser_navigate',
   'mcp__playwright-mcp__browser_snapshot',
@@ -17,15 +17,19 @@ export const QQ_BROWSER_TOOLS: readonly string[] = Object.freeze([
 export function qqBrowserDenial(name: string, args?: unknown): string | undefined {
   const browser = ['mcp__playwright-mcp__', 'mcp__chrome-devtools-mcp__', 'stagehand_'].some(prefix => name.startsWith(prefix))
   if (!browser) return undefined
-  if (!QQ_BROWSER_TOOLS.includes(name)) return 'Ordinary QQ speakers can browse pages but cannot execute browser scripts, enter input, manage tabs or transfer files.'
+  if (!QQ_BROWSER_TOOLS.includes(name))
+    return 'Ordinary QQ speakers can browse pages but cannot execute browser scripts, enter input, manage tabs or transfer files.'
   if (args === undefined) return undefined
   if (typeof args !== 'object' || args === null) return 'Browser arguments must be an object.'
   if ('filename' in args) return 'QQ browsing cannot save browser output to a host file. Omit filename.'
   if (name === 'mcp__playwright-mcp__browser_navigate') {
     if (!('url' in args) || typeof args.url !== 'string') return 'QQ browsing requires an HTTP or HTTPS URL.'
     let url: URL
-    try { url = new URL(args.url) }
-    catch (_error) { return 'QQ browsing requires a valid HTTP or HTTPS URL.' }
+    try {
+      url = new URL(args.url)
+    } catch (_error) {
+      return 'QQ browsing requires a valid HTTP or HTTPS URL.'
+    }
     if (!['http:', 'https:'].includes(url.protocol) || url.username !== '' || url.password !== '') {
       return 'QQ browsing requires an HTTP or HTTPS URL without embedded credentials.'
     }

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { MailId } from '../src/model.ts'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
@@ -85,7 +86,7 @@ it('retains sleeping mail across restart, deduplicates sync and distinguishes op
   const send = vi.spyOn(StandardMailTransport.prototype, 'send').mockResolvedValue(true)
   let { ctx, model } = await boot(root)
   await ctx.genesis.awaken('小源')
-  await ctx.genesis.learn('genesis_mail', (await ctx.agents.create({ meta: { cwd: root }, agentOptions: { provider: 'fixture', model: 'chat' } })).agent.id)
+  await ctx.genesis.learn('genesis_mail', (await ctx.agents.create({ sessionId: SessionId('mail-operator'), meta: { cwd: root }, agentOptions: { provider: 'fixture', model: 'chat' } })).agent.id)
   const signal = new AbortController().signal
   const initial = await ctx.genesisMail.inspect('all', '', 0, signal)
   expect(initial.settings).toMatchObject({ enabled: false, recipientMode: 'unlimited', allowProactive: true, dailySendLimit: 0 })
@@ -117,7 +118,7 @@ it('retains sleeping mail across restart, deduplicates sync and distinguishes op
   expect(allowed.every(name => ['learn', 'genesis_mail'].includes(name))).toBe(true)
   expect(send).not.toHaveBeenCalled()
   expect((await ctx.genesisMail.detail(status.messages[0]!.id, signal)).text).toBe(incoming.text)
-  const source = await ctx.agents.create({ meta: { cwd: root, agentPreset: 'life' }, agentOptions: { provider: 'fixture', model: 'chat' },
+  const source = await ctx.agents.create({ sessionId: SessionId('mail-life'), meta: { cwd: root, agentPreset: 'life' }, agentOptions: { provider: 'fixture', model: 'chat' },
     setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
   cleanup.push(() => source.dispose())
   const probe = vi.fn(async () => ({ executed: true }))

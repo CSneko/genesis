@@ -111,7 +111,14 @@
     "@deepseek-ai/dsh-personalized-recommendations": "workspace:*",
     "@deepseek-ai/dsh-experimental-forge-bundle": "workspace:*",
     "@deepseek-ai/dsh-experimental-browser-use-playwright-mcp": "workspace:*",
-    "@deepseek-ai/dsh-experimental-genesis-mail": "workspace:*"
+    "@deepseek-ai/dsh-experimental-genesis-mail": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-wallet": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-mcp": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-qq": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-minecraft": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-companion": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-speech": "workspace:*",
+    "@deepseek-ai/dsh-genesis-weather": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-skill-badge": "workspace:*",

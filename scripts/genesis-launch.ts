@@ -25,24 +25,33 @@ export function genesisLaunch(argv: readonly string[], version: string, root: st
     'packages/experimental/genesis/cordis.patch.yml',
     'packages/experimental/genesis/cordis.life.patch.yml',
     'packages/experimental/genesis-bili-humanism/cordis.patch.yml',
-    'packages/experimental/genesis-minecraft/cordis.patch.yml',
     'packages/experimental/genesis-video/cordis.patch.yml',
-    'packages/experimental/genesis-qq/cordis.patch.yml',
-    'packages/experimental/genesis-companion/cordis.patch.yml',
     'packages/experimental/client-ui-genesis/cordis.patch.yml',
     'config/genesis-computer.patch.yml',
     'config/genesis-web.patch.yml',
   ].map(path => resolve(root, path))
   const testNoLogin = invocation.mode === 'profile' && invocation.args.includes('--test-no-login')
   const testPatch = resolve(root, 'config/genesis-web-test.patch.yml')
-  const defaultPaths = new Set([...defaults, resolve(root, 'packages/experimental/genesis-speech/cordis.patch.yml'), ...(testNoLogin ? [testPatch] : [])])
-  const patches = [...defaults, ...invocation.patches.filter(path => !defaultPaths.has(resolve(path))),
-    ...(testNoLogin ? [testPatch] : [])]
-  return { genesisHome: true, args: [
-    '--profile', invocation.profile,
-    ...(invocation.fromDefaultProfile === undefined ? [] : ['--from-default-profile', invocation.fromDefaultProfile]),
-    ...patches.flatMap(path => ['--patch', path]),
-    ...(invocation.mode === 'profile' ? invocation.args.filter(arg => arg !== '--test-no-login')
-      : [invocation.mode === 'dump-config-schema' ? '--dump-config-schema' : '--dump-config']),
-  ] }
+  const defaultPaths = new Set([
+    ...defaults,
+    resolve(root, 'packages/experimental/genesis-speech/cordis.patch.yml'),
+    ...(testNoLogin ? [testPatch] : []),
+  ])
+  const patches = [
+    ...defaults,
+    ...invocation.patches.filter(path => !defaultPaths.has(resolve(path))),
+    ...(testNoLogin ? [testPatch] : []),
+  ]
+  return {
+    genesisHome: true,
+    args: [
+      '--profile',
+      invocation.profile,
+      ...(invocation.fromDefaultProfile === undefined ? [] : ['--from-default-profile', invocation.fromDefaultProfile]),
+      ...patches.flatMap(path => ['--patch', path]),
+      ...(invocation.mode === 'profile'
+        ? invocation.args.filter(arg => arg !== '--test-no-login')
+        : [invocation.mode === 'dump-config-schema' ? '--dump-config-schema' : '--dump-config']),
+    ],
+  }
 }

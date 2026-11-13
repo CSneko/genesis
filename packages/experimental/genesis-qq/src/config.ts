@@ -69,7 +69,11 @@ export interface Config {
   statusLimit: number
   /** Maximum serialized characters returned by channel inspection. */
   statusChars: number
-  /** Maximum queued transport operations; excess input is visibly refused. */
+  /** Idle gap before consecutive messages by one speaker are admitted together; zero disables batching. */
+  inputBatchWindowMs: number
+  /** Maximum original messages per speaker batch; reaching the limit dispatches immediately. */
+  inputBatchLimit: number
+  /** Maximum queued transport operations and buffered inputs; excess input is visibly refused. */
   maxPending: number
   /** Maximum simultaneously opened conversations. */
   maxLiveSessions: number
@@ -99,6 +103,8 @@ export interface Config {
   maxInputChars: number
   /** Maximum complete assistant reply characters before refusal. */
   maxOutputChars: number
+  /** Delay between acknowledged parts of one outgoing text or quoted reply, in milliseconds. */
+  messageIntervalMs: number
   /** Maximum characters per outbound QQ message. */
   messageChars: number
   /** Maximum accepted WebSocket frame bytes. */
@@ -114,35 +120,58 @@ export const Config: z<Partial<Config> & Pick<Config, 'cwd'>, Config> = z.object
   sleepInboxLimit: z.number().min(1).step(1).default(10000),
   sleepInboxChars: z.number().min(1000).step(1).default(5000000),
   sleepInboxBatchChars: z.number().min(1000).step(1).default(16000),
-  proactiveGroups: z.array(z.string().pattern(/^[1-9][0-9]*$/)).default([]), proactiveUsers: z.array(z.string().pattern(/^[1-9][0-9]*$/)).default([]),
-  outboundGroups: z.array(z.string()).default([]), outboundUsers: z.array(z.string()).default([]),
+  proactiveGroups: z.array(z.string().pattern(/^[1-9][0-9]*$/)).default([]),
+  proactiveUsers: z.array(z.string().pattern(/^[1-9][0-9]*$/)).default([]),
+  outboundGroups: z.array(z.string()).default([]),
+  outboundUsers: z.array(z.string()).default([]),
   maxMessageReceipts: z.number().min(1).step(1).default(10000),
-  wsUrl: z.string().default(''), reconnectMs: z.number().min(100).step(1).default(2000),
+  wsUrl: z.string().default(''),
+  reconnectMs: z.number().min(100).step(1).default(2000),
   port: z.number().min(0).max(65535).step(1).default(6700),
-  accessToken: z.string().role('secret').default(''), botQq: z.string().default(''), operatorQq: z.string().default(''),
-  allowGroups: z.array(z.string()).default([]), allowUsers: z.array(z.string()).default([]),
-  acceptPrivateFromAnyone: z.boolean().default(false), groupAutoReply: z.boolean().default(true),
+  accessToken: z.string().role('secret').default(''),
+  botQq: z.string().default(''),
+  operatorQq: z.string().default(''),
+  allowGroups: z.array(z.string()).default([]),
+  allowUsers: z.array(z.string()).default([]),
+  acceptPrivateFromAnyone: z.boolean().default(false),
+  groupAutoReply: z.boolean().default(true),
   recentMessages: z.number().min(1).max(50).step(1).default(5),
-  historyChars: z.number().min(1000).step(1).default(16000), historyLimit: z.number().min(1).max(100).step(1).default(20),
+  historyChars: z.number().min(1000).step(1).default(16000),
+  historyLimit: z.number().min(1).max(100).step(1).default(20),
   replyOnlyWhenMentioned: z.boolean().default(true),
-  extraPrompt: z.string().default(''), maxPromptChars: z.number().min(1).step(1).default(8000),
+  extraPrompt: z.string().default(''),
+  maxPromptChars: z.number().min(1).step(1).default(8000),
   privateContextTokens: z.number().min(1000).step(1).default(200000),
   groupContextTokens: z.number().min(1000).step(1).default(400000),
   operatorContextTokens: z.number().min(1000).step(1).default(500000),
   maxCompletionTokens: z.number().min(1).step(1).default(16384),
-  lifePreset: z.string().default('life'), cwd: z.string().required(),
+  lifePreset: z.string().default('life'),
+  cwd: z.string().required(),
   maxAllowedTargets: z.number().min(1).step(1).default(1000),
-  statusLimit: z.number().min(1).step(1).default(20), statusChars: z.number().min(1000).step(1).default(20000),
-  maxPending: z.number().min(1).step(1).default(100), maxLiveSessions: z.number().min(1).step(1).default(100),
-  mediaOrigins: z.array(z.string()).default(['https://*.qq.com', 'https://multimedia.nt.qq.com.cn', 'https://gchat.qpic.cn', 'https://c2cpicdw.qpic.cn']),
+  statusLimit: z.number().min(1).step(1).default(20),
+  statusChars: z.number().min(1000).step(1).default(20000),
+  inputBatchWindowMs: z.number().min(0).step(1).default(1000),
+  inputBatchLimit: z.number().min(1).max(5).step(1).default(5),
+  maxPending: z.number().min(1).step(1).default(100),
+  maxLiveSessions: z.number().min(1).step(1).default(100),
+  mediaOrigins: z
+    .array(z.string())
+    .default(['https://*.qq.com', 'https://multimedia.nt.qq.com.cn', 'https://gchat.qpic.cn', 'https://c2cpicdw.qpic.cn']),
   maxMediaItems: z.number().min(1).max(20).step(1).default(5),
   maxMediaBytes: z.number().min(1024).max(104857600).step(1).default(20971520),
   mediaTextChars: z.number().min(100).max(100000).step(1).default(12000),
   mediaTimeoutMs: z.number().min(100).step(1).default(30000),
-  videoFrames: z.number().min(1).max(10).step(1).default(3), videoFrameInterval: z.number().min(1).max(300).default(5),
+  videoFrames: z.number().min(1).max(10).step(1).default(3),
+  videoFrameInterval: z.number().min(1).max(300).default(5),
   videoFrameSize: z.number().min(64).max(2048).step(1).default(768),
-  ffmpeg: z.string().default('ffmpeg'), pdftotext: z.string().default('pdftotext'), mediaGraceMs: z.number().min(1).step(1).default(1000),
-  maxInputChars: z.number().min(1).step(1).default(8000), maxOutputChars: z.number().min(1).step(1).default(12000),
-  messageChars: z.number().min(1).step(1).default(1500), maxFrameBytes: z.number().min(1).step(1).default(1048576),
-  startupTimeoutMs: z.number().min(1).step(1).default(10000), actionTimeoutMs: z.number().min(1).step(1).default(10000),
+  ffmpeg: z.string().default('ffmpeg'),
+  pdftotext: z.string().default('pdftotext'),
+  mediaGraceMs: z.number().min(1).step(1).default(1000),
+  maxInputChars: z.number().min(1).step(1).default(8000),
+  maxOutputChars: z.number().min(1).step(1).default(12000),
+  messageIntervalMs: z.number().min(0).step(1).default(500),
+  messageChars: z.number().min(1).step(1).default(1500),
+  maxFrameBytes: z.number().min(1).step(1).default(1048576),
+  startupTimeoutMs: z.number().min(1).step(1).default(10000),
+  actionTimeoutMs: z.number().min(1).step(1).default(10000),
 })

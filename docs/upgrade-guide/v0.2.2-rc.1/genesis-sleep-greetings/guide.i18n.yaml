@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/genesis-sleep-greetings/guide.md
+/:
+  en: 9412b70ff5f68bf3
+  zh: fdf0327481f9c5fb
+/sleep-greetings-use-qq:
+  en: e8526258280c5312
+  zh: 2acdc775118e0ea9
+/sleep-greetings-use-qq/change:
+  en: 63e1dbd1564f736b
+  zh: f6040e021343f301
+/sleep-greetings-use-qq/migration:
+  en: 8662b18b16675166
+  zh: 443ea780dd9dfd8d

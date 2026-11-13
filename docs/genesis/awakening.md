@@ -24,7 +24,7 @@ Configuration reminders offer Do not show again, stored as `ui-settings-general.
 
 After the explicit initialization action, saving the name creates and opens a Life-mode conversation and triggers her first greeting. The built-in prompt is logged with source `genesis-awakening`, never as a user introduction. She knows her recorded name and birth, basic language and gentle character guidance, but no personal user facts or shared experiences. Introduce yourself and teach her over as many turns as needed. A pending named life keeps Enter the first conversation available. The button disappears only after a successful text reply completes in the canonical first Session; that completion and the original identity survive restart.
 
-An independent reviewer runs after the reply and decides whether information is worth retaining. A separate writer validates sources and stores memories and embeddings with the local backup. The conversation model cannot promise that an unreviewed introduction is already saved. Use Genesis → Memories to inspect and manage the resulting memories after refreshing. See [memory](memory.md) for costs, bounded inputs, errors and recovery.
+An independent reviewer runs after the reply and decides whether information is worth retaining. A separate writer validates sources and stores memories and embeddings with the local backup. The conversation model cannot promise that an unreviewed introduction is already saved. Use Memories → Memories to inspect and manage the resulting memories after refreshing. See [memory](memory.md) for costs, bounded inputs, errors and recovery.
 
 ## Teach a tool
 

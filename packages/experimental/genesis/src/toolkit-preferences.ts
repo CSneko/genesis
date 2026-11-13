@@ -7,31 +7,64 @@ import { GenesisError } from './error.ts'
 
 const entriesSchema = z.array(toolkitSchema).refine(entries => new Set(entries.map(entry => entry.id)).size === entries.length)
 const rowSchema = z.union([
-  z.strictObject({ schemaVersion: z.literal(1), revision: z.number().int().positive(), entries: z.array(toolkitSchema.omit({ qqAccess: true })) }),
+  z.strictObject({
+    schemaVersion: z.literal(1),
+    revision: z.number().int().positive(),
+    entries: z.array(toolkitSchema.omit({ qqAccess: true })),
+  }),
   z.strictObject({ schemaVersion: z.literal(2), revision: z.number().int().positive(), entries: entriesSchema }),
 ])
 /** Independently versioned mutable operator preferences; no life identity or learning records are rewritten. */
-export const toolkitPreferencesDomain = defineDomain({ name: 'genesis_toolkits', version: 1,
-  tables: { settings: domainTable<'toolkits', z.infer<typeof rowSchema>>(rowSchema) } })
+export const toolkitPreferencesDomain = defineDomain({
+  name: 'genesis_toolkits',
+  version: 1,
+  tables: { settings: domainTable<'toolkits', z.infer<typeof rowSchema>>(rowSchema) },
+})
 /** Revision checks and accepted writes serialize; uncertain storage stops all dependent reads. */
 export class ToolkitPreferences {
   private tail: Promise<void> = Promise.resolve()
   private failure: GenesisError | undefined
   private closing: Promise<void> | undefined
+  private readonly managed = new Map<string, () => ToolkitDefinition[]>()
   private readonly defaults: ToolkitDefinition[]
   /** @param domain - Exclusively owned catalogue storage. @param config - Deployment defaults and bounds. */
-  constructor(private readonly domain: Domain<typeof toolkitPreferencesDomain>, private readonly config: Config) {
+  constructor(
+    private readonly domain: Domain<typeof toolkitPreferencesDomain>,
+    private readonly config: Config,
+  ) {
     this.defaults = this.validate(config.toolkits)
     this.read()
   }
   private validate(value: unknown): ToolkitDefinition[] {
     const entries = entriesSchema.parse(value)
-    if (entries.length + entries.reduce((count, entry) => count + entry.tools.length, 0) > this.config.maxRecords
-      || JSON.stringify(entries).length > this.config.maxStateChars) {
-      throw new GenesisError('capacity', 'Toolkit catalogue exceeds maxRecords or maxStateChars. Reduce its entries or increase these limits.')
+    if (
+      entries.length + entries.reduce((count, entry) => count + entry.tools.length, 0) > this.config.maxRecords ||
+      JSON.stringify(entries).length > this.config.maxStateChars
+    ) {
+      throw new GenesisError(
+        'capacity',
+        'Toolkit catalogue exceeds maxRecords or maxStateChars. Reduce its entries or increase these limits.',
+      )
     }
-    if (entries.some(entry => entry.tools.some(rule => ['learn', 'genesis_recall', 'genesis_contacts', 'genesis_search_contacts', 'genesis_thought', 'genesis_plan', 'genesis_toolkit', 'genesis_qq_history', 'genesis_qq_read_media', 'genesis_qq_send']
-      .some(name => rule.endsWith('*') ? name.startsWith(rule.slice(0, -1)) : name === rule)))) {
+    if (
+      entries.some(entry =>
+        entry.tools.some(rule =>
+          [
+            'genesis_qq_permissions',
+            'learn',
+            'genesis_recall',
+            'genesis_contacts',
+            'genesis_search_contacts',
+            'genesis_thought',
+            'genesis_plan',
+            'genesis_toolkit',
+            'genesis_qq_history',
+            'genesis_qq_read_media',
+            'genesis_qq_send',
+          ].some(name => (rule.endsWith('*') ? name.startsWith(rule.slice(0, -1)) : name === rule)),
+        ),
+      )
+    ) {
       throw new GenesisError('invalid-source', 'Innate tools cannot be placed in a toolkit. Remove their membership rules.')
     }
     return entries
@@ -41,8 +74,41 @@ export class ToolkitPreferences {
     if (this.failure !== undefined) throw this.failure
     if (this.closing !== undefined) throw new GenesisError('closed', 'Toolkit settings are closing.')
     const saved = this.domain.table('settings').get('toolkits')
-    return saved === undefined ? { revision: 0, entries: structuredClone(this.defaults) }
+    return saved === undefined
+      ? { revision: 0, entries: structuredClone(this.defaults) }
       : { revision: saved.revision, entries: this.validate(saved.entries) }
+  }
+  /** Register runtime-owned groups without writing them into operator preferences.
+   * @param owner - Unique contributing plugin name.
+   * @param entries - Current definitions; acquisition, loss and tool-list changes are read on demand.
+   * @returns Idempotent removal of this contribution; caller owns the disposer.
+   */
+  registerManaged(owner: string, entries: () => ToolkitDefinition[]): () => void {
+    if (this.managed.has(owner)) throw new GenesisError('invalid-source', 'A managed toolkit owner is already registered.')
+    this.read()
+    this.managed.set(owner, entries)
+    try {
+      this.catalogue()
+    } catch (error) {
+      this.managed.delete(owner)
+      throw error
+    }
+    return () => {
+      if (this.managed.get(owner) === entries) this.managed.delete(owner)
+    }
+  }
+  /** Read derived managed groups with the same bounds as saved definitions.
+   * @returns Detached runtime-owned definitions; their sources remain authoritative.
+   */
+  managedEntries(): ToolkitDefinition[] {
+    return this.validate([...this.managed.values()].flatMap(read => read()))
+  }
+  /** Read the effective catalogue used by discovery and execution.
+   * @returns Saved and runtime-owned groups; duplicate ids and capacity failures are visible.
+   */
+  catalogue(): { revision: number; entries: ToolkitDefinition[] } {
+    const saved = this.read()
+    return { revision: saved.revision, entries: this.validate([...saved.entries, ...this.managedEntries()]) }
   }
   /**
    * Save a complete validated catalogue; failures preserve the previous confirmed catalogue.
@@ -55,18 +121,36 @@ export class ToolkitPreferences {
     this.read()
     const operation = this.tail.then(async () => {
       if (this.failure !== undefined) throw this.failure
+      const managed = this.managedEntries()
+      const managedIds = new Set(managed.map(entry => entry.id))
+      if (entries.some(entry => managedIds.has(entry.id)))
+        throw new GenesisError('invalid-source', 'Managed toolkits are read-only. Edit their provider settings instead.')
+      this.validate([...entries, ...managed])
       const current = this.domain.table('settings').get('toolkits')?.revision ?? 0
       if (current !== revision) throw new GenesisError('configuration-conflict', 'Toolkit settings changed. Reload before saving again.')
-      try { await this.domain.table('settings').put('toolkits', { schemaVersion: 2, revision: current + 1, entries }) }
-      catch (error) {
-        this.failure = new GenesisError('storage', 'Toolkit settings write has an uncertain outcome. Stop toolkit use and reload verified storage.', { cause: error })
+      try {
+        await this.domain.table('settings').put('toolkits', { schemaVersion: 2, revision: current + 1, entries })
+      } catch (error) {
+        this.failure = new GenesisError(
+          'storage',
+          'Toolkit settings write has an uncertain outcome. Stop toolkit use and reload verified storage.',
+          { cause: error },
+        )
         throw this.failure
       }
       return current + 1
     })
-    this.tail = operation.then(() => {}, (_error: unknown) => { /* The caller reports errors; teardown drains accepted writes. */ })
+    this.tail = operation.then(
+      () => {},
+      (_error: unknown) => {
+        /* The caller reports errors; teardown drains accepted writes. */
+      },
+    )
     return operation
   }
   /** Drain admitted saves before releasing storage. @returns After the domain closes. */
-  close(): Promise<void> { this.closing ??= this.tail.then(() => this.domain.close()); return this.closing }
+  close(): Promise<void> {
+    this.closing ??= this.tail.then(() => this.domain.close())
+    return this.closing
+  }
 }

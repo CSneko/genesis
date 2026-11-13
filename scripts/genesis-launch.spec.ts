@@ -16,24 +16,33 @@ it('starts Genesis Web without arguments and retains explicit Web options', () =
     resolve(root, 'packages/experimental/genesis/cordis.patch.yml'),
     resolve(root, 'packages/experimental/genesis/cordis.life.patch.yml'),
     resolve(root, 'packages/experimental/genesis-bili-humanism/cordis.patch.yml'),
-    resolve(root, 'packages/experimental/genesis-minecraft/cordis.patch.yml'),
     resolve(root, 'packages/experimental/genesis-video/cordis.patch.yml'),
-    resolve(root, 'packages/experimental/genesis-qq/cordis.patch.yml'),
-    resolve(root, 'packages/experimental/genesis-companion/cordis.patch.yml'),
     resolve(root, 'packages/experimental/client-ui-genesis/cordis.patch.yml'),
     resolve(root, 'config/genesis-computer.patch.yml'),
     resolve(root, 'config/genesis-web.patch.yml'),
   ])
   const explicit = genesisLaunch(['web', '--patch', 'custom.yml', '--port', '4010', '--no-open'], 'test', root)
-  expect(parseDshArgs(explicit.args, 'test')).toMatchObject({ args: ['--port', '4010', '--no-open'],
-    patches: [...invocation.patches, 'custom.yml'] })
+  expect(parseDshArgs(explicit.args, 'test')).toMatchObject({
+    args: ['--port', '4010', '--no-open'],
+    patches: [...invocation.patches, 'custom.yml'],
+  })
 })
 
 it('applies explicit copies of default patches once and keeps config dumps consistent', () => {
-  const dump = genesisLaunch(['web', '--patch', 'packages/experimental/genesis/cordis.patch.yml',
-    '--patch', 'packages/experimental/genesis-bili-humanism/cordis.patch.yml', '--dump-config'], 'test', root)
+  const dump = genesisLaunch(
+    [
+      'web',
+      '--patch',
+      'packages/experimental/genesis/cordis.patch.yml',
+      '--patch',
+      'packages/experimental/genesis-bili-humanism/cordis.patch.yml',
+      '--dump-config',
+    ],
+    'test',
+    root,
+  )
   expect(parseDshArgs(dump.args, 'test')).toMatchObject({ mode: 'dump-config', defaultOnly: false })
-  expect(dump.args.filter(arg => arg === '--patch')).toHaveLength(10)
+  expect(dump.args.filter(arg => arg === '--patch')).toHaveLength(7)
   const schema = genesisLaunch(['--profile', 'web', '--dump-config-schema'], 'test', root)
   expect(parseDshArgs(schema.args, 'test')).toMatchObject({ mode: 'dump-config-schema', profile: 'web' })
   const defaults = ['web', '--dump-default-config']
@@ -49,8 +58,11 @@ it('preserves other profiles and supports explicit ordinary Harness launches', (
 })
 
 it('selects loopback launch-token testing after caller patches and consumes only the workspace flag', () => {
-  const launch = genesisLaunch(['web', '--patch', 'custom.yml', '--patch', 'config/genesis-web-test.patch.yml',
-    '--test-no-login', '--port', '0', '--no-open'], 'test', root)
+  const launch = genesisLaunch(
+    ['web', '--patch', 'custom.yml', '--patch', 'config/genesis-web-test.patch.yml', '--test-no-login', '--port', '0', '--no-open'],
+    'test',
+    root,
+  )
   const invocation = parseDshArgs(launch.args, 'test')
   expect(invocation).toMatchObject({ mode: 'profile', profile: 'web', args: ['--port', '0', '--no-open'] })
   if (invocation.mode !== 'profile') throw new Error('Expected a profile launch')

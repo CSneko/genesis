@@ -4,11 +4,11 @@
 
 可选的 [Genesis 层](../genesis/README.zh.md)负责持久生命、带来源记忆与系统成长观察。[数据记录](../genesis/data-model.zh.md)定义身份连续性与证据，[集成架构](../genesis/architecture.zh.md)定义生命周期与权限归属。
 
-`BoredomState` 是可选 `EmotionState.boredom` 的类型，保存在线活动模式、强度与时间参数。`EmotionUpdate.boredomDelta` 是带引用的有界评价，`SpontaneityRun.social` 保留自主发送预留及结果。`IdleConversationProvider` 为仅在内部联想可用的工具提供获准在线目标与持久文字投递。[无聊](../genesis/emotion.zh.md)和[空闲机会](../genesis/spontaneity.zh.md)定义行为与权限。
+`BoredomState` 是可选 `EmotionState.boredom` 的类型，保存在线活动模式、强度与时间参数。`EmotionUpdate.boredomDelta` 是带引用的有界评价，`SpontaneityRun.social` 保留自主发送预留及结果。`IdleConversationProvider` 为仅在内部联想可用的工具提供获准在线目标与持久文字投递。[无聊](../genesis/emotion.zh.md#boredom-and-engagement)和[空闲机会](../genesis/spontaneity.zh.md)定义行为与权限。
 
 `ThoughtId` 独立于目标和 Session 标识一个 `LifeThought`。`SpontaneityRun` 记录一次预留内部区间及其实际结算；第一版念头存储域保留当前投影和带来源的编辑凭据。探索决策使用 `purpose: exploration`，既有决策仍可读取。[自发认知](../genesis/spontaneity.zh.md)定义选择、私有执行、预算、删除和恢复。
 
-`ToolkitId` 标识操作者拥有的 `ToolkitDefinition`，`ToolkitStatus` 返回带修订号的目录及已学会、已注册工具名。`GenesisToolkitGateway` 管理认证后的编辑，`genesisToolkits` Session 投影恢复带版本的启用记录。[工具包](../../packages/experimental/genesis/README.zh.md#toolkits)定义成员、可见性、限制和执行检查。
+`ToolkitId` 标识操作者拥有的 `ToolkitDefinition`，`ToolkitStatus` 返回带修订号的目录及已学会、已注册工具名。`GenesisToolkitGateway` 管理认证后的编辑，`genesisToolkits` Session 投影恢复带版本的启用记录。[工具包](../../packages/experimental/genesis/README.zh.md#toolkits)定义成员、可见性、限制和执行检查。 `ToolkitStatus.managed` 可选字段返回提供方管理的运行时分组；`GenesisToolkitGateway.registerManaged` 将分组注册到调用插件的生命周期，不写入偏好存储。
 
 可选的版本 3 `EmotionState` 分别保存九项即时 `EmotionCurrent`、二维 `Mood` 心境与独立 `Needs`；恢复参数、修订、操作者设置及可选的单个 `RelationshipState` 与锚点一同持久化。关系保存五项估计、各字段置信度和来源；`RelationshipAdjustment` 是带原因的明确操作者输入。`EmotionUpdate` 携带有来源的事件评价、有界的情绪/心境/需求变化、可选关联对象与关系变化。`EmotionDialogue` 是有界可重放交流窗口。`EmotionSettings` 控制评价及恢复，用共享 `sensitivity` 倍率调节情绪及关系变化，`EmotionAdjustment` 替换三层情感状态。`EmotionHistoryEntry` 返回有界、带归属的变化、解释和实际应用效果。`LifeCore.reviewEmotion` 将变化、证据与重放标记一同提交，时机、迁移与失败语义见[情绪](../genesis/emotion.zh.md)。
 
@@ -49,6 +49,8 @@
 `QqDecisionSettings` 选择明确复用、既有提供商／模型，或拥有独立凭据引用的概率端点。`QqDecisionReceipt` 将有界真实概率及结果关联到群／消息及 Session ID。[QQ 对话](../genesis/qq.zh.md)说明设置、媒体／引用范围及删除方式。
 
 可选的[邮件集成](../../packages/experimental/genesis-mail/README.zh.md)拥有归属生命的邮箱存储、独立角色注意状态和不可变 SMTP 预留。`MailId` 独立于提供方 UID 和 Message-ID 标头标识本地邮件；`MailStatus` 开放不含凭据值的有界元数据。`LifeCore.recordIntegrationState` 将实际观察到的集成初始化和连接记录为系统成长，与工具学习和执行权限分别记录。
+
+[可选钱包](../../packages/experimental/genesis-wallet/README.zh.md)负责绑定生命的人民币与美元余额、商品快照、购买请求和带备注的流水。`WalletGateway` 仅向操作者开放确认操作；学习后的 `wallet` 工具主动读取当前状态，确认不自动产生会话通知。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

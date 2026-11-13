@@ -33,6 +33,9 @@
       "path": "../../client/ui-settings/tsconfig.client.json"
     },
     {
+      "path": "../../client/ui-plugin-manager/tsconfig.client.json"
+    },
+    {
       "path": "../../client/ui-slots"
     },
     {
@@ -82,6 +85,12 @@
     },
     {
       "path": "../genesis-mail"
+    },
+    {
+      "path": "../genesis-wallet"
+    },
+    {
+      "path": "../genesis-mcp"
     }
   ]
 }

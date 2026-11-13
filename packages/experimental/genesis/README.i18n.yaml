@@ -6,29 +6,29 @@
   en: 7d92173074c0722a
   zh: 20dca095be1790b4
 /deepseek-ai-dsh-experimental-genesis:
-  en: bff87f6fc399f042
-  zh: ce49bbaf973b1b62
+  en: 53550fb760177033
+  zh: 758e2e6bcbe13a8e
 /deepseek-ai-dsh-experimental-genesis/summary:
-  en: 9fe897917b1c4089
-  zh: ab63c0688483fe33
+  en: 6457d93c935a36ac
+  zh: 73daa789fe979798
 /deepseek-ai-dsh-experimental-genesis/table-of-contents:
   en: d163b6f30170c639
   zh: 29f54848025715a5
 /deepseek-ai-dsh-experimental-genesis/use:
-  en: dbbcf6636a51a5d9
-  zh: d1f96d8278a90214
+  en: eed0cd25ab6387cd
+  zh: 7cb423d96d89b04a
 /deepseek-ai-dsh-experimental-genesis/configuration:
-  en: e011683636831c09
-  zh: dc85995833c7ff85
+  en: 2bf915143fa4b206
+  zh: b000a6d5fe813cab
 /deepseek-ai-dsh-experimental-genesis/toolkits:
-  en: 626f469f8d4c563e
-  zh: cb4961f9f93f8086
+  en: 9cbd571cd21974f9
+  zh: a704eba7d3ceb9f8
 /deepseek-ai-dsh-experimental-genesis/implementation:
   en: 213c9481f33e6c5a
   zh: d406a49bf1a8a13a
 /deepseek-ai-dsh-experimental-genesis/further-exploration:
-  en: b25daa7f6e2007bc
-  zh: 5d8977d3e4070704
+  en: 3ea95654a0d10aef
+  zh: abd94f1764930bd7
 /deepseek-ai-dsh-experimental-genesis/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -36,8 +36,8 @@
   en: c49eb9fdd8cada39
   zh: 0201ccf8a185d623
 /deepseek-ai-dsh-experimental-genesis/model-experience/identity-guidance/what-the-model-sees:
-  en: 0df9df113ffaa57c
-  zh: 69e9602c6e368f51
+  en: 86a41824e76ec3c8
+  zh: 90210be1145ef8d7
 /deepseek-ai-dsh-experimental-genesis/model-experience/identity-guidance/what-the-model-sees/verbatim-guidance:
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
@@ -51,8 +51,8 @@
   en: e0bca4eef1d3efa1
   zh: 33ed6a6ada97820a
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory/what-the-model-sees:
-  en: 53533b73ed8ec986
-  zh: a08ffc725e18b4dd
+  en: c65447225fbc6fa7
+  zh: 1d45ad38e8e75cc0
 /deepseek-ai-dsh-experimental-genesis/model-experience/long-term-memory/what-the-model-sees/verbatim-guidance:
   en: ee8865eda3bcc252
   zh: ab62c488b81a55dc
@@ -134,6 +134,18 @@
 /deepseek-ai-dsh-experimental-genesis/model-experience/awakening-system-prompt/kv-cache-effect:
   en: 24745418162aeeec
   zh: c32b09c70e8c0c90
+/deepseek-ai-dsh-experimental-genesis/model-experience/optional-purge-guidance:
+  en: 91c60acaf002be8c
+  zh: ebcc44ecd3574e5e
+/deepseek-ai-dsh-experimental-genesis/model-experience/optional-purge-guidance/what-the-model-sees:
+  en: 9555c8106c1965c0
+  zh: 087948d6f7597040
+/deepseek-ai-dsh-experimental-genesis/model-experience/optional-purge-guidance/token-effect:
+  en: 041dc15518b3f7e0
+  zh: 480b306f71fb5973
+/deepseek-ai-dsh-experimental-genesis/model-experience/optional-purge-guidance/kv-cache-effect:
+  en: e3cda2bec0b36846
+  zh: 4ade8f9a3193a1b6
 /deepseek-ai-dsh-experimental-genesis/model-experience/native-tools:
   en: 5a2464cbaf0bf121
   zh: c82fb049a2111e83
@@ -151,7 +163,7 @@
   zh: c24476ba70f61463
 /deepseek-ai-dsh-experimental-genesis/known-limitations-and-deferred-work/dev-note:
   en: e8ed5bbebd7bc6aa
-  zh: 6e43363fbfc54208
+  zh: c9db6ff84c008a69
 /deepseek-ai-dsh-experimental-genesis/known-limitations-and-deferred-work/social-initiative:
   en: 2b21b38610e3146f
   zh: 7b8dc803f5eea5f1

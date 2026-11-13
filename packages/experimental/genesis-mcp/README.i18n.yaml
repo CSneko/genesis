@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-mcp/README.md
+/:
+  en: f2bf213d17f996e1
+  zh: 9155a00377007bfb
+/deepseek-ai-dsh-experimental-genesis-mcp:
+  en: ef02e0e527e72413
+  zh: a75e5802012aa361
+/deepseek-ai-dsh-experimental-genesis-mcp/summary:
+  en: 73966b388b100721
+  zh: 9cc43694628488b1
+/deepseek-ai-dsh-experimental-genesis-mcp/table-of-contents:
+  en: 2719c1830819c589
+  zh: dad4584fe14a1687
+/deepseek-ai-dsh-experimental-genesis-mcp/use:
+  en: d4dbad0cd48b2631
+  zh: c7bfb06dbb3dcaba
+/deepseek-ai-dsh-experimental-genesis-mcp/configuration-and-recovery:
+  en: 2b1fb7d5924468bf
+  zh: 8018e0541baa1844
+/deepseek-ai-dsh-experimental-genesis-mcp/model-experience:
+  en: 4d98a9c313b27d9c
+  zh: 73a9768d5c3beb32
+/deepseek-ai-dsh-experimental-genesis-mcp/limitations:
+  en: 4ddae763dbb822e9
+  zh: 678b0094dd8b5ff9
+/deepseek-ai-dsh-experimental-genesis-mcp/dev-note:
+  en: b75c8458928b72b9
+  zh: 45e76642489dcc3c

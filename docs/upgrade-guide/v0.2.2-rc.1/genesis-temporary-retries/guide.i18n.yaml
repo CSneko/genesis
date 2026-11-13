@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/genesis-temporary-retries/guide.md
+/:
+  en: 810fc892c7e1d6d2
+  zh: 1ad0b844383aced8
+/temporary-memory-generation-uses-bounded-retries-and-skips:
+  en: d57ebbc44f645d65
+  zh: 90e24f53019f8a2c
+/temporary-memory-generation-uses-bounded-retries-and-skips/change:
+  en: 9c52decdd9ad8c94
+  zh: 7eb0642a7b7061b1
+/temporary-memory-generation-uses-bounded-retries-and-skips/migration:
+  en: d841e6e6df9ae9c0
+  zh: 2b2647e5e2f76e1b

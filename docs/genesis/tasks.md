@@ -49,7 +49,7 @@ Include this domain, workspace data and Session storage in backups; the life-sta
 
 ## Human inspection
 
-Open Genesis → Delegated tasks in the left sidebar for bounded pages of managed assignments. The authenticated read-only view separates delivery from execution, reports turn counts and actual background activity, and marks unconfirmed reads explicitly. It does not wake or retry work. Open conversation uses the existing workspace navigation for the transcript and operator controls; archived or inaccessible workspaces are excluded.
+Open Actions → Delegated tasks in the left sidebar for bounded pages of managed assignments. The authenticated read-only view separates delivery from execution, reports turn counts and actual background activity, and marks unconfirmed reads explicitly. It does not wake or retry work. Open conversation uses the existing workspace navigation for the transcript and operator controls; archived or inaccessible workspaces are excluded.
 
 Open the target workspace's normal conversation list to find the created session. Its existing mode label, conversation history and runtime controls remain available. The assignment appears as an attributed Life notice, followed by real assistant and tool output. The task id is the session id, and the assignment source retains its requesting Life session and request id. `inspect` can also read existing ordinary sessions in registered, unarchived workspaces; it refuses Life sessions and sessions outside that set.
 

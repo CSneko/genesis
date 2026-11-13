@@ -108,5 +108,6 @@
     "type": "git",
     "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
     "directory": "packages/experimental/genesis-mail"
-  }
+  },
+  "author": "@CSNeko"
 }

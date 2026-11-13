@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.1/genesis-spontaneity-budgets/guide.md
+/:
+  en: f669b318b7058353
+  zh: 8ccb28abac9602e6
+/spontaneous-cognition-budgets:
+  en: 64a2e81b95b38f7a
+  zh: 292bf94d7f826549
+/spontaneous-cognition-budgets/change:
+  en: 34db2488b75ca3ac
+  zh: 626e1716944b670a
+/spontaneous-cognition-budgets/migration:
+  en: a1ba1183c7fa3340
+  zh: 5856edc57fb5c8fa

@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { Config } from '../src/config.ts'
 import { sleepDomain } from '../src/sleep-model.ts'
@@ -14,7 +15,11 @@ import { openCore } from './harness.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
-  try { for (const close of cleanup.splice(0).reverse()) await close() } finally { vi.useRealTimers() }
+  try {
+    for (const close of cleanup.splice(0).reverse()) await close()
+  } finally {
+    vi.useRealTimers()
+  }
 })
 it('honors holidays, bounds stable jitter, and distinguishes temporary wake from keeping awake through restart', async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -25,6 +30,7 @@ it('honors holidays, bounds stable jitter, and distinguishes temporary wake from
   const policy = resolved.sleep!
   const life = await openCore(root, 'json', { sleep: policy })
   cleanup.push(() => life.close())
+  await life.ctx.plugin(SessionProjectionRegistry)
   await life.ctx.plugin(AgentRegistry)
   const identity = (await life.core.snapshot()).identity.id
   const open = async (marked: boolean) => {
@@ -32,13 +38,22 @@ it('honors holidays, bounds stable jitter, and distinguishes temporary wake from
     const store = new SleepStore(domain, identity, policy, Date.now())
     cleanup.push(() => store.close())
     await store.start(marked)
-    const engine = new LifeSleep(life.ctx, life.core, store, policy, () => true, async () => [], async () => null)
+    const engine = new LifeSleep(
+      life.ctx,
+      life.core,
+      store,
+      policy,
+      () => true,
+      async () => [],
+      async () => null,
+    )
     return { engine, store }
   }
   const first = await open(false)
   await first.engine.tick()
   expect(first.engine.inspect().mode).toBe('awake')
-  const settings = first.store.read().settings, seed = first.store.read().seed
+  const settings = first.store.read().settings,
+    seed = first.store.read().seed
   expect(sleepWindows('2026-10-01', settings, seed)).toEqual([])
   expect(sleepWindows('2026-11-07', settings, seed)).toEqual([])
   expect(sleepWindows('2027-01-04', settings, seed)).toEqual([])

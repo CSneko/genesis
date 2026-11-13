@@ -4,7 +4,7 @@ English | [中文](records.zh.md)
 
 ## Start
 
-In this checkout, `pnpm dsh web` enables recording through the life overlay. Open Genesis → Her writings to browse records and manage categories. Other compositions enable the optional Genesis `records: {}` configuration together with a private absolute `personalDirectory`; omitting `records` removes the tool and makes the management page explicitly unavailable.
+In this checkout, `pnpm dsh web` enables recording through the life overlay. Open Memories → Her writings to browse records and manage categories. Other compositions enable the optional Genesis `records: {}` configuration together with a private absolute `personalDirectory`; omitting `records` removes the tool and makes the management page explicitly unavailable.
 
 The character does not receive this tool at birth. Teach her its exact name, `genesis_record`, and let her call `learn`. Learning is durable across conversations and restarts and does not bypass independent execution policies. Disabling the recording plugin does not erase its data.
 

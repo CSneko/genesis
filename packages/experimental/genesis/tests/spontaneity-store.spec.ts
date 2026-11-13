@@ -9,7 +9,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Config } from '../src/config.ts'
 import { SpontaneityStore } from '../src/spontaneity-store.ts'
-import { spontaneityDomain, type ThoughtEdit } from '../src/spontaneity-state.ts'
+import { spontaneityDomain, spontaneityStateSchema, spontaneitySettingsSchema, type ThoughtEdit } from '../src/spontaneity-state.ts'
 import { openCore } from './harness.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
@@ -17,7 +17,11 @@ afterEach(async () => {
   vi.restoreAllMocks()
   const errors: unknown[] = []
   for (const close of cleanup.splice(0).reverse()) {
-    try { await close() } catch (error) { errors.push(error) }
+    try {
+      await close()
+    } catch (error) {
+      errors.push(error)
+    }
   }
   if (errors.length) throw new AggregateError(errors, 'Thought fixture cleanup')
 })
@@ -35,8 +39,14 @@ async function fixture() {
     cleanup.push(() => store.close())
     return { domain, store }
   }
-  const edit: ThoughtEdit = { action: 'save', title: 'Animation and my story', content: 'Try a paper bird.',
-    reason: 'An interesting association.', sourceEventIds: [state.events[0]!.id], revisitAfter: null }
+  const edit: ThoughtEdit = {
+    action: 'save',
+    title: 'Animation and my story',
+    content: 'Try a paper bird.',
+    reason: 'An interesting association.',
+    sourceEventIds: [state.events[0]!.id],
+    revisitAfter: null,
+  }
   return { ...life, open, state, edit }
 }
 
@@ -63,8 +73,13 @@ it('marks crash reservations interrupted, preserves replay keys and refuses miss
   const f = await fixture()
   const first = await f.open()
   await first.store.start(false)
-  const run = { key: 'source-event', sessionId: SessionId(randomUUID()), sourceEventId: f.state.events[0]!.id,
-    createdAt: Date.now(), status: 'reserved' as const }
+  const run = {
+    key: 'source-event',
+    sessionId: SessionId(randomUUID()),
+    sourceEventId: f.state.events[0]!.id,
+    createdAt: Date.now(),
+    status: 'reserved' as const,
+  }
   expect(await first.store.reserve(run)).toBe(true)
   await first.store.close()
   const next = await f.open()
@@ -86,4 +101,24 @@ it('fences reads and edits after a write with unknown outcome', async () => {
   await expect(store.edit(f.edit, { sessionId: SessionId('write'), callId: ToolCallId('edit') })).rejects.toMatchObject({ code: 'storage' })
   expect(() => store.read()).toThrow('uncertain')
   expect(() => store.edit(f.edit, { sessionId: SessionId('write'), callId: ToolCallId('retry') })).toThrow('uncertain')
+})
+
+it('migrates legacy execution caps and restores large token budgets without changing their units', async () => {
+  const f = await fixture()
+  const first = await f.open()
+  await first.store.start(false)
+  const settings = { enabled: true, idleMs: 60000, maxDurationMs: 180000, maxOutputTokens: 32768, maxPer24Hours: 6 }
+  const legacy = { ...first.store.read(), controls: { ...settings, requestTokens: 2048, maxRequests: 6, maxToolCalls: 12 } }
+  const migrated = spontaneityStateSchema.parse(legacy)
+  expect(migrated.controls).toEqual(settings)
+  expect(() => spontaneitySettingsSchema.parse({ ...settings, maxRequests: 6 })).toThrow()
+  expect(Config({ leasePath: '/unused', spontaneity: {} }).spontaneity?.maxOutputTokens).toBe(50000000)
+  const large = { ...migrated.controls!, maxOutputTokens: 1000000000000 }
+  expect(await first.store.configure(spontaneitySettingsSchema.parse(large), 0)).toBe(1)
+  await first.store.close()
+  const next = await f.open()
+  await next.store.start(true)
+  expect(next.store.read().controls).toEqual(large)
+  expect(() => spontaneitySettingsSchema.parse({ ...large, maxOutputTokens: Number.MAX_SAFE_INTEGER + 1 })).toThrow()
+  expect(() => spontaneityStateSchema.parse({ ...legacy, schemaVersion: 2 })).toThrow()
 })

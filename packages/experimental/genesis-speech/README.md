@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Generate WAV audio from text using Alibaba Cloud CosyVoice and keep the result as a durable conversation attachment. Configure a default built-in or custom voice in Settings → Speech synthesis. Requests send text to the configured provider and can incur charges. This source workspace includes the optional layer in its Genesis Web composition; ordinary Harness profiles remain unchanged.
+Generate WAV audio from text using Alibaba Cloud CosyVoice and keep the result as a durable conversation attachment. Configure a default built-in or custom voice in Plugins → Genesis → Speech. Requests send text to the configured provider and can incur charges. This source workspace includes the optional layer in its Genesis Web composition; ordinary Harness profiles remain unchanged.
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ Start the supported workspace application with `pnpm dsh web`. Store `DASHSCOPE_
 
 The source-workspace launcher selects speech as a bundle in the Genesis Web profile, before user settings. This allows the settings page to persist route edits across restarts. Explicit home or command-line overrides retain their normal precedence.
 
-Settings → Speech synthesis edits the complete HTTPS endpoint, CosyVoice model, default voice ID and API key reference (`keyEnv`). Saved route edits apply to subsequent calls through the standard configuration editor. Changes to the Host environment require a restart. The default model is `cosyvoice-v3-flash`, voice `longanyang`, and endpoint `https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`; set the regional workspace endpoint required by your Alibaba account.
+Plugins → Genesis → Speech edits the complete HTTPS endpoint, CosyVoice model, default voice ID and API key reference (`keyEnv`). Saved route edits apply to subsequent calls through the standard configuration editor. Changes to the Host environment require a restart. The default model is `cosyvoice-v3-flash`, voice `longanyang`, and endpoint `https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`; set the regional workspace endpoint required by your Alibaba account.
 
 The tool resolves its reference for every invocation through the standard Harness credential provider: managed `.credentials.yaml` first, inherited environment second, project `.env` third, and Harness home `.env` last. Saved credential changes reach the next call without restarting the plugin. A composition without a credential provider uses the launch environment only. The credentials document contains:
 

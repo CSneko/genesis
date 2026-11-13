@@ -57,7 +57,7 @@ createServer(async (req, res) => {
   disposers.push(async () => { launcher.mockRestore() })
   const descriptor = { digest: `sha256:${digest}`, size: body.length, urls: [`http://127.0.0.1:${address.port}/weights`] }
   manifest = JSON.stringify({ schemaVersion: 2, config: descriptor, layers: [descriptor] })
-  const config = Config({ leasePath: join(root, 'life.lock'), localDecision: { binary: process.execPath,
+  const config = Config({ leasePath: join(root, 'life.lock'), localDecision: { ...Config({ leasePath: join(root, 'defaults.lock') }).localDecision, binary: process.execPath,
     modelUrl: `http://127.0.0.1:${address.port}/manifest`, modelSha256: createHash('sha256').update(manifest).digest('hex') } })
   const first = new LocalDecision(ctx, config)
   disposers.push(() => first.close())

@@ -9,7 +9,11 @@ import type { TemporaryMemoryId, TemporarySettings, TemporaryStatus } from './te
 import { statusFailure } from './status-error.ts'
 import { GenesisError } from './error.ts'
 
-declare module '@deepseek-ai/cordis' { interface Context { genesisTemporary: GenesisTemporaryGateway } }
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    genesisTemporary: GenesisTemporaryGateway
+  }
+}
 /** Operator controls never send a conversation message or change long-term memories. */
 export class GenesisTemporaryGateway extends TypertRemoteService {
   static inject = ['genesis']
@@ -19,15 +23,29 @@ export class GenesisTemporaryGateway extends TypertRemoteService {
    * @param ctx - Authenticated Remote owner.
    * @param options - Life-owned temporary worker.
    */
-  constructor(ctx: Context, private readonly options: { engine: TemporaryMemoryEngine }) {
+  constructor(
+    ctx: Context,
+    private readonly options: { engine: TemporaryMemoryEngine },
+  ) {
     super(ctx, 'genesisTemporary')
-    ctx.effect(() => async () => { this.lifetime.abort(); await Promise.allSettled(this.operations) })
+    ctx.effect(() => async () => {
+      this.lifetime.abort()
+      await Promise.allSettled(this.operations)
+    })
   }
   private async operation<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
     AbortSignal.any([signal, this.lifetime.signal]).throwIfAborted()
-    if (principalOf(this.ctx.invocation) !== undefined) throw statusFailure(new GenesisError('invalid-source', 'Temporary-memory settings require operator access.'))
-    const task = Promise.resolve().then(run); this.operations.add(task)
-    try { return await task } catch (error) { throw statusFailure(error) } finally { this.operations.delete(task) }
+    if (principalOf(this.ctx.invocation) !== undefined)
+      throw statusFailure(new GenesisError('invalid-source', 'Temporary-memory settings require operator access.'))
+    const task = Promise.resolve().then(run)
+    this.operations.add(task)
+    try {
+      return await task
+    } catch (error) {
+      throw statusFailure(error)
+    } finally {
+      this.operations.delete(task)
+    }
   }
   /**
    * Read current settings, expiry times and pending failures.
@@ -35,7 +53,22 @@ export class GenesisTemporaryGateway extends TypertRemoteService {
    * @returns Bounded operator sample.
    */
   @Remote('inspect')
-  inspect(signal: AbortSignal): Promise<TemporaryStatus> { return this.operation(signal, async () => this.options.engine.inspect()) }
+  inspect(signal: AbortSignal): Promise<TemporaryStatus> {
+    return this.operation(signal, async () => this.options.engine.inspect())
+  }
+  /**
+   * Search all unexpired summaries and read one bounded page.
+   * @param query - Summary substring, empty for all summaries.
+   * @param offset - Number of matching records to skip.
+   * @param signal - Caller cancellation.
+   * @returns Matching count, page and remaining record count.
+   */
+  @Remote('browse')
+  browse(query: string, offset: number, signal: AbortSignal): Promise<TemporaryStatus> {
+    return this.operation(signal, async () =>
+      this.options.engine.inspect(z.string().max(500).parse(query), z.number().int().nonnegative().max(10000).parse(offset)),
+    )
+  }
   /**
    * Save independent summary model and quiet interval.
    * @param settings - Complete nonsecret draft.
@@ -54,7 +87,9 @@ export class GenesisTemporaryGateway extends TypertRemoteService {
    * @returns After removal commits.
    */
   @Remote('forget')
-  forget(id: TemporaryMemoryId, signal: AbortSignal): Promise<void> { return this.operation(signal, () => this.options.engine.mutate(id, 'delete')) }
+  forget(id: TemporaryMemoryId, signal: AbortSignal): Promise<void> {
+    return this.operation(signal, () => this.options.engine.mutate(id, 'delete'))
+  }
   /**
    * Explicitly retry a failed batch without resetting committed progress.
    * @param sessionId - Failed source conversation.
@@ -62,7 +97,9 @@ export class GenesisTemporaryGateway extends TypertRemoteService {
    * @returns After the admitted retry settles.
    */
   @Remote('retry')
-  retry(sessionId: SessionId, signal: AbortSignal): Promise<void> { return this.operation(signal, () => this.options.engine.mutate(sessionId, 'retry')) }
+  retry(sessionId: SessionId, signal: AbortSignal): Promise<void> {
+    return this.operation(signal, () => this.options.engine.mutate(sessionId, 'retry'))
+  }
   /**
    * Store or remove the fixed summary endpoint credential; it is never returned.
    * @param value - Secret or undefined to remove it.
@@ -73,10 +110,18 @@ export class GenesisTemporaryGateway extends TypertRemoteService {
   setKey(value: string | undefined, signal: AbortSignal): Promise<void> {
     return this.operation(signal, async () => {
       const credentials = this.ctx.get('credentials')
-      if (credentials === undefined) throw new GenesisError('invalid-state', 'Configure a credential provider before saving a summary endpoint key.')
+      if (credentials === undefined)
+        throw new GenesisError('invalid-state', 'Configure a credential provider before saving a summary endpoint key.')
       const ref = credentialRef('GENESIS_TEMPORARY_API_KEY')
       if (value === undefined) await credentials.unset(ref)
-      else { z.string().min(1).max(8192).regex(/^[^\s]+$/u).parse(value); await credentials.set(ref, value) }
+      else {
+        z.string()
+          .min(1)
+          .max(8192)
+          .regex(/^[^\s]+$/u)
+          .parse(value)
+        await credentials.set(ref, value)
+      }
     })
   }
 }

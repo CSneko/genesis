@@ -7,7 +7,11 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { MemoryNoticeState } from './MemoryNotice.tsx'
 import { MinecraftPanel, type MinecraftActions } from './MinecraftPanel.tsx'
 
-declare module '@deepseek-ai/dsh-client-ui-slots' { interface ResourceProtocolMap { 'genesis-minecraft': MinecraftStatus } }
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface ResourceProtocolMap {
+    'genesis-minecraft': MinecraftStatus
+  }
+}
 /**
  * Mount the generated Minecraft Remote and settings without starting game activity.
  * @param ctx - Existing Genesis browser scope and locale.
@@ -15,32 +19,69 @@ declare module '@deepseek-ai/dsh-client-ui-slots' { interface ResourceProtocolMa
  * @param notice - Shell-owned outcome store.
  * @returns A disposer removing UI before Remote definitions.
  */
-export async function mountMinecraft(ctx: Context, contribution: TypertRemoteContribution, notice: SnapshotStore<MemoryNoticeState>): Promise<() => Promise<void>> {
+export async function mountMinecraft(
+  ctx: Context,
+  contribution: TypertRemoteContribution,
+  notice: SnapshotStore<MemoryNoticeState>,
+): Promise<() => Promise<void>> {
   const unmount = await ctx.remote.$mount(contribution)
   const ui = ctx.inject(['remote.genesisMinecraft'], (scope) => {
-    scope.effect(() => scope.resources.register<'genesis-minecraft'>({ protocol: 'genesis-minecraft',
-      async *open(_address, { signal }) {
-        for await (const value of scope.remote.genesisMinecraft.watch(signal)) yield { ok: true, value }
-      },
-    }))
-    const perform = async <T>(run: () => Promise<RemoteResult<T>>): Promise<RemoteResult<T>> => {
-      const report = (ok: boolean) => notice.update((state) => {
-        state.sequence++; state.outcome = ok ? { ok: true, kind: 'minecraft' }
-          : { ok: false, kind: 'minecraft', reason: scope.locale.bind('genesis')('minecraftOperationHint') }
-      })
-      try { const result = await run(); report(result.ok); return result }
-      catch (error) { report(false); throw error }
-    }
-    scope.slots.inject('settings.section', () => scope.slots.register({
-      name: 'settings.section', id: 'genesis-minecraft', order: 23, locale: 'genesis',
-      label: () => scope.locale.bind('genesis')('minecraftTitle'), inject: (): MinecraftActions => ({
-        save: (...args) => perform(() => scope.remote.genesisMinecraft.save(...args)),
-        disconnect: (...args) => perform(() => scope.remote.genesisMinecraft.disconnect(...args)),
-        stop: (...args) => perform(() => scope.remote.genesisMinecraft.stop(...args)),
-        credential: (ref, value) => perform(() => value === undefined ? scope.remote.credentials.unset(ref) : scope.remote.credentials.set(ref, value)),
+    scope.effect(() =>
+      scope.resources.register<'genesis-minecraft'>({
+        protocol: 'genesis-minecraft',
+        async *open(_address, { signal }) {
+          try {
+            for await (const value of scope.remote.genesisMinecraft.watch(signal)) yield { ok: true, value }
+          } catch (error) {
+            if (!signal.aborted) throw error
+          }
+        },
       }),
-    }, MinecraftPanel))
+    )
+    const perform = async <T>(run: () => Promise<RemoteResult<T>>): Promise<RemoteResult<T>> => {
+      const report = (ok: boolean) =>
+        notice.update((state) => {
+          state.sequence++
+          state.outcome = ok
+            ? { ok: true, kind: 'minecraft' }
+            : { ok: false, kind: 'minecraft', reason: scope.locale.bind('genesis')('minecraftOperationHint') }
+        })
+      try {
+        const result = await run()
+        report(result.ok)
+        return result
+      } catch (error) {
+        report(false)
+        throw error
+      }
+    }
+    scope.slots.inject('genesis.plugin.settings', () =>
+      scope.slots.register(
+        {
+          name: 'genesis.plugin.settings',
+          key: 'genesis-minecraft',
+          locale: 'genesis',
+          inject: (): MinecraftActions => ({
+            save: (...args) => perform(() => scope.remote.genesisMinecraft.save(...args)),
+            disconnect: (...args) => perform(() => scope.remote.genesisMinecraft.disconnect(...args)),
+            stop: (...args) => perform(() => scope.remote.genesisMinecraft.stop(...args)),
+            credential: (ref, value) =>
+              perform(() => (value === undefined ? scope.remote.credentials.unset(ref) : scope.remote.credentials.set(ref, value))),
+          }),
+        },
+        MinecraftPanel,
+      ),
+    )
   })
-  try { await ui } catch (error) { await ui.dispose(); await unmount(); throw error }
-  return async () => { await ui.dispose(); await unmount() }
+  try {
+    await ui
+  } catch (error) {
+    await ui.dispose()
+    await unmount()
+    throw error
+  }
+  return async () => {
+    await ui.dispose()
+    await unmount()
+  }
 }

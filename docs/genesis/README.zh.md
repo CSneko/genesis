@@ -38,9 +38,10 @@ pnpm dsh
 
 工作区 Genesis Web 包含 [B 站集成](../../packages/experimental/genesis-bili-humanism/README.zh.md)。使用 `pnpm dsh web` 重启服务，再在 Life 模式通过 `learn` 学习准确工具名，无需额外补丁参数。集成仍关闭上游人格学习、定时取稿和平台写入，由 Genesis 管理候选经历。
 
+<a id="browser-control"></a>
 ### 浏览器操作
 
-工作区 Genesis Web 默认启用 [Playwright 浏览器组合包](../../packages/experimental/browser-use-playwright-mcp/README.zh.md)，连接在 Genesis 服务器上独立运行的专用 Chrome，默认地址为 `http://127.0.0.1:9222`。在 **设置 → 浏览器** 修改 **Chrome 调试地址** 并保存。地址从服务器访问，而不是从你的本地电脑访问；支持 HTTP(S) 和 WS(S) 调试地址。配置保存在 profile 中，重启后保留。保存不测试连通性。保存后重启 Genesis，共享提供方便会连接新地址。
+工作区 Genesis Web 默认启用 [Playwright 浏览器组合包](../../packages/experimental/browser-use-playwright-mcp/README.zh.md)，连接在 Genesis 服务器上独立运行的专用 Chrome，默认地址为 `http://127.0.0.1:9222`。在 **插件 → Genesis → 浏览器** 修改 **Chrome 调试地址** 并保存。地址从服务器访问，而不是从你的本地电脑访问；支持 HTTP(S) 和 WS(S) 调试地址。配置保存在 profile 中，重启后保留。保存不测试连通性。保存后重启 Genesis，共享提供方便会连接新地址。
 
 在已安装 Chrome 且有活动图形会话的 Linux 服务器上，安装仓库提供的用户服务：
 

@@ -6,6 +6,7 @@
  * experimental name only through this map.
  */
 export const EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'packages/experimental/genesis-weather': '@deepseek-ai/dsh-genesis-weather',
   'packages/experimental/cua': '@deepseek-ai/dsh-cua',
   'packages/experimental/cua-bundle': '@deepseek-ai/dsh-cua-bundle',
   'packages/experimental/tool-session-query': '@deepseek-ai/dsh-tool-session-query',
@@ -93,8 +94,9 @@ export function isExperimentalPackageName(name: string): boolean {
  */
 export function hasExperimentalPackageReference(reference: string): boolean {
   const normalized = reference.replaceAll('\\', '/')
-  return [...normalized.matchAll(/(?:^|[/:\u0000])(@deepseek-ai\/[^/@?#:\s]+)(?=$|[/@?#:])/g)]
-    .some(([, name]) => name !== undefined && isExperimentalPackageName(name))
+  return [...normalized.matchAll(/(?:^|[/:\u0000])(@deepseek-ai\/[^/@?#:\s]+)(?=$|[/@?#:])/g)].some(
+    ([, name]) => name !== undefined && isExperimentalPackageName(name),
+  )
 }
 
 /**
@@ -104,7 +106,9 @@ export function hasExperimentalPackageReference(reference: string): boolean {
  */
 export function experimentalPackageRecordNamespace(name: string): string | undefined {
   if (!isExperimentalPackageName(name)) return undefined
-  return name.slice(name.startsWith(EXPERIMENTAL_PACKAGE_NAME_PREFIX) ? EXPERIMENTAL_PACKAGE_NAME_PREFIX.length : '@deepseek-ai/dsh-'.length)
+  return name.slice(
+    name.startsWith(EXPERIMENTAL_PACKAGE_NAME_PREFIX) ? EXPERIMENTAL_PACKAGE_NAME_PREFIX.length : '@deepseek-ai/dsh-'.length,
+  )
 }
 
 /** Experimental packages excluded from public releases and npm baselines. */
@@ -120,6 +124,5 @@ export function isPublicExperimentalPackageDirectory(
   directory: string,
   privateDirectories: readonly string[] = PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
 ): boolean {
-  return /^packages\/experimental\/[^/]+$/.test(directory)
-    && !privateDirectories.includes(directory)
+  return /^packages\/experimental\/[^/]+$/.test(directory) && !privateDirectories.includes(directory)
 }

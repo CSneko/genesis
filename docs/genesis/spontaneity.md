@@ -48,11 +48,10 @@ Tool learning, toolkit activation, sandbox authorization and operator stops rema
 | --- | --- | --- |
 | `idleMs` | 60000 | Quiet delay after the conversation becomes idle. |
 | `maxDurationMs` | 180000 | Whole opportunity deadline, including reviews. |
-| `maxOutputTokens` | 32768 | Worst-case requested output tokens reserved across main and auxiliary calls, including retries. |
-| `requestTokens` | 2048 | Maximum requested output per main-model call. |
-| `maxRequests` | 6 | Main-model requests across reflection and exploration, including retries. |
-| `maxToolCalls` | 12 | Admitted tool calls, including thought edits and recall. |
+| `maxOutputTokens` | 50000000 (50M) | Worst-case requested output tokens reserved across main and auxiliary calls, including retries. |
 | `maxPer24Hours` | 6 | Opportunities in a rolling twenty-four hours. |
+
+The Thoughts page displays and edits the total budget in M tokens (1M = 1,000,000 tokens), defaulting to 50M and accepting larger values. `maxOutputTokens` in `cordis.yml` and settings APIs remains an integer token count from 1 to 9,007,199,254,740,991; saved values retain their units and amounts. Spontaneity adds no per-request output cap, request-count cap or tool-call-count cap. Main-model calls use their route setting or the provider's advertised default output cap; when neither exists, the remaining total budget bounds the request. The opportunity deadline, daily opportunity quota, tool authorization and stop controls still apply.
 
 Reservations are not refunded when a model produces less output. Input tokens are bounded by existing context limits but are not included in this output quota; this is not an exact total billing limit. Exhaustion rejects dependent work before another call. `contextChars` bounds the serialized thought and recent-dialogue selection; `maxRecords` and `maxStateChars` bound the complete thought store. `experienceImportance` controls episodic receipt importance.
 

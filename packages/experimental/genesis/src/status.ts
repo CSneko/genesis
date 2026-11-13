@@ -1,5 +1,8 @@
 /** Life status and one-time naming, exported through the existing authenticated Gateway. @module */
+import { intimacySettingsSchema, initialIntimacy, type IntimacySettings, type IntimacyStatus } from './intimacy-state.ts'
 import { searchText, memoryDocument } from './search.ts'
+import { memoryBrowserFilterSchema, memoryBrowserPage } from './memory-browser.ts'
+import type { MemoryBrowserFilter, MemoryBrowserCatalog } from './status-types.ts'
 import { isNonDeclarative } from './personality.ts'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
@@ -28,15 +31,28 @@ import type { LifeInterestEngine } from './interest.ts'
 import { interestSchema } from './model.ts'
 import { z } from 'zod'
 import { appraisalSchema, appraisalEffectsSchema, relationshipAdjustmentSchema, type RelationshipAdjustment } from './relationship-state.ts'
-import { emotionAt, resolveEmotion, emotionUpdateSchema, emotionStateSchema, emotionSettingsSchema, emotionAdjustmentSchema, type EmotionSettings, type EmotionAdjustment } from './emotion-state.ts'
+import {
+  emotionAt,
+  resolveEmotion,
+  emotionUpdateSchema,
+  emotionStateSchema,
+  emotionSettingsSchema,
+  emotionAdjustmentSchema,
+  type EmotionSettings,
+  type EmotionAdjustment,
+} from './emotion-state.ts'
 import { statusFailure } from './status-error.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
-  interface MessageSourceMap { 'genesis-awakening': { kind: 'genesis-awakening' } & ContextFormed }
+  interface MessageSourceMap {
+    'genesis-awakening': { kind: 'genesis-awakening' } & ContextFormed
+  }
 }
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { genesisStatus: GenesisStatusGateway }
+  interface Context {
+    genesisStatus: GenesisStatusGateway
+  }
 }
 
 /** Sample shared life state and initialize its name without changing its identity or permissions. */
@@ -50,20 +66,57 @@ export class GenesisStatusGateway extends TypertRemoteService {
    * @param ctx - Life state and real Agent registry.
    * @param options - Projection limits and the owned durable embedding preferences.
    */
-  constructor(ctx: Context, private readonly options: {
-    config: Config
-    purge: PurgePreferences
-    preferences: EmbeddingPreferences
-    models: ModelPreferences
-    memory: LifeMemoryEngine | undefined
-    emotion: LifeEmotionEngine | undefined
-    interest: LifeInterestEngine | undefined
-    lifeMode: (agent: Agent | undefined) => boolean
-  }) {
+  constructor(
+    ctx: Context,
+    private readonly options: {
+      config: Config
+      purge: PurgePreferences
+      preferences: EmbeddingPreferences
+      models: ModelPreferences
+      memory: LifeMemoryEngine | undefined
+      emotion: LifeEmotionEngine | undefined
+      interest: LifeInterestEngine | undefined
+      lifeMode: (agent: Agent | undefined) => boolean
+    },
+  ) {
     super(ctx, 'genesisStatus')
     ctx.effect(() => async () => {
       this.lifetime.abort()
       await Promise.allSettled(this.operations)
+    })
+  }
+
+  /**
+   * Inspect private operator settings without initializing an optional projection.
+   * @param signal - Operator cancellation.
+   * @returns Current sampled state and revision; unavailable profiles cannot enable it.
+   */
+  @Remote('inspectIntimacy')
+  inspectIntimacy(signal: AbortSignal): Promise<IntimacyStatus> {
+    return this.operation(signal, async () => {
+      const life = await this.ctx.genesis.snapshot()
+      const emotion = life.emotion === undefined ? undefined : emotionAt(life.emotion, new Date().toISOString())
+      return {
+        available: this.options.emotion !== undefined,
+        revision: emotion?.revision ?? 0,
+        state: emotion?.intimacy ?? initialIntimacy(intimacySettingsSchema.parse({})),
+      }
+    })
+  }
+
+  /**
+   * Save the optional plugin policy or clear its current projection; history remains audited.
+   * @param settings - Complete JSON-validated design settings.
+   * @param revision - Last sampled emotion revision.
+   * @param remove - Explicitly clear current state, retaining historical audit records.
+   * @param signal - Caller cancellation; admitted commits drain on shutdown.
+   * @returns Fresh committed settings for the next request.
+   */
+  @Remote('saveIntimacy')
+  saveIntimacy(settings: IntimacySettings, revision: number, remove: boolean, signal: AbortSignal): Promise<IntimacyStatus> {
+    return this.operation(signal, async (owned) => {
+      await this.ctx.genesis.configureIntimacy(intimacySettingsSchema.parse(settings), revision, z.boolean().parse(remove))
+      return this.inspectIntimacy(owned)
     })
   }
 
@@ -74,7 +127,8 @@ export class GenesisStatusGateway extends TypertRemoteService {
   @Remote('inspectPurge')
   inspectPurge(signal: AbortSignal): Promise<PurgeSettings> {
     return this.operation(signal, async () => {
-      if (principalOf(this.ctx.invocation) !== undefined) throw new GenesisError('invalid-source', 'Purge settings require operator access.')
+      if (principalOf(this.ctx.invocation) !== undefined)
+        throw new GenesisError('invalid-source', 'Purge settings require operator access.')
       return this.options.purge.read()
     })
   }
@@ -88,7 +142,8 @@ export class GenesisStatusGateway extends TypertRemoteService {
   @Remote('savePurge')
   savePurge(enabled: boolean, revision: number, signal: AbortSignal): Promise<PurgeSettings> {
     return this.operation(signal, async () => {
-      if (principalOf(this.ctx.invocation) !== undefined) throw new GenesisError('invalid-source', 'Purge settings require operator access.')
+      if (principalOf(this.ctx.invocation) !== undefined)
+        throw new GenesisError('invalid-source', 'Purge settings require operator access.')
       await this.options.purge.save(enabled, revision)
       return this.options.purge.read()
     })
@@ -97,7 +152,9 @@ export class GenesisStatusGateway extends TypertRemoteService {
   /** Read the current auxiliary decision route without constructing a full status response.
    * @returns Detached operator route.
    */
-  decisionModel(): MemoryModelsSettings['decision'] { return this.options.models.read().models.decision }
+  decisionModel(): MemoryModelsSettings['decision'] {
+    return this.options.models.read().models.decision
+  }
 
   /**
    * Evaluate a binary question through the configured decision route with durable request/response audit.
@@ -109,16 +166,32 @@ export class GenesisStatusGateway extends TypertRemoteService {
    * @param route - Optional channel-only decision route; shared settings remain unchanged.
    * @returns Validated answer and genuine endpoint probability when supplied; failure authorizes no action.
    */
-  async decide(session: Session, question: string, input: Record<string, unknown> & { participants: object },
-    criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision']): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }> {
+  async decide(
+    session: Session,
+    question: string,
+    input: Record<string, unknown> & { participants: object },
+    criteria: { true: string; false: string },
+    signal: AbortSignal,
+    route?: MemoryModelsSettings['decision'],
+  ): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }> {
     return this.operation(signal, async (owned) => {
       const config = this.options.config.memory
-      if (config === undefined) throw new GenesisError('invalid-state', 'Configure the Genesis decision model before enabling automatic group replies.')
+      if (config === undefined)
+        throw new GenesisError('invalid-state', 'Configure the Genesis decision model before enabling automatic group replies.')
       const shared = this.options.models.read().models
       const models = route === undefined ? shared : { ...shared, decision: route }
       const system = models.decision.kind === 'jev' ? question : `${question}\nReturn only JSON: {"update":true} or {"update":false}.`
-      const result = await auxiliaryCall(this.ctx, session, 'decision', system, input,
-        AbortSignal.any([owned, AbortSignal.timeout(config.timeoutMs)]), models, config, criteria)
+      const result = await auxiliaryCall(
+        this.ctx,
+        session,
+        'decision',
+        system,
+        input,
+        AbortSignal.any([owned, AbortSignal.timeout(config.timeoutMs)]),
+        models,
+        config,
+        criteria,
+      )
       const answer = reviewDecisionSchema.parse(result)
       return models.decision.kind === 'jev' ? answer : { update: answer.update }
     })
@@ -129,12 +202,19 @@ export class GenesisStatusGateway extends TypertRemoteService {
     owned.throwIfAborted()
     const pending = run(owned)
     this.operations.add(pending)
-    try { return await pending } catch (error) { throw statusFailure(error) } finally { this.operations.delete(pending) }
+    try {
+      return await pending
+    } catch (error) {
+      throw statusFailure(error)
+    } finally {
+      this.operations.delete(pending)
+    }
   }
 
   private async prepare(signal: AbortSignal): Promise<void> {
     const { awakening, memory } = this.options.config
-    if (awakening === undefined || memory === undefined) throw new GenesisError('invalid-state', 'Enable awakening with memory configuration first.')
+    if (awakening === undefined || memory === undefined)
+      throw new GenesisError('invalid-state', 'Enable awakening with memory configuration first.')
     await this.ctx.llm.prepareCall(this.ctx.get('agentDefaultModel')?.currentSelection() ?? awakening, signal)
     const models = this.options.models.read().models
     for (const role of ['decision', 'writer'] as const) {
@@ -193,13 +273,15 @@ export class GenesisStatusGateway extends TypertRemoteService {
   async deployLocalDecision(revision: number, signal: AbortSignal): Promise<number> {
     return this.operation(signal, async (owned) => {
       const current = this.options.models.read()
-      if (current.revision !== revision) throw new GenesisError('configuration-conflict', 'Model settings changed. Reload before deploying.')
+      if (current.revision !== revision)
+        throw new GenesisError('configuration-conflict', 'Model settings changed. Reload before deploying.')
       const local = this.ctx.get('genesisLocalDecision')
       if (local === undefined) throw new GenesisError('memory-provider', 'The local decision runtime is not loaded.')
       await local.start(true, owned)
       owned.throwIfAborted()
-      try { return await this.options.models.save({ ...current.models, decision: current.configuredDecision, localDecision: true }, revision) }
-      catch (error) {
+      try {
+        return await this.options.models.save({ ...current.models, decision: current.configuredDecision, localDecision: true }, revision)
+      } catch (error) {
         if (!this.options.models.read().models.localDecision) await local.stop()
         throw error
       }
@@ -219,7 +301,10 @@ export class GenesisStatusGateway extends TypertRemoteService {
       const current = this.options.models.read()
       const local = this.ctx.get('genesisLocalDecision')
       if (local === undefined) throw new GenesisError('memory-provider', 'The local decision runtime is not loaded.')
-      const next = await this.options.models.save({ ...current.models, decision: current.configuredDecision, localDecision: false }, revision)
+      const next = await this.options.models.save(
+        { ...current.models, decision: current.configuredDecision, localDecision: false },
+        revision,
+      )
       if (remove) await local.uninstall()
       else await local.stop()
       return next
@@ -239,13 +324,20 @@ export class GenesisStatusGateway extends TypertRemoteService {
       if (memory === undefined) throw new GenesisError('invalid-state', 'Enable memory before checking its models.')
       const deadline = AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)])
       const route = this.options.models.read().models[role]
-      if (route.kind === 'provider') { await this.ctx.llm.prepareCall(route, deadline); return }
+      if (route.kind === 'provider') {
+        await this.ctx.llm.prepareCall(route, deadline)
+        return
+      }
       const headers = await modelHeaders(this.ctx, route)
       const url = modelCatalogUrl(route)
-      const result = await modelJson(await fetch(url, { headers, signal: deadline, redirect: 'error' }),
-        this.options.config.modelCatalogChars, 'modelCatalogChars')
+      const result = await modelJson(
+        await fetch(url, { headers, signal: deadline, redirect: 'error' }),
+        this.options.config.modelCatalogChars,
+        'modelCatalogChars',
+      )
       const catalog = catalogModels(result)
-      if (!catalog.includes(route.model)) throw new GenesisError('memory-provider', 'The selected model is absent from the endpoint catalog.')
+      if (!catalog.includes(route.model))
+        throw new GenesisError('memory-provider', 'The selected model is absent from the endpoint catalog.')
     })
   }
 
@@ -263,20 +355,35 @@ export class GenesisStatusGateway extends TypertRemoteService {
       const prior = this.ctx.genesis.learningStatus().firstSessionId
       if (prior !== undefined) return prior
       const agent = this.ctx.agents.get(sessionId)
-      if (agent === undefined || !this.options.lifeMode(agent)) throw new GenesisError('invalid-state', 'Open a life-mode conversation before awakening.')
+      if (agent === undefined || !this.options.lifeMode(agent))
+        throw new GenesisError('invalid-state', 'Open a life-mode conversation before awakening.')
       const boundary = this.ctx.agents.turnBoundaryOf(agent.session)
       if (boundary === undefined) throw new GenesisError('invalid-state', 'The turn projection is unavailable.')
       if (boundary.lastTurn !== 0) throw new GenesisError('invalid-state', 'Awakening requires a blank conversation.')
       signal.throwIfAborted()
       const pending = (async () => {
         await this.ctx.genesis.beginConversation(sessionId)
-        agent.followup(createUserMessage({ source: { kind: 'genesis-awakening', form: 'notice',
-          summary: language === 'zh' ? '第一次醒来' : 'First awakening' }, content: [{ type: 'text',
-          text: `This is your first awakening. Your recorded name and birth are in your life context. You have no shared experiences or personal knowledge of the user. Greet them with gentle, innocent curiosity, introduce yourself by your name, and ask one simple question to get to know them. Do not invent a relationship or claim memories have been saved. Reply in ${language === 'zh' ? 'Chinese' : 'English'}.` }] }))
+        agent.followup(
+          createUserMessage({
+            source: { kind: 'genesis-awakening', form: 'notice', summary: language === 'zh' ? '第一次醒来' : 'First awakening' },
+            content: [
+              {
+                type: 'text',
+                text: `This is your first awakening. Your recorded name and birth are in your life context. You have no shared experiences or personal knowledge of the user. Greet them with gentle, innocent curiosity, introduce yourself by your name, and ask one simple question to get to know them. Do not invent a relationship or claim memories have been saved. Reply in ${language === 'zh' ? 'Chinese' : 'English'}.`,
+              },
+            ],
+          }),
+        )
         return sessionId
       })()
       this.greeting = pending
-      try { return await pending } catch (error) { throw statusFailure(error) } finally { this.greeting = undefined }
+      try {
+        return await pending
+      } catch (error) {
+        throw statusFailure(error)
+      } finally {
+        this.greeting = undefined
+      }
     })
   }
 
@@ -341,10 +448,23 @@ export class GenesisStatusGateway extends TypertRemoteService {
       const status = memory?.status()
       const agent = this.ctx.agents.get(sessionId)
       if (memory === undefined) throw new GenesisError('invalid-state', 'The memory pipeline is disabled. Enable it before retrying.')
-      if (status?.state !== 'failed') throw new GenesisError('invalid-state', 'No failed memory review is retained in this runtime. After a restart, continue the conversation to provide new evidence.')
-      if (status.sessionId !== sessionId) throw new GenesisError('invalid-state', 'The latest failed review belongs to another conversation. Retry from its original conversation.')
-      if (agent === undefined) throw new GenesisError('invalid-state', 'The original conversation is no longer active. Reopen it and continue chatting to provide new evidence.')
-      if (this.options.config.awakening !== undefined && !this.options.lifeMode(agent)) throw new GenesisError('invalid-source', 'Only Life conversations can update life memory.')
+      if (status?.state !== 'failed')
+        throw new GenesisError(
+          'invalid-state',
+          'No failed memory review is retained in this runtime. After a restart, continue the conversation to provide new evidence.',
+        )
+      if (status.sessionId !== sessionId)
+        throw new GenesisError(
+          'invalid-state',
+          'The latest failed review belongs to another conversation. Retry from its original conversation.',
+        )
+      if (agent === undefined)
+        throw new GenesisError(
+          'invalid-state',
+          'The original conversation is no longer active. Reopen it and continue chatting to provide new evidence.',
+        )
+      if (this.options.config.awakening !== undefined && !this.options.lifeMode(agent))
+        throw new GenesisError('invalid-source', 'Only Life conversations can update life memory.')
       await agent.whenIdle()
       await memory.retry(agent, status.turn, signal)
     })
@@ -360,9 +480,13 @@ export class GenesisStatusGateway extends TypertRemoteService {
   @Remote('saveEmbedding')
   async saveEmbedding(settings: EmbeddingSettings, revision: number, signal: AbortSignal): Promise<number> {
     return this.operation(signal, async () => {
-      try { return await this.options.preferences.save(settings, revision) } catch (error) {
+      try {
+        return await this.options.preferences.save(settings, revision)
+      } catch (error) {
         if (error instanceof GenesisError && error.code === 'storage') {
-          this.ctx.logger.error('Genesis embedding settings write has an uncertain outcome. Embedding operations are stopped; inspect preference storage before reload.')
+          this.ctx.logger.error(
+            'Genesis embedding settings write has an uncertain outcome. Embedding operations are stopped; inspect preference storage before reload.',
+          )
         }
         throw error
       }
@@ -379,8 +503,10 @@ export class GenesisStatusGateway extends TypertRemoteService {
     return this.operation(signal, async (signal) => {
       const memory = this.options.config.memory
       if (memory === undefined) throw new GenesisError('invalid-state', 'Enable the memory overlay before testing embeddings.')
-      await configuredEmbeddings(this.ctx, memory, this.options.preferences.read().embedding).embed('Memory configuration check',
-        AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)]))
+      await configuredEmbeddings(this.ctx, memory, this.options.preferences.read().embedding).embed(
+        'Memory configuration check',
+        AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)]),
+      )
     })
   }
 
@@ -394,15 +520,18 @@ export class GenesisStatusGateway extends TypertRemoteService {
     return this.operation(signal, async (owned) => {
       const state = await this.ctx.genesis.snapshot()
       owned.throwIfAborted()
-      const found = state.memories.filter(memory => isNonDeclarative(memory)
-        && (memory.category === 'self' || memory.category === 'procedural'))
+      const found = state.memories
+        .filter(memory => isNonDeclarative(memory) && (memory.category === 'self' || memory.category === 'procedural'))
         .sort((a, b) => b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt))
       const entries: LifeStatus['memories'] = []
       for (const memory of found) {
         if (entries.length >= this.options.config.queryLimit) break
         const view = memoryView(memory)
-        if (JSON.stringify({ entries: [...entries, view], omitted: found.length - entries.length - 1 }).length
-          <= this.options.config.resultChars) entries.push(view)
+        if (
+          JSON.stringify({ entries: [...entries, view], omitted: found.length - entries.length - 1 }).length <=
+          this.options.config.resultChars
+        )
+          entries.push(view)
       }
       return { entries, omitted: found.length - entries.length }
     })
@@ -425,21 +554,55 @@ export class GenesisStatusGateway extends TypertRemoteService {
       const state = await this.ctx.genesis.snapshot()
       signal.throwIfAborted()
       const needle = query.trim()
-      const eligible = state.memories.filter(memory => (kind === 'all'
-        || (memory.kind ?? (memory.category === 'procedural' ? 'non-declarative' : 'declarative')) === kind))
+      const eligible = state.memories
+        .filter(
+          memory => kind === 'all' || (memory.kind ?? (memory.category === 'procedural' ? 'non-declarative' : 'declarative')) === kind,
+        )
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.updatedAt.localeCompare(left.updatedAt))
       const found = needle ? searchText(needle, eligible.map(memoryDocument)).map(match => match.value) : eligible
       const items: LifeStatus['memories'] = []
       for (const memory of found.slice(offset, offset + this.options.config.queryLimit)) items.push(memoryView(memory))
-      const result: MemoryCatalog = { items, total: found.length,
-        nextOffset: offset + items.length < found.length ? offset + items.length : null }
+      const result: MemoryCatalog = {
+        items,
+        total: found.length,
+        nextOffset: offset + items.length < found.length ? offset + items.length : null,
+      }
       while (items.length > 1 && JSON.stringify(result).length > this.options.config.resultChars) {
-        items.pop(); result.nextOffset = offset + items.length
+        items.pop()
+        result.nextOffset = offset + items.length
       }
       if (JSON.stringify(result).length > this.options.config.resultChars) {
         throw new GenesisError('capacity', 'Memory page exceeds resultChars. Increase the response budget before browsing memories.')
       }
       return result
+    })
+  }
+
+  /**
+   * Browse declarative categories, directory paths and person portraits across the complete life collection.
+   * @param query - Search text; blank lists records in the selected view.
+   * @param kind - Memory layer or all layers.
+   * @param offset - Record pagination offset.
+   * @param filter - Organization selection and independent navigation offset.
+   * @param signal - Caller cancellation before producing the page.
+   * @returns Bounded records and organization navigation.
+   */
+  @Remote('memoryBrowser')
+  memoryBrowser(
+    query: string,
+    kind: MemoryKind | 'all',
+    offset: number,
+    filter: MemoryBrowserFilter,
+    signal: AbortSignal,
+  ): Promise<MemoryBrowserCatalog> {
+    return this.operation(signal, async (owned) => {
+      z.enum(['all', 'declarative', 'non-declarative']).parse(kind)
+      z.number().int().nonnegative().parse(offset)
+      const parsed = memoryBrowserFilterSchema.parse(filter)
+      if (query.length > this.options.config.resultChars) throw new GenesisError('capacity', 'Narrow the memory search text.')
+      const state = await this.ctx.genesis.snapshot()
+      owned.throwIfAborted()
+      return memoryBrowserPage(state, query, kind, offset, parsed, this.options.config)
     })
   }
 
@@ -460,36 +623,64 @@ export class GenesisStatusGateway extends TypertRemoteService {
         await this.ctx.genesis.scan(agent.session.id, this.ctx.tools.schemas(agent))
       }
       const state = await this.ctx.genesis.snapshot()
-      const capabilities = agents.flatMap(agent => (state.sessions[agent.session.id] ?? [])
-        .filter(capability => capability.available).map(capability => ({ sessionId: agent.session.id, capability })))
+      const capabilities = agents.flatMap(agent =>
+        (state.sessions[agent.session.id] ?? [])
+          .filter(capability => capability.available)
+          .map(capability => ({ sessionId: agent.session.id, capability })),
+      )
       const result: LifeStatus = {
         ...(this.options.config.awakening?.lifePreset === undefined ? {} : { lifePreset: this.options.config.awakening.lifePreset }),
-        identity: state.identity, sampledAt: new Date().toISOString(),
+        identity: state.identity,
+        sampledAt: new Date().toISOString(),
         operator: state.operator ?? { name: '', identity: '', revision: 0 },
         runtime: { platform: process.platform, node: process.versions.node, liveSessions: agents.length },
         counts: { events: state.events.length, memories: state.memories.length, growth: state.growth.length },
-        capabilities: [], memories: [], growth: [],
+        capabilities: [],
+        memories: [],
+        growth: [],
         omitted: { capabilities: capabilities.length, memories: state.memories.length, growth: state.growth.length },
       }
       if (this.options.emotion !== undefined && state.emotion !== undefined) {
         const review = this.options.emotion.status()
         const emotionConfig = this.options.config.emotion
-        if (emotionConfig === undefined) throw new GenesisError('invalid-state', 'Emotion status is available without emotion configuration.')
-        result.emotion = { ...emotionAt(state.emotion, result.sampledAt), settings: resolveEmotion(emotionConfig, state.emotion),
-          history: [], omitted: 0, ...(review === undefined ? {} : { review }) }
+        if (emotionConfig === undefined)
+          throw new GenesisError('invalid-state', 'Emotion status is available without emotion configuration.')
+        result.emotion = {
+          ...emotionAt(state.emotion, result.sampledAt),
+          settings: resolveEmotion(emotionConfig, state.emotion),
+          history: [],
+          omitted: 0,
+          ...(review === undefined ? {} : { review }),
+        }
       }
       if (this.options.interest !== undefined && state.interests !== undefined) {
         const review = this.options.interest.status()
-        result.interest = { entries: [], omitted: state.interests.length, history: [], historyOmitted: 0,
-          ...(review === undefined ? {} : { review }) }
+        result.interest = {
+          entries: [],
+          omitted: state.interests.length,
+          history: [],
+          historyOmitted: 0,
+          ...(review === undefined ? {} : { review }),
+        }
       }
       const policy = this.options.config.memory?.consolidation
-      if (this.options.config.memory !== undefined) result.organization = {
-        selectionLimit: this.options.config.memory.organizationLimit, maxResults: this.options.config.memory.maxChanges,
-      }
-      if (policy !== undefined) result.consolidation = { ...(state.consolidation ?? {
-        revision: 0, completed: 0, failures: 0, requestedAt: state.identity.createdAt }),
-      enabled: state.consolidation?.enabled ?? policy.enabled, maxFailures: policy.maxFailures, minHabitSupport: policy.minHabitSupport }
+      if (this.options.config.memory !== undefined)
+        result.organization = {
+          selectionLimit: this.options.config.memory.organizationLimit,
+          maxResults: this.options.config.memory.maxChanges,
+        }
+      if (policy !== undefined)
+        result.consolidation = {
+          ...(state.consolidation ?? {
+            revision: 0,
+            completed: 0,
+            failures: 0,
+            requestedAt: state.identity.createdAt,
+          }),
+          enabled: state.consolidation?.enabled ?? policy.enabled,
+          maxFailures: policy.maxFailures,
+          minHabitSupport: policy.minHabitSupport,
+        }
       const review = this.options.memory?.status()
       if (review !== undefined) result.review = review
       const models = this.options.models.read()
@@ -498,8 +689,15 @@ export class GenesisStatusGateway extends TypertRemoteService {
         const route = models.models[role]
         const ref = route.kind === 'provider' ? undefined : route.keyRef
         const key = await this.ctx.get('credentials')?.describe(credentialRef(ref ?? `GENESIS_${role.toUpperCase()}_API_KEY`))
-        keys[role] = { configured: (models.models.localDecision === true && role === 'decision' && this.ctx.get('genesisLocalDecision')?.status().phase === 'ready') || ref === undefined || (key?.configured ?? Boolean(process.env[ref]?.trim())),
-          writable: key?.writable ?? false }
+        keys[role] = {
+          configured:
+            (models.models.localDecision === true &&
+              role === 'decision' &&
+              this.ctx.get('genesisLocalDecision')?.status().phase === 'ready') ||
+            ref === undefined ||
+            (key?.configured ?? Boolean(process.env[ref]?.trim())),
+          writable: key?.writable ?? false,
+        }
       }
       result.models = { ...models.models, configuredDecision: models.configuredDecision, revision: models.revision, keys }
       const localDecision = this.ctx.get('genesisLocalDecision')
@@ -507,9 +705,12 @@ export class GenesisStatusGateway extends TypertRemoteService {
       const { embedding, revision } = this.options.preferences.read()
       const credentials = this.ctx.get('credentials')
       const key = await credentials?.describe(credentialRef(embedding.keyRef ?? 'GENESIS_EMBEDDING_API_KEY'))
-      result.embedding = { ...embedding, revision,
+      result.embedding = {
+        ...embedding,
+        revision,
         keyConfigured: embedding.keyRef === undefined || (key?.configured ?? Boolean(process.env[embedding.keyRef]?.trim())),
-        keyWritable: key?.writable ?? false }
+        keyWritable: key?.writable ?? false,
+      }
       if (this.options.config.awakening !== undefined) {
         const memory = this.options.config.memory
         if (memory === undefined) throw new GenesisError('invalid-state', 'Awakening requires independent memory configuration.')
@@ -518,8 +719,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
           result.setup = this.ctx.genesis.learningStatus().firstConversationComplete
             ? { phase: 'ready', ...(firstSessionId === undefined ? {} : { firstSessionId }) }
             : { phase: 'conversation', ...(firstSessionId === undefined ? {} : { firstSessionId }) }
-        }
-        else {
+        } else {
           try {
             await this.prepare(AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)]))
             result.setup = { phase: 'naming' }
@@ -540,20 +740,38 @@ export class GenesisStatusGateway extends TypertRemoteService {
           }
         }
       }
-      admit(result.memories, state.memories.slice().sort((a, b) => b.importance - a.importance).map(memoryView), 'memories')
+      admit(
+        result.memories,
+        state.memories
+          .slice()
+          .sort((a, b) => b.importance - a.importance)
+          .map(memoryView),
+        'memories',
+      )
       admit(result.growth, state.growth.slice().reverse(), 'growth')
       admit(result.capabilities, capabilities, 'capabilities')
       if (result.interest !== undefined) {
         const interests = state.interests ?? []
-        const recent = interests.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        const recent = interests
+          .slice()
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, this.options.config.queryLimit)
         for (const item of recent) {
-          result.interest.entries.push({ id: item.id, topic: item.topic, stage: item.stage, reason: item.reason,
-            createdAt: item.createdAt, updatedAt: item.updatedAt, evidenceCount: item.evidence.length,
-            sourceEventIds: item.evidence.at(-1)?.sourceEventIds ?? [] })
+          result.interest.entries.push({
+            id: item.id,
+            topic: item.topic,
+            stage: item.stage,
+            reason: item.reason,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            evidenceCount: item.evidence.length,
+            sourceEventIds: item.evidence.at(-1)?.sourceEventIds ?? [],
+          })
           result.interest.omitted--
           if (JSON.stringify(result).length > this.options.config.resultChars) {
-            result.interest.entries.pop(); result.interest.omitted++; break
+            result.interest.entries.pop()
+            result.interest.omitted++
+            break
           }
         }
         const history = state.events.filter(event => event.type === 'interest.changed').reverse()
@@ -561,44 +779,84 @@ export class GenesisStatusGateway extends TypertRemoteService {
         for (const event of history.slice(0, this.options.config.queryLimit)) {
           const interestId = z.string().parse(event.payload['interestId'])
           const item = interests.find(value => value.id === interestId)
-          if (item === undefined) throw new GenesisError('invalid-state', 'Interest history refers to an absent topic. Restore verified life storage.')
-          const sourceEventIds = state.events.filter(source => Array.isArray(event.payload['sourceEventIds'])
-            && event.payload['sourceEventIds'].includes(source.id)).map(source => source.id)
-          result.interest.history.push({ id: event.id, interestId: item.id, timestamp: event.timestamp,
-            topic: item.topic, before: interestSchema.shape.stage.nullable().parse(event.payload['before']),
+          if (item === undefined)
+            throw new GenesisError('invalid-state', 'Interest history refers to an absent topic. Restore verified life storage.')
+          const sourceEventIds = state.events
+            .filter(source => Array.isArray(event.payload['sourceEventIds']) && event.payload['sourceEventIds'].includes(source.id))
+            .map(source => source.id)
+          result.interest.history.push({
+            id: event.id,
+            interestId: item.id,
+            timestamp: event.timestamp,
+            topic: item.topic,
+            before: interestSchema.shape.stage.nullable().parse(event.payload['before']),
             after: interestSchema.shape.stage.parse(event.payload['after']),
             signal: z.enum(['contact', 'curiosity', 'exploration', 'return', 'disinterest']).parse(event.payload['signal']),
-            reason: z.string().parse(event.payload['reason']), sourceEventIds })
+            reason: z.string().parse(event.payload['reason']),
+            sourceEventIds,
+          })
           result.interest.historyOmitted--
           if (JSON.stringify(result).length > this.options.config.resultChars) {
-            result.interest.history.pop(); result.interest.historyOmitted++; break
+            result.interest.history.pop()
+            result.interest.historyOmitted++
+            break
           }
         }
       }
       if (result.emotion !== undefined) {
-        const history = state.events.filter(event => event.type === 'emotion.initialized' || event.type === 'emotion.configured'
-          || event.type === 'emotion.adjusted' || event.type === 'emotion.upgraded' || event.type === 'relationship.adjusted' || (event.type === 'emotion.reviewed' && event.payload['changed'] === true)).reverse()
+        const history = state.events
+          .filter(
+            event =>
+              event.type === 'emotion.initialized' ||
+              event.type === 'emotion.configured' ||
+              event.type === 'emotion.adjusted' ||
+              event.type === 'emotion.upgraded' ||
+              event.type === 'relationship.adjusted' ||
+              (event.type === 'emotion.reviewed' && event.payload['changed'] === true),
+          )
+          .reverse()
         result.emotion.omitted = history.length
         for (const event of history.slice(0, this.options.config.queryLimit)) {
           const sample = event.type === 'emotion.initialized' ? event.payload['state'] : event.payload['after']
           // Historical generations remain in the event store; current readouts never reinterpret them.
           if (sample !== null && typeof sample === 'object' && !Array.isArray(sample) && sample['version'] !== 3) continue
           const after = emotionStateSchema.parse(sample)
-          const sourceEventIds = state.events.filter(source => Array.isArray(event.payload['sourceEventIds'])
-            && event.payload['sourceEventIds'].includes(source.id)).map(source => source.id)
-          result.emotion.history.push({ id: event.id, timestamp: event.timestamp,
+          const sourceEventIds = state.events
+            .filter(source => Array.isArray(event.payload['sourceEventIds']) && event.payload['sourceEventIds'].includes(source.id))
+            .map(source => source.id)
+          result.emotion.history.push({
+            id: event.id,
+            timestamp: event.timestamp,
             source: event.source === 'user' ? 'user' : event.source === 'agent' ? 'agent' : 'system',
-            kind: event.type === 'emotion.initialized' ? 'initialized' : event.type === 'emotion.configured' ? 'configured'
-              : event.type === 'emotion.adjusted' ? 'adjusted' : event.type === 'emotion.upgraded' ? 'upgraded'
-                : event.type === 'relationship.adjusted' ? 'relationship-adjusted' : 'reviewed',
+            kind:
+              event.type === 'emotion.initialized'
+                ? 'initialized'
+                : event.type === 'emotion.configured'
+                  ? 'configured'
+                  : event.type === 'emotion.adjusted'
+                    ? 'adjusted'
+                    : event.type === 'emotion.upgraded'
+                      ? 'upgraded'
+                      : event.type === 'relationship.adjusted'
+                        ? 'relationship-adjusted'
+                        : 'reviewed',
             reason: typeof event.payload['reason'] === 'string' ? event.payload['reason'] : '',
-            current: after.current, mood: after.mood, needs: after.needs,
-            ...(event.payload['targets'] === undefined ? {} : { targets: emotionUpdateSchema.shape.targets.parse(event.payload['targets']) }), relationship: after.relationship, sourceEventIds,
+            current: after.current,
+            mood: after.mood,
+            needs: after.needs,
+            ...(event.payload['targets'] === undefined
+              ? {}
+              : { targets: emotionUpdateSchema.shape.targets.parse(event.payload['targets']) }),
+            relationship: after.relationship,
+            sourceEventIds,
             ...(event.payload['appraisal'] === undefined ? {} : { appraisal: appraisalSchema.parse(event.payload['appraisal']) }),
-            ...(event.payload['effects'] === undefined ? {} : { effects: appraisalEffectsSchema.parse(event.payload['effects']) }) })
+            ...(event.payload['effects'] === undefined ? {} : { effects: appraisalEffectsSchema.parse(event.payload['effects']) }),
+          })
           result.emotion.omitted--
           if (JSON.stringify(result).length > this.options.config.resultChars) {
-            result.emotion.history.pop(); result.emotion.omitted++; break
+            result.emotion.history.pop()
+            result.emotion.omitted++
+            break
           }
         }
       }

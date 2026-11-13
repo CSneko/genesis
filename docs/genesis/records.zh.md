@@ -4,7 +4,7 @@
 
 ## 启动
 
-本检出中的 `pnpm dsh web` 通过生命覆盖配置启用记录。在Genesis → 她的记录中浏览文字和管理类型。其他组合可以配置 Genesis 的可选 `records: {}`，并提供私有绝对路径 `personalDirectory`；省略 `records` 会移除工具，并在管理页面明确显示未启用。
+本检出中的 `pnpm dsh web` 通过生命覆盖配置启用记录。在记忆 → 她的记录中浏览文字和管理类型。其他组合可以配置 Genesis 的可选 `records: {}`，并提供私有绝对路径 `personalDirectory`；省略 `records` 会移除工具，并在管理页面明确显示未启用。
 
 角色出生时不会获得这个工具。教给她准确名称 `genesis_record`，让她调用 `learn`。学习结果跨会话和重启保留，并不绕过独立的执行策略。停用记录插件不会清除数据。
 

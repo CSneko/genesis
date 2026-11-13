@@ -20,7 +20,11 @@ afterEach(async () => {
   vi.restoreAllMocks()
   const errors: unknown[] = []
   for (const fn of cleanup.splice(0).reverse()) {
-    try { await fn() } catch (error) { errors.push(error) }
+    try {
+      await fn()
+    } catch (error) {
+      errors.push(error)
+    }
   }
   if (errors.length) throw new AggregateError(errors, 'Genesis fixture teardown')
 })
@@ -37,6 +41,106 @@ async function setup(root: string, medium: 'json' | 'sqlite' = 'json', overrides
 const sessionId = SessionId('genesis-session')
 const tool = { name: 'lookup', description: 'Read a fixture', parameters: {} }
 
+it('copies only selected query results and keeps their nested values detached', async () => {
+  const { core } = await setup(await directory())
+  const memory = (await core.snapshot()).memories[0]!
+  const snapshot = vi.spyOn(core, 'snapshot').mockRejectedValue(new Error('Full history must not be loaded by bounded reads'))
+  const found = (await core.getMemory(memory.id))!
+  found.sourceEventIds.length = 0
+  const retrieved = await core.retrieve({ text: '', limit: 1, chars: 5000 })
+  retrieved[0]!.content = 'Changed detached result'
+  const events = await core.events({ limit: 1 })
+  events[0]!.payload['changed'] = true
+  events[0]!.dedupKey = 'Changed detached result'
+  expect(await core.contacts('')).toMatchObject({ items: [] })
+  expect(snapshot).not.toHaveBeenCalled()
+  snapshot.mockRestore()
+  expect(await core.getMemory(memory.id)).toEqual(memory)
+  expect((await core.snapshot()).events.some(event => event.payload['changed'] !== undefined)).toBe(false)
+})
+
+it('replays observations without copying history or publishing another commit', async () => {
+  const { core, domain } = await setup(await directory())
+  await core.awaken('小芽')
+  await core.beginConversation(sessionId)
+  await core.completeFirstConversation(sessionId, '2', new Date().toISOString())
+  const observation = { sessionId, eventId: '3', timestamp: new Date().toISOString(), kind: 'user-message' as const }
+  const original = await core.observe(observation)
+  const put = vi.spyOn(domain.table('states'), 'put')
+  const copied = vi.spyOn(globalThis, 'structuredClone')
+  const results = await Promise.all(Array.from({ length: 10 }, () => core.observe(observation)))
+  for (const input of copied.mock.calls) expect(input[0]).toEqual(original)
+  copied.mockClear()
+  await core.rename('小芽')
+  await core.beginConversation(SessionId('later-session'))
+  await core.completeFirstConversation(sessionId, '4', new Date().toISOString())
+  expect(copied).not.toHaveBeenCalled()
+  expect(put).not.toHaveBeenCalled()
+  copied.mockRestore()
+  results[0]!.payload['kind'] = 'Mutated returned copy'
+  expect(await core.observe(observation)).toEqual(original)
+})
+
+it('copies mutable projections without copying append-only history into write transactions', async () => {
+  const { core } = await setup(await directory())
+  const before = await core.snapshot()
+  const copied = vi.spyOn(globalThis, 'structuredClone')
+  await core.rename('小芽')
+  expect(copied.mock.calls.some(([input]) => input !== null && typeof input === 'object' && 'events' in input)).toBe(false)
+  copied.mockRestore()
+  const after = await core.snapshot()
+  expect(after.events.slice(0, before.events.length)).toEqual(before.events)
+  expect(after.identity.name).toBe('小芽')
+  expect(before.identity.name).toBeNull()
+})
+
+it('validates ordinary commits without reparsing the complete life history', async () => {
+  const { core } = await setup(await directory())
+  const fullParse = vi.spyOn(stateSchema, 'parse')
+  await core.rename('小芽')
+  await core.observe({ sessionId, eventId: 'incremental-source', timestamp: new Date().toISOString(), kind: 'user-message' })
+  expect(fullParse).not.toHaveBeenCalled()
+  fullParse.mockRestore()
+  expect(stateSchema.safeParse(await core.snapshot()).success).toBe(true)
+})
+
+it('reuses encoded history while persisting current edits and restoring the independent backup', async () => {
+  const root = await directory()
+  const first = await setup(root)
+  await first.core.scan(sessionId, [tool])
+  await first.core.scan(sessionId, [])
+  const before = await first.core.snapshot()
+  expect(before.growth.length).toBeGreaterThan(0)
+  const historyIds = new Set([...before.events, ...before.growth].map(record => record.id))
+  const stringify = vi.spyOn(JSON, 'stringify')
+  await first.core.rename('小芽')
+  const encodedHistory = stringify.mock.calls.filter(
+    ([value]) => value !== null && typeof value === 'object' && 'id' in value && historyIds.has(value.id),
+  )
+  stringify.mockRestore()
+  expect(encodedHistory).toEqual([])
+  const memory = before.memories[0]!
+  await first.core.updateMemory(memory.id, {
+    category: memory.category,
+    content: 'Updated current memory',
+    sourceEventIds: memory.sourceEventIds,
+    importance: memory.importance,
+    confidence: memory.confidence,
+  })
+  const committed = await first.core.snapshot()
+  expect(committed.events.slice(0, before.events.length)).toEqual(before.events)
+  expect(committed.growth).toEqual(before.growth)
+  expect(await readBackup(`${first.config.leasePath}.backup.json`)).toEqual(committed)
+  await first.close()
+  const second = await setup(root)
+  const restored = await second.core.snapshot()
+  expect(restored.identity.id).toBe(before.identity.id)
+  expect(restored.identity.name).toBe('小芽')
+  expect(await second.core.getMemory(memory.id)).toMatchObject({ content: 'Updated current memory' })
+  expect(restored.events.slice(0, committed.events.length)).toEqual(committed.events)
+  expect(restored.growth).toEqual(committed.growth)
+})
+
 it('publishes learned tools only after the complete persistence operation settles', async () => {
   const fixture = await setup(await directory())
   await fixture.core.awaken('小芽')
@@ -52,9 +156,15 @@ it('publishes learned tools only after the complete persistence operation settle
   const learning = fixture.core.learn('lookup', sessionId)
   try {
     await entered.promise
-    expect((await joinState(manifestSchema.parse(table.get('life')), (name, key) => fixture.records.table(name).get(key))).events.some(event => event.type === 'capability.learned')).toBe(true)
+    expect(
+      (await joinState(manifestSchema.parse(table.get('life')), (name, key) => fixture.records.table(name).get(key))).events.some(
+        event => event.type === 'capability.learned',
+      ),
+    ).toBe(true)
     expect(fixture.core.learningStatus().tools).toEqual([])
-  } finally { release.resolve(undefined) }
+  } finally {
+    release.resolve(undefined)
+  }
   await learning
   expect(fixture.core.learningStatus().tools).toEqual(['lookup'])
 })
@@ -70,8 +180,13 @@ describe.each(['json', 'sqlite'] as const)('%s life persistence', (medium) => {
     expect(stateSchema.safeParse(initial).success).toBe(true)
     await first.core.start()
     const observed = await first.core.observe({ sessionId, eventId: '12', timestamp: new Date().toISOString(), kind: 'user-message' })
-    const memory = await first.core.remember({ content: 'I prefer oolong tea', category: 'semantic', importance: 0.9,
-      confidence: 0.8, sourceEventIds: [observed.id] })
+    const memory = await first.core.remember({
+      content: 'I prefer oolong tea',
+      category: 'semantic',
+      importance: 0.9,
+      confidence: 0.8,
+      sourceEventIds: [observed.id],
+    })
     await first.core.scan(sessionId, [])
     await first.core.scan(sessionId, [tool])
     await first.close()
@@ -83,7 +198,13 @@ describe.each(['json', 'sqlite'] as const)('%s life persistence', (medium) => {
     expect(restored.events.some(event => event.type === 'life.stopped')).toBe(true)
     expect(restored.growth.some(record => record.title.includes('lookup'))).toBe(true)
     expect(await second.core.retrieve({ text: 'oolong', limit: 5, chars: 5000 })).toEqual([memory])
-    const updated = await second.core.updateMemory(memory.id, { category: memory.category, importance: memory.importance, sourceEventIds: memory.sourceEventIds, content: 'I prefer green tea', confidence: 0.9 })
+    const updated = await second.core.updateMemory(memory.id, {
+      category: memory.category,
+      importance: memory.importance,
+      sourceEventIds: memory.sourceEventIds,
+      content: 'I prefer green tea',
+      confidence: 0.9,
+    })
     expect(updated?.createdAt).toBe(memory.createdAt)
     expect(await second.core.retrieve({ text: 'oolong', limit: 5, chars: 5000 })).toEqual([updated])
     expect(updated?.history?.[0]?.content).toBe(memory.content)
@@ -93,7 +214,7 @@ describe.each(['json', 'sqlite'] as const)('%s life persistence', (medium) => {
     await second.close()
     const third = await setup(root, medium)
     expect(await third.core.retrieve({ text: 'green tea', limit: 5, chars: 5000 })).toEqual([])
-    expect((await third.core.events({ type: 'memory.deleted', limit: 20 }))).toHaveLength(1)
+    expect(await third.core.events({ type: 'memory.deleted', limit: 20 })).toHaveLength(1)
   })
 })
 
@@ -110,7 +231,9 @@ it('deduplicates concurrent source delivery and keeps Session capabilities separ
   try {
     await core.scan(sessionId, [tool])
     expect(copied).not.toHaveBeenCalled()
-  } finally { copied.mockRestore() }
+  } finally {
+    copied.mockRestore()
+  }
   expect((await core.snapshot()).events).toHaveLength(count)
   const growthBefore = (await core.snapshot()).growth.length
   await core.scan(SessionId('another'), [tool])
@@ -135,7 +258,9 @@ it('serializes concurrent memories without losing records and refuses missing ev
   const input = { category: 'episodic' as const, importance: 0.5, confidence: 0.5, sourceEventIds: [birth.id] }
   await Promise.all(Array.from({ length: 12 }, (_, index) => core.remember({ ...input, content: `experience ${index}` })))
   expect(await core.retrieve({ text: 'experience', limit: 20, chars: 20000 })).toHaveLength(12)
-  await expect(core.remember({ ...input, content: 'unsupported', sourceEventIds: [brandString<LifeEventId>('00000000-0000-4000-8000-000000000001')] })).rejects.toMatchObject({ code: 'invalid-source' })
+  await expect(
+    core.remember({ ...input, content: 'unsupported', sourceEventIds: [brandString<LifeEventId>('00000000-0000-4000-8000-000000000001')] }),
+  ).rejects.toMatchObject({ code: 'invalid-source' })
   expect(await core.retrieve({ text: '', category: 'episodic', after: '2999', limit: 20, chars: 10000 })).toEqual([])
   expect(await core.retrieve({ text: '', limit: 0, chars: 0 })).toEqual([])
   const snapshot = await core.snapshot()
@@ -146,25 +271,50 @@ it('serializes concurrent memories without losing records and refuses missing ev
 })
 
 it.each(['broken-json', 'future-version', 'invalid-identity', 'missing-source', 'missing-history-source'])(
-  'refuses %s without replacing identity or changing the file', async (corruption) => {
+  'refuses %s without replacing identity or changing the file',
+  async (corruption) => {
     const root = await directory()
     const fixture = await setup(root)
     await fixture.close()
     const file = join(root, 'genesis.json')
-    const value = z.object({ unit: z.object({ name: z.string(), version: z.number() }), global: z.unknown(),
-      tables: z.object({ states: z.object({ life: stateSchema }) }) }).parse({ unit: { name: 'genesis', version: 1 }, global: null,
-      tables: { states: { life: await readBackup(join(root, 'life.lock.backup.json')) } } })
+    const value = z
+      .object({
+        unit: z.object({ name: z.string(), version: z.number() }),
+        global: z.unknown(),
+        tables: z.object({ states: z.object({ life: stateSchema }) }),
+      })
+      .parse({
+        unit: { name: 'genesis', version: 1 },
+        global: null,
+        tables: { states: { life: await readBackup(join(root, 'life.lock.backup.json')) } },
+      })
     if (corruption === 'future-version') value.unit.version = 999
     if (corruption === 'missing-source') value.tables.states.life.events = []
     if (corruption === 'missing-history-source') {
       const memory = value.tables.states.life.memories[0]!
-      memory.history = [{ category: memory.category, content: 'Earlier interpretation', importance: 0.5, confidence: 0.5,
-        sourceEventIds: [brandString<LifeEventId>('14ba15fd-3cdd-42b8-a6b2-d6faeac692fc')],
-        recordedAt: '2026-01-01T00:00:00.000Z', supersededAt: '2026-01-02T00:00:00.000Z' }]
+      memory.history = [
+        {
+          category: memory.category,
+          content: 'Earlier interpretation',
+          importance: 0.5,
+          confidence: 0.5,
+          sourceEventIds: [brandString<LifeEventId>('14ba15fd-3cdd-42b8-a6b2-d6faeac692fc')],
+          recordedAt: '2026-01-01T00:00:00.000Z',
+          supersededAt: '2026-01-02T00:00:00.000Z',
+        },
+      ]
     }
-    const corrupted = corruption === 'broken-json' ? '{' : corruption === 'invalid-identity'
-      ? JSON.stringify({ ...value, tables: { states: { life: { ...value.tables.states.life, identity: { ...value.tables.states.life.identity, id: 'broken' } } } } })
-      : JSON.stringify(value)
+    const corrupted =
+      corruption === 'broken-json'
+        ? '{'
+        : corruption === 'invalid-identity'
+          ? JSON.stringify({
+            ...value,
+            tables: {
+              states: { life: { ...value.tables.states.life, identity: { ...value.tables.states.life.identity, id: 'broken' } } },
+            },
+          })
+          : JSON.stringify(value)
     await writeFile(file, corrupted)
     await expect(openCore(root)).rejects.toThrow()
     expect(await readFile(file, 'utf8')).toBe(corrupted)
@@ -196,7 +346,10 @@ it('leaves committed state unchanged after a failed write and refuses dependent 
 
 it('retains life history beyond catalogue record budgets', async () => {
   const { core } = await setup(await directory(), 'json', { maxRecords: 20 })
-  await core.scan(sessionId, Array.from({ length: 20 }, (_, index) => ({ ...tool, name: `tool${index}` })))
+  await core.scan(
+    sessionId,
+    Array.from({ length: 20 }, (_, index) => ({ ...tool, name: `tool${index}` })),
+  )
   expect((await core.snapshot()).sessions[sessionId]).toHaveLength(20)
   expect(boundedJson({ content: 'a'.repeat(500) }, 100)).toBe('{"omitted":true,"reason":"context-budget"}')
 })
@@ -204,11 +357,24 @@ it('retains life history beyond catalogue record budgets', async () => {
 it('refuses an oversized individual record and resumes intact history after increasing its budget', async () => {
   const root = await directory()
   const first = await setup(root, 'json', { storage: { pageSize: 2, maxRecordChars: 2000 } })
-  const source = await first.core.observe({ sessionId, eventId: 'capacity-source', timestamp: new Date().toISOString(), kind: 'user-message' })
+  const source = await first.core.observe({
+    sessionId,
+    eventId: 'capacity-source',
+    timestamp: new Date().toISOString(),
+    kind: 'user-message',
+  })
   const before = await first.core.snapshot()
-  const input = { content: 'fixture history '.repeat(450), category: 'semantic' as const,
-    importance: 0.8, confidence: 0.8, sourceEventIds: [source.id] }
-  await expect(first.core.remember(input)).rejects.toMatchObject({ code: 'capacity', message: expect.stringContaining('storage.maxRecordChars (') })
+  const input = {
+    content: 'fixture history '.repeat(450),
+    category: 'semantic' as const,
+    importance: 0.8,
+    confidence: 0.8,
+    sourceEventIds: [source.id],
+  }
+  await expect(first.core.remember(input)).rejects.toMatchObject({
+    code: 'capacity',
+    message: expect.stringContaining('storage.maxRecordChars ('),
+  })
   expect(await first.core.snapshot()).toEqual(before)
   await first.close()
   const second = await setup(root, 'json', { storage: { pageSize: 2, maxRecordChars: 10000 } })
@@ -217,7 +383,9 @@ it('refuses an oversized individual record and resumes intact history after incr
   await second.close()
   const third = await setup(root, 'json', { storage: { pageSize: 2, maxRecordChars: 10000 } })
   expect(await third.core.getMemory(memory.id)).toEqual(memory)
-  expect((await third.core.snapshot()).events.map(event => event.id)).toEqual(expect.arrayContaining(before.events.map(event => event.id)))
+  expect((await third.core.snapshot()).events.map(event => event.id)).toEqual(
+    expect.arrayContaining(before.events.map(event => event.id)),
+  )
 })
 
 it('keeps a local backup and refuses rebirth after the primary store disappears', async () => {
@@ -234,8 +402,14 @@ it('keeps a local backup and refuses rebirth after the primary store disappears'
 it('commits review changes once and invalidates corrected vectors without a stored implicit-memory count limit', async () => {
   const { core } = await setup(await directory())
   const born = (await core.snapshot()).events[0]!
-  const input = { content: 'Oolong preference', category: 'semantic' as const, kind: 'declarative' as const,
-    importance: 0.8, confidence: 0.8, sourceEventIds: [born.id] }
+  const input = {
+    content: 'Oolong preference',
+    category: 'semantic' as const,
+    kind: 'declarative' as const,
+    importance: 0.8,
+    confidence: 0.8,
+    sourceEventIds: [born.id],
+  }
   const embedding = { space: 'fixture', vector: [1, 0] }
   await core.reviewMemory('first', [{ action: 'upsert', input, embedding }])
   const committed = await core.snapshot()
@@ -280,13 +454,19 @@ it('records hundreds of preinstalled tools as one baseline with no growth, inclu
   expect(upgraded.growth[0]?.title).toContain('new_capability')
 })
 
-
 it('edits short summaries independently, bounds Unicode length and invalidates a summary after content edits', async () => {
   const root = await directory()
   const first = await setup(root)
   const state = await first.core.snapshot()
-  const memory = await first.core.remember({ content: 'An uncertain inference about afternoon tea.', category: 'semantic',
-    kind: 'declarative', attribution: 'model-inference', sourceEventIds: [state.events[0]!.id], importance: 0.6, confidence: 0.4 })
+  const memory = await first.core.remember({
+    content: 'An uncertain inference about afternoon tea.',
+    category: 'semantic',
+    kind: 'declarative',
+    attribution: 'model-inference',
+    sourceEventIds: [state.events[0]!.id],
+    importance: 0.6,
+    confidence: 0.4,
+  })
   const before = await first.core.snapshot()
   const exact = `${'记'.repeat(39)}🌱`
   const saved = await first.core.setMemorySummary(memory.id, exact, memory.updatedAt)
@@ -302,8 +482,11 @@ it('edits short summaries independently, bounds Unicode length and invalidates a
   const removed = await restored.core.setMemorySummary(memory.id, null, saved.updatedAt)
   expect(removed.summary).toBeUndefined()
   const again = await restored.core.setMemorySummary(memory.id, '待确认的饮茶偏好', removed.updatedAt)
-  const edited = await restored.core.editMemory(memory.id, { content: 'Updated full memory.', category: 'semantic',
-    kind: 'declarative', confidence: 0.4, importance: 0.6 }, again.updatedAt)
+  const edited = await restored.core.editMemory(
+    memory.id,
+    { content: 'Updated full memory.', category: 'semantic', kind: 'declarative', confidence: 0.4, importance: 0.6 },
+    again.updatedAt,
+  )
   expect(edited.summary).toBeUndefined()
 })
 
@@ -311,8 +494,17 @@ it('saves manual non-declarative memories beyond prompt budgets and restores the
   const root = await directory()
   const first = await setup(root, 'json', { memoryChars: 256, queryLimit: 1 })
   for (let index = 0; index < 14; index++) {
-    await first.core.editMemory(brandString<MemoryId>(randomUUID()), { category: 'procedural', kind: 'non-declarative',
-      content: `Habit ${index}: ${'A detailed conditional habit. '.repeat(12)}`, importance: 0.7, confidence: 0.8 }, null)
+    await first.core.editMemory(
+      brandString<MemoryId>(randomUUID()),
+      {
+        category: 'procedural',
+        kind: 'non-declarative',
+        content: `Habit ${index}: ${'A detailed conditional habit. '.repeat(12)}`,
+        importance: 0.7,
+        confidence: 0.8,
+      },
+      null,
+    )
   }
   const before = await first.core.snapshot()
   expect(before.memories.filter(memory => memory.kind === 'non-declarative')).toHaveLength(14)
@@ -326,13 +518,21 @@ it('directly edits and converts operator memories without adding history, fences
   const root = await directory()
   const first = await setup(root)
   const id = brandString<MemoryId>('e8133924-9acf-4f86-8246-d169a14f200a')
-  const draft = { content: 'I prefer oolong.', category: 'semantic' as const, kind: 'declarative' as const,
-    importance: 0.7, confidence: 0.8 }
+  const draft = {
+    content: 'I prefer oolong.',
+    category: 'semantic' as const,
+    kind: 'declarative' as const,
+    importance: 0.7,
+    confidence: 0.8,
+  }
   const created = await first.core.editMemory(id, draft, null)
   expect(created.attribution).toBe('user-stated')
   expect(created.sourceEventIds).toHaveLength(1)
   const initial = await first.core.snapshot()
-  expect(initial.events.find(event => event.id === created.sourceEventIds[0])).toMatchObject({ source: 'user', payload: { kind: 'manual-memory-entry' } })
+  expect(initial.events.find(event => event.id === created.sourceEventIds[0])).toMatchObject({
+    source: 'user',
+    payload: { kind: 'manual-memory-entry' },
+  })
   expect(await first.core.editMemory(id, draft, null)).toEqual(created)
   expect(await first.core.snapshot()).toEqual(initial)
   const converted = await first.core.convertMemory(id, 'non-declarative', created.updatedAt)
@@ -341,7 +541,9 @@ it('directly edits and converts operator memories without adding history, fences
   expect(converted.history).toBeUndefined()
   expect((await first.core.snapshot()).events).toEqual(initial.events)
   const before = await first.core.snapshot()
-  await expect(first.core.editMemory(id, { ...draft, content: 'Stale text' }, created.updatedAt)).rejects.toMatchObject({ code: 'configuration-conflict' })
+  await expect(first.core.editMemory(id, { ...draft, content: 'Stale text' }, created.updatedAt)).rejects.toMatchObject({
+    code: 'configuration-conflict',
+  })
   await expect(first.core.deleteMemory(id, created.updatedAt)).rejects.toMatchObject({ code: 'configuration-conflict' })
   expect(await first.core.snapshot()).toEqual(before)
   const content = 'I now prefer green tea. 说明年龄，说明年纪，模型版本 2026-10。'
@@ -357,18 +559,26 @@ it('directly edits and converts operator memories without adding history, fences
   await restored.close()
   const final = await setup(root)
   expect(await final.core.getMemory(id)).toBeUndefined()
-  expect((await final.core.snapshot()).events.some(event => event.type === 'memory.deleted' && event.payload['memoryId'] === id)).toBe(false)
+  expect((await final.core.snapshot()).events.some(event => event.type === 'memory.deleted' && event.payload['memoryId'] === id)).toBe(
+    false,
+  )
 })
-
 
 it('removes experience links on explicit deletion and refuses invalid version data before storage admission', async () => {
   const { core, domain } = await setup(await directory())
   const source = await core.observe({ sessionId, eventId: 'experience-source', timestamp: new Date().toISOString(), kind: 'user-message' })
-  const input = { category: 'semantic' as const, content: 'Oolong preference', importance: 0.5, confidence: 0.8, sourceEventIds: [source.id] }
-  await core.reviewMemory('experience', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }],
-    { input: { ...input, category: 'episodic', content: 'We talked about tea.' },
-      details: { sessionId, startedAt: source.timestamp, endedAt: source.timestamp, topics: ['tea'] },
-      embedding: { space: 'fixture', vector: [1, 0] } })
+  const input = {
+    category: 'semantic' as const,
+    content: 'Oolong preference',
+    importance: 0.5,
+    confidence: 0.8,
+    sourceEventIds: [source.id],
+  }
+  await core.reviewMemory('experience', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }], {
+    input: { ...input, category: 'episodic', content: 'We talked about tea.' },
+    details: { sessionId, startedAt: source.timestamp, endedAt: source.timestamp, topics: ['tea'] },
+    embedding: { space: 'fixture', vector: [1, 0] },
+  })
   const state = await core.snapshot()
   const episode = state.memories.find(memory => memory.experience !== undefined)!
   const knowledge = state.memories.find(memory => memory.content === input.content)!
@@ -376,9 +586,13 @@ it('removes experience links on explicit deletion and refuses invalid version da
   const budget = JSON.stringify(knowledge).length + 1
   expect(JSON.stringify(await core.retrieve({ text: knowledge.id, limit: 5, chars: budget })).length).toBeLessThanOrEqual(budget)
   const write = vi.spyOn(domain.table('states'), 'put')
-  await expect(core.reviewMemory('invalid-experience', [], { input: { ...input, category: 'episodic' },
-    details: { sessionId, startedAt: '2026-02-01T00:00:00.000Z', endedAt: '2026-01-01T00:00:00.000Z', topics: [] },
-    embedding: { space: 'fixture', vector: [1, 0] } })).rejects.toThrow('Experience starts after it ends')
+  await expect(
+    core.reviewMemory('invalid-experience', [], {
+      input: { ...input, category: 'episodic' },
+      details: { sessionId, startedAt: '2026-02-01T00:00:00.000Z', endedAt: '2026-01-01T00:00:00.000Z', topics: [] },
+      embedding: { space: 'fixture', vector: [1, 0] },
+    }),
+  ).rejects.toThrow('Experience starts after it ends')
   expect(write).not.toHaveBeenCalled()
   expect(await core.snapshot()).toEqual(state)
   await core.deleteMemory(episode.id, episode.updatedAt)
@@ -389,20 +603,49 @@ it('restores queued consolidation, fences operator edits, and commits each revis
   const root = await directory()
   const first = await setup(root)
   const source = await first.core.observe({ sessionId, eventId: 'habit-user', kind: 'user-message', timestamp: new Date().toISOString() })
-  const input = { category: 'semantic' as const, kind: 'declarative' as const, attribution: 'model-inference' as const,
-    content: 'The user prefers concise greetings.', importance: 0.7, confidence: 0.7, sourceEventIds: [source.id] }
-  await first.core.reviewMemory('habit-turn', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }],
-    undefined, { sessionId, turn: 1, userEventIds: [source.id] })
+  const input = {
+    category: 'semantic' as const,
+    kind: 'declarative' as const,
+    attribution: 'model-inference' as const,
+    content: 'The user prefers concise greetings.',
+    importance: 0.7,
+    confidence: 0.7,
+    sourceEventIds: [source.id],
+  }
+  await first.core.reviewMemory('habit-turn', [{ action: 'upsert', input, embedding: { space: 'fixture', vector: [1, 0] } }], undefined, {
+    sessionId,
+    turn: 1,
+    userEventIds: [source.id],
+  })
   await first.core.setConsolidation(false)
   const pending = await first.core.snapshot()
   await first.close()
   const second = await setup(root)
   expect((await second.core.snapshot()).consolidation).toEqual(pending.consolidation)
   const memory = pending.memories.find(item => item.content === input.content)!
-  const plan = { revision: pending.consolidation!.revision, versions: [{ id: memory.id, updatedAt: memory.updatedAt }],
-    changes: [{ id: memory.id, input: { ...input, content: 'A concise greeting is preferred.' },
-      embedding: { space: 'fixture', vector: [1, 0] }, experienceIds: [] }] }
-  await second.core.editMemory(memory.id, { category: input.category, importance: input.importance, confidence: input.confidence, content: 'An operator correction.', kind: 'declarative' }, memory.updatedAt)
+  const plan = {
+    revision: pending.consolidation!.revision,
+    versions: [{ id: memory.id, updatedAt: memory.updatedAt }],
+    changes: [
+      {
+        id: memory.id,
+        input: { ...input, content: 'A concise greeting is preferred.' },
+        embedding: { space: 'fixture', vector: [1, 0] },
+        experienceIds: [],
+      },
+    ],
+  }
+  await second.core.editMemory(
+    memory.id,
+    {
+      category: input.category,
+      importance: input.importance,
+      confidence: input.confidence,
+      content: 'An operator correction.',
+      kind: 'declarative',
+    },
+    memory.updatedAt,
+  )
   expect(await second.core.consolidate(plan)).toBe(false)
   const current = await second.core.snapshot()
   const empty = { revision: current.consolidation!.revision, versions: [], changes: [] }
@@ -411,7 +654,7 @@ it('restores queued consolidation, fences operator edits, and commits each revis
   await second.close()
   const third = await setup(root)
   expect((await third.core.snapshot()).consolidation).toMatchObject({ completed: empty.revision, enabled: false })
-  expect((await third.core.events({ type: 'memory.consolidated', limit: 10 }))).toHaveLength(1)
+  expect(await third.core.events({ type: 'memory.consolidated', limit: 10 })).toHaveLength(1)
 })
 
 it('counts independent user turns rather than saved copies or assistant repetitions as habit support', async () => {
@@ -420,8 +663,13 @@ it('counts independent user turns rather than saved copies or assistant repetiti
   const { core } = await setup(await directory())
   const user = await core.observe({ sessionId, eventId: 'same-user', kind: 'user-message', timestamp: new Date().toISOString() })
   const assistant = await core.observe({ sessionId, eventId: 'assistant-repeat', kind: 'assistant-message', timestamp: user.timestamp })
-  const input = { category: 'semantic' as const, content: 'A brief greeting is preferred.', importance: 0.7,
-    confidence: 0.7, sourceEventIds: [user.id, assistant.id] }
+  const input = {
+    category: 'semantic' as const,
+    content: 'A brief greeting is preferred.',
+    importance: 0.7,
+    confidence: 0.7,
+    sourceEventIds: [user.id, assistant.id],
+  }
   for (const key of ['automatic', 'manual-one', 'manual-two']) {
     await core.reviewMemory(key, [], undefined, { sessionId, turn: 1, userEventIds: [user.id] })
   }
@@ -429,15 +677,63 @@ it('counts independent user turns rather than saved copies or assistant repetiti
   const state = await core.snapshot()
   expect(feedbackTurns(state, [user.id, assistant.id]).size).toBe(1)
   expect(feedbackTurns(state, [assistant.id]).size).toBe(0)
-  const config = Config({ leasePath: '/fixture/lease', memory: { decisionProvider: 'fixture', decisionModel: 'decision',
-    writerProvider: 'fixture', writerModel: 'writer', embeddingUrl: '', embeddingModel: '', embeddingDimensions: 0,
-    windowTurns: 1, timeoutMs: 5000, maxRetries: 0, retryDelayMs: 0, inputChars: 24000, outputChars: 24000, maxTokens: 4096, reasoningEffort: 'auto', organizationLimit: 20, identityRewriteLimit: 100, maxChanges: 8, overview: { maxCalls: 64, timeoutMs: 5000, maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384 }, maxImplicitMemories: 4,
-    associationLimit: 3, associationChars: 2000, associationInputChars: 1000, associationTimeoutMs: 1200, experienceWindowMs: 1800000, minSimilarity: 0.35,
-    consolidation: { enabled: true, idleMs: 60000, cooldownMs: 300000, retryMs: 60000, maxFailures: 3, batchLimit: 20, minHabitSupport: 3 },
-  } }).memory!
+  const config = Config({
+    leasePath: '/fixture/lease',
+    memory: {
+      decisionProvider: 'fixture',
+      decisionModel: 'decision',
+      writerProvider: 'fixture',
+      writerModel: 'writer',
+      embeddingUrl: '',
+      embeddingModel: '',
+      embeddingDimensions: 0,
+      windowTurns: 1,
+      timeoutMs: 5000,
+      maxRetries: 0,
+      retryDelayMs: 0,
+      inputChars: 24000,
+      outputChars: 24000,
+      maxTokens: 4096,
+      reasoningEffort: 'auto',
+      organizationLimit: 20,
+      identityRewriteLimit: 100,
+      maxChanges: 8,
+      overview: { maxCalls: 64, timeoutMs: 5000, maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384 },
+      maxImplicitMemories: 4,
+      associationLimit: 3,
+      associationChars: 2000,
+      associationInputChars: 1000,
+      associationTimeoutMs: 1200,
+      experienceWindowMs: 1800000,
+      minSimilarity: 0.35,
+      consolidation: {
+        enabled: true,
+        idleMs: 60000,
+        cooldownMs: 300000,
+        retryMs: 60000,
+        maxFailures: 3,
+        batchLimit: 20,
+        minHabitSupport: 3,
+      },
+    },
+  }).memory!
   const embed = vi.fn().mockResolvedValue({ space: 'fixture', vector: [1, 0] })
-  await expect(consolidationChanges({ changes: [{ evidenceIds: [memory.id], memory: { category: 'procedural', kind: 'non-declarative',
-    content: 'Greet briefly.', importance: 0.7, confidence: 0.7 }, habit: { cue: 'Greeting', response: 'Keep it brief',
-    active: true, supportEventIds: [user.id] } }] }, state, [memory], config, embed)).rejects.toThrow('at least 3')
+  await expect(
+    consolidationChanges(
+      {
+        changes: [
+          {
+            evidenceIds: [memory.id],
+            memory: { category: 'procedural', kind: 'non-declarative', content: 'Greet briefly.', importance: 0.7, confidence: 0.7 },
+            habit: { cue: 'Greeting', response: 'Keep it brief', active: true, supportEventIds: [user.id] },
+          },
+        ],
+      },
+      state,
+      [memory],
+      config,
+      embed,
+    ),
+  ).rejects.toThrow('at least 3')
   expect(embed).not.toHaveBeenCalled()
 })
