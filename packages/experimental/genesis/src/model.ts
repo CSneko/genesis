@@ -1,4 +1,5 @@
 /** Validated Genesis durable records; independent of any model provider. @module */
+import { memoryRecallSchema } from './memory-dynamics.ts'
 import { z } from 'zod'
 import { required } from './required.ts'
 import { memoryOrganizationSchema } from './memory-organization.ts'
@@ -10,7 +11,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { manifestSchema, recordTableSchema, recordValueSchema, type LifeRecordKey } from './storage-layout.ts'
-import { memorySummarySchema } from './memory-summary.ts'
+import { memorySummariesSchema, memorySummarySchema } from './memory-summary.ts'
 import { contactsStateSchema } from './contacts-model.ts'
 import { peopleStateSchema, personSourceSchema, qqPersonId } from './people-model.ts'
 
@@ -70,6 +71,7 @@ export const memoryInputSchema = z.strictObject({
   content: z.string().trim().min(1).max(8000),
   importance: z.number().min(0).max(1),
   summary: memorySummarySchema.optional(),
+  summaries: memorySummariesSchema.optional(),
   organization: memoryOrganizationSchema.optional(),
   // Complete source references share the whole-life storage budget, including historical revisions.
   sourceEventIds: z.array(eventId).min(1),
@@ -136,6 +138,7 @@ const memorySchema = memoryInputSchema.extend({
   createdAt: timestamp,
   updatedAt: timestamp,
   habit: habitSchema.optional(),
+  contentChangedAt: timestamp.optional(),
   history: z.array(memoryRevisionSchema).optional(),
   experience: experienceSchema.optional(),
   experienceIds: z.array(memoryId).max(100).optional(),
@@ -242,6 +245,18 @@ class LifeHistoryIndex {
   }
   append(events: readonly LifeEvent[], growth: readonly GrowthRecord[], lifeId: LifeId): void {
     for (const event of events) {
+      if (event.type === 'memory.recalled') {
+        const parsed = memoryRecallSchema.safeParse(event.payload)
+        if (!parsed.success) throw validationError('Invalid memory recall evidence')
+        const user = this.get(parsed.data.userEventId)
+        const result = this.get(parsed.data.resultEventId)
+        if (user?.type !== 'interaction.observed' || user.source !== 'user' || user.payload['kind'] !== 'user-message'
+          || result?.type !== 'interaction.observed' || result.source !== 'tool' || result.payload['tool'] !== 'genesis_recall'
+          || event.source !== 'tool' || event.dedupKey !== `recall:${parsed.data.userEventId}:${parsed.data.memoryId}:${parsed.data.contentHash}`
+          || result.payload['success'] !== true || user.relatedSessionId !== event.relatedSessionId
+          || result.relatedSessionId !== event.relatedSessionId || result.relatedEventId !== event.relatedEventId)
+          throw validationError('Memory recall has invalid user or tool evidence')
+      }
       if (event.lifeId !== lifeId || this.byId.has(event.id) || this.keys.has(event.dedupKey)) {
         throw validationError('Invalid life event ownership or duplicate')
       }

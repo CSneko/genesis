@@ -176,7 +176,9 @@
     "execa": "^10.0.1",
     "ws": "8.21.3",
     "@deepseek-ai/dsh-experimental-genesis": "workspace:*",
-    "@deepseek-ai/dsh-experimental-client-ui-genesis": "workspace:*"
+    "@deepseek-ai/dsh-experimental-client-ui-genesis": "workspace:*",
+    "@deepseek-ai/dsh-genesis-punishment": "workspace:*",
+    "@deepseek-ai/dsh-genesis-see-now": "workspace:*"
   },
   "exports": {
     "./profile-boot": {

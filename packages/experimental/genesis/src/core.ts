@@ -1,4 +1,7 @@
 /** Atomic life state, sourced memory retrieval and observed system growth. @module */
+import { memoryReading, type MemoryReading } from './memory-delivery.ts'
+import { selectStatusState, type StatusState } from './status-state.ts'
+import { accessibleMemories, expiredMemories, memoryAccessibility, memoryContentKey, memoryFamiliarity, memoryRetentionStart } from './memory-dynamics.ts'
 import { memoryOrganization, organizationMatches, type MemoryOrganization } from './memory-organization.ts'
 import { intimacySettingsSchema, initialIntimacy, type IntimacySettings } from './intimacy-state.ts'
 import type { BoredomState } from './boredom.ts'
@@ -42,7 +45,7 @@ import { retainMemoryHistory } from './memory-history.ts'
 import { organizationSources, organizationReplay, appendOrganizedMemory, type OrganizedMemory } from './organization.ts'
 import type { MemoryOrganizationRequest } from './status-types.ts'
 import { memoryTimeText, readMemory } from './memory-time.ts'
-import { isImplicit } from './personality.ts'
+import { isImplicit, isNonDeclarative } from './personality.ts'
 import {
   lifeDomain,
   memoryInputSchema,
@@ -52,7 +55,7 @@ import {
   lifeRecordsDomain,
   LifeStateValidator,
 } from './model.ts'
-import { memorySummarySchema } from './memory-summary.ts'
+import { memorySummariesSchema, memorySummarySchema } from './memory-summary.ts'
 import { contactInputSchema, type ContactInput, type ContactCatalog, type LifeContact } from './contacts-model.ts'
 import { qqPersonId } from './people-model.ts'
 import { applyPeople } from './people.ts'
@@ -130,6 +133,8 @@ export interface ObservedInteraction {
   kind: 'user-message' | 'assistant-message' | 'tool-result'
   tool?: string
   success?: boolean
+  /** Newly delivered entries from a committed successful genesis_recall result; never automatic context. */
+  readings?: readonly MemoryReading[]
 }
 
 function fact(
@@ -781,6 +786,10 @@ export class LifeCore {
   }
 
   private async initialize(): Promise<void> {
+    const retention = this.config.memoryDynamics
+    if (retention?.forgetting && retention.forgetBelow >= retention.initialFamiliarity) {
+      throw new GenesisError('invalid-state', 'Set memoryDynamics.forgetBelow below initialFamiliarity before enabling forgetting.')
+    }
     try {
       new Intl.DateTimeFormat('en', { timeZone: this.config.timeZone })
     } catch (error) {
@@ -854,6 +863,7 @@ export class LifeCore {
     if (existing !== undefined) await this.pruneMemoryOrganizationBackup(existing)
     await this.change((state) => {
       fact(state, 'life.started', `start:${randomUUID()}`, {})
+      if (this.config.memoryDynamics?.forgetting) fact(state, 'memory.policystarted', memoryRetentionStart, { version: 1 })
       if (!state.contacts?.peopleImported) {
         this.syncPeopleContacts(state, state.people?.people ?? [])
         required(state.contacts, new GenesisError('invalid-state', 'Genesis contact state is unavailable.')).peopleImported = true
@@ -995,6 +1005,7 @@ export class LifeCore {
         fact(state, 'interest.initialized', 'interest:initialized', { interests: [] })
       }
     })
+    await this.expireMemories()
   }
 
   /**
@@ -1502,6 +1513,15 @@ export class LifeCore {
    */
   async snapshot(): Promise<LifeState> {
     return structuredClone(await this.readState())
+  }
+
+  /**
+   * Read overview counts and bounded previews after previously accepted writes settle.
+   * @param sessionIds - Live sessions whose capability inventories are needed.
+   * @returns Detached overview data without copying unrelated life history or memory vectors.
+   */
+  async statusSnapshot(sessionIds: readonly SessionId[]): Promise<StatusState> {
+    return selectStatusState(await this.readState(), sessionIds, this.config.queryLimit)
   }
 
   /**
@@ -2035,12 +2055,13 @@ export class LifeCore {
         }
         const habit = change.habit === undefined ? undefined : habitSchema.parse({ ...old.habit, ...change.habit })
         const experience = change.topics === undefined ? undefined : experienceSchema.parse({ ...old.experience, topics: change.topics })
-        const { summary: _summary, ...retained } = old
+        const { summary: _summary, summaries: _summaries, ...retained } = old
         state.memories[index] = retainMemoryHistory(old, {
           ...retained,
           content: change.content,
           embedding: change.embedding,
           ...(change.content === old.content && old.summary !== undefined ? { summary: old.summary } : {}),
+          ...(change.content === old.content && old.summaries !== undefined ? { summaries: old.summaries } : {}),
           ...(habit === undefined ? {} : { habit }),
           ...(experience === undefined ? {} : { experience }),
           sourceEventIds: memoryInputSchema.shape.sourceEventIds.parse([...new Set([...old.sourceEventIds, event.id])]),
@@ -2078,6 +2099,30 @@ export class LifeCore {
           observation.eventId,
           observation.timestamp,
         )
+        const retention = this.config.memoryDynamics
+        if (retention !== undefined && observation.kind === 'tool-result'
+          && observation.tool === 'genesis_recall' && observation.success && observation.readings?.length) {
+          const user = state.events.findLast(item => item.relatedSessionId === observation.sessionId
+            && item.type === 'interaction.observed' && item.source === 'user' && item.payload['kind'] === 'user-message')
+          if (user !== undefined) for (const reading of observation.readings) {
+            const memory = state.memories.find(item => item.id === reading.id)
+            if (memory === undefined || isNonDeclarative(memory)) continue
+            if (!memoryVisible(state, memory, this.config.memorySharing, observation.sessionId)) continue
+            const current = memoryReading(memory, reading.level, new Date(observation.timestamp), this.config.timeZone)
+            if (current.version !== reading.version) continue
+            const contentHash = memoryContentKey(memory)
+            fact(state, 'memory.recalled', `recall:${user.id}:${memory.id}:${contentHash}`,
+              { version: 1, memoryId: memory.id, contentHash, userEventId: user.id, resultEventId: event.id },
+              'tool', observation.sessionId, observation.eventId, observation.timestamp)
+            const maturity = `memory:matured:${memory.id}:${contentHash}`
+            if (!state.events.some(item => item.dedupKey === maturity)
+              && memoryFamiliarity([memory], state.events, retention, new Date(observation.timestamp)).get(memory.id) === 1) {
+              fact(state, 'memory.matured', maturity, { memoryId: memory.id, contentHash },
+                'system', observation.sessionId, observation.eventId, observation.timestamp)
+              queueConsolidation(state, observation.sessionId)
+            }
+          }
+        }
         const participant = observation.participant
         if (participant !== undefined && state.people !== undefined) {
           const person = state.people.people.find(item => item.id === participant.personId)
@@ -2379,7 +2424,7 @@ export class LifeCore {
       if (old.experience !== undefined && parsed.category !== 'episodic') {
         throw new GenesisError('invalid-source', 'An experience must retain its episodic category.')
       }
-      const { embedding: _oldEmbedding, summary: _oldSummary, organization: _oldOrganization, ...retained } = old
+      const { embedding: _oldEmbedding, summary: _oldSummary, summaries: _oldSummaries, organization: _oldOrganization, ...retained } = old
       const memory = retainMemoryHistory(old, {
         ...retained,
         ...parsed,
@@ -2387,6 +2432,8 @@ export class LifeCore {
           ? { organization: old.organization }
           : {}),
         ...(parsed.summary === undefined && parsed.content === old.content && old.summary !== undefined ? { summary: old.summary } : {}),
+        ...(parsed.summaries === undefined && parsed.content === old.content && old.summaries !== undefined
+          && (parsed.kind ?? old.kind) !== 'non-declarative' ? { summaries: old.summaries } : {}),
         updatedAt: memoryTime(old),
       })
       state.memories[index] = memory
@@ -2404,7 +2451,8 @@ export class LifeCore {
    */
   editMemory(id: MemoryId, draft: MemoryDraft, updatedAt: string | null): Promise<LifeMemory> {
     z.uuid().parse(id)
-    const parsed = memoryInputSchema.omit({ sourceEventIds: true, attribution: true, summary: true }).required({ kind: true }).parse(draft)
+    const parsed = memoryInputSchema.omit({ sourceEventIds: true, attribution: true, summary: true, summaries: true })
+      .required({ kind: true }).parse(draft)
     parsed.content = memoryTimeText(parsed.content)
     return this.change((state) => {
       const old = state.memories.find(item => item.id === id)
@@ -2465,6 +2513,7 @@ export class LifeCore {
           ? { organization: old.organization }
           : {}),
         ...(old?.content === parsed.content && old.summary !== undefined ? { summary: old.summary } : {}),
+        ...(parsed.kind === 'declarative' && old?.content === parsed.content && old.summaries !== undefined ? { summaries: old.summaries } : {}),
         sourceEventIds,
         createdAt: old?.createdAt ?? now,
         updatedAt: now,
@@ -2499,10 +2548,62 @@ export class LifeCore {
         throw new GenesisError('configuration-conflict', 'This memory changed or was removed. Refresh before saving its summary.')
       }
       if ((old.summary ?? null) === parsed) return old
-      const { summary: _summary, ...retained } = old
-      const memory = { ...retained, ...(parsed === null ? {} : { summary: parsed }), updatedAt: memoryTime(old) }
+      const { summary: _summary, summaries, ...retained } = old
+      const memory = { ...retained, ...(parsed === null ? {} : {
+        summary: parsed,
+        ...(summaries === undefined ? {} : { summaries: { ...summaries, brief: parsed } }),
+      }), updatedAt: memoryTime(old) }
       state.memories[index] = memory
       return memory
+    })
+  }
+
+  /**
+   * Replace generated descriptions without changing the remembered evidence or its revisions.
+   * @param id - Existing memory.
+   * @param metadata - Validated summary and optional declarative organization.
+   * @param updatedAt - Expected current version; stale updates are refused.
+   * @returns Committed memory with its content, attribution, sources and confidence preserved.
+   */
+  setMemoryMetadata(id: MemoryId, metadata: { summary: string; summaries?: LifeMemory['summaries']; organization?: MemoryOrganization }, updatedAt: string): Promise<LifeMemory> {
+    const parsed = memoryInputSchema.pick({ summary: true, summaries: true, organization: true })
+      .required({ summary: true }).parse(metadata)
+    return this.change((state) => {
+      const memory = state.memories.find(item => item.id === id)
+      if (memory === undefined || memory.updatedAt !== updatedAt)
+        throw new GenesisError('configuration-conflict', 'This memory changed or was removed. Refresh before saving its descriptions.')
+      if ((parsed.organization !== undefined || parsed.summaries !== undefined) && isNonDeclarative(memory))
+        throw new GenesisError('invalid-source', 'Only declarative memory accepts three summaries and organization.')
+      const next = { ...memory, ...parsed }
+      if (isDeepStrictEqual(next, memory)) return memory
+      Object.assign(memory, next, { updatedAt: memoryTime(memory) })
+      return memory
+    })
+  }
+
+  /**
+   * Backfill prepared summaries for an exact set of current declarative records in one commit.
+   * @param updates - Unique memory IDs, the versions read for generation, and their validated summaries.
+   * @returns Number of records updated. Any duplicate, stale, ineligible or already described record rejects the batch.
+   */
+  backfillMemorySummaries(updates: readonly { id: MemoryId; updatedAt: string; summaries: NonNullable<LifeMemory['summaries']> }[]): Promise<number> {
+    const byId = new Map(updates.map(item => [item.id, { ...item, summaries: memorySummariesSchema.parse(item.summaries) }]))
+    if (byId.size !== updates.length) throw new GenesisError('invalid-source', 'Memory summary backfill contains duplicate IDs.')
+    return this.change((state) => {
+      let applied = 0
+      for (const memory of state.memories) {
+        const update = byId.get(memory.id)
+        if (update === undefined) continue
+        if (memory.updatedAt !== update.updatedAt || memory.summaries !== undefined || isNonDeclarative(memory)) {
+          throw new GenesisError('configuration-conflict', 'A memory changed before summary backfill. No summaries were applied.')
+        }
+        memory.summaries = update.summaries
+        memory.summary = update.summaries.brief
+        memory.updatedAt = memoryTime(memory)
+        applied++
+      }
+      if (applied !== byId.size) throw new GenesisError('configuration-conflict', 'A memory was removed before summary backfill. No summaries were applied.')
+      return applied
     })
   }
 
@@ -2521,7 +2622,8 @@ export class LifeCore {
         throw new GenesisError('configuration-conflict', 'This memory changed. Refresh before converting it.')
       const previous = memory.kind ?? (memory.category === 'procedural' ? 'non-declarative' : 'declarative')
       if (previous === kind) return memory
-      const converted = { ...memory, kind, updatedAt: memoryTime(memory) }
+      const { summaries: _summaries, ...retained } = memory
+      const converted = { ...retained, kind, updatedAt: memoryTime(memory) }
       if (kind === 'declarative' && memory.habit !== undefined)
         state.suppressedHabitEvidence = [...new Set([...(state.suppressedHabitEvidence ?? []), ...memory.habit.supportEventIds])]
       state.memories[state.memories.indexOf(memory)] = converted
@@ -2583,6 +2685,19 @@ export class LifeCore {
   }
 
   /**
+   * Resolve only the retained readings a model request may reuse.
+   * @param sessionId - Conversation receiving the request.
+   * @param ids - Previously delivered memory IDs from the Session surface.
+   * @returns Detached current visible versions, without embeddings or history text.
+   */
+  async memoriesForContext(sessionId: SessionId, ids: ReadonlySet<MemoryId>): Promise<Map<MemoryId, LifeMemory>> {
+    if (ids.size === 0) return new Map()
+    const state = await this.readState()
+    return new Map(state.memories.filter(memory => ids.has(memory.id) && memoryVisible(state, memory, this.config.memorySharing, sessionId))
+      .map(({ embedding: _embedding, history: _history, ...memory }) => [memory.id, structuredClone(memory)]))
+  }
+
+  /**
    * Atomically apply an independent writer's changes and record a completed review once.
    * @param key - Stable source turn or explicit user-memory request key.
    * @param changes - Validated changes; all references must belong to this life.
@@ -2601,7 +2716,7 @@ export class LifeCore {
     return this.change((state) => {
       if (state.events.some(event => event.dedupKey === `memory-review:${key}`)) return
       if (scope !== undefined) {
-        const current = conversationMemories(state, scope.sessionId)
+        const current = conversationMemories(state, scope.sessionId, scope.afterSeq)
         if (
           current.length !== scope.versions.length ||
           scope.versions.some(version => !current.some(memory => memory.id === version.id && memory.updatedAt === version.updatedAt))
@@ -2699,7 +2814,18 @@ export class LifeCore {
           changes: changes.length + (experience === undefined ? 0 : 1),
           ...(evidence === undefined
             ? {}
-            : { feedbackTurn: `${evidence.sessionId}:${evidence.turn}`, userEventIds: evidence.userEventIds }),
+            : {
+              feedbackTurn: `${evidence.sessionId}:${evidence.turn}`,
+              userEventIds: evidence.userEventIds,
+              ...(evidence.earlierTurns?.length
+                ? {
+                  earlierFeedbackTurns: evidence.earlierTurns.map(({ turn, userEventIds }) => ({
+                    turn: `${evidence.sessionId}:${turn}`,
+                    userEventIds,
+                  })),
+                }
+                : {}),
+            }),
           ...(scope === undefined
             ? {}
             : { conversationOverview: scope.sessionId, memoryVersions: scope.versions.map(version => ({ ...version })) }),
@@ -2744,6 +2870,9 @@ export class LifeCore {
    */
   consolidate(plan: ConsolidationCommit): Promise<boolean> {
     return this.change((state) => {
+      const assessed = state.memories.filter(memory => plan.versions.some(item => item.id === memory.id)
+        && state.events.some(item => item.dedupKey === `memory:matured:${memory.id}:${memoryContentKey(memory)}`))
+        .map(memory => `memory:matured:${memory.id}:${memoryContentKey(memory)}`)
       const changes = plan.changes.map(change => ({
         ...change,
         input: { ...change.input, content: memoryTimeText(change.input.content) },
@@ -2756,7 +2885,8 @@ export class LifeCore {
         state,
         'memory.consolidated',
         `consolidation:${plan.revision}`,
-        { revision: plan.revision, memoryIds: plan.versions.map(item => item.id), changes: plan.changes.length },
+        { revision: plan.revision, memoryIds: plan.versions.map(item => item.id), changes: plan.changes.length,
+          ...(assessed.length === 0 ? {} : { assessed }) },
         'agent',
         state.consolidation?.sessionId,
       )
@@ -2853,9 +2983,12 @@ export class LifeCore {
         (query.after === undefined || memory.createdAt >= query.after) &&
         (query.before === undefined || memory.createdAt <= query.before),
     )
-    const ranked = query.text.trim()
-      ? searchText(query.text, eligible.map(memoryDocument)).map(match => match.value)
-      : eligible.sort((a, b) => b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt))
+    const matches = query.text.trim() ? searchText(query.text, eligible.map(memoryDocument)) : undefined
+    const ranked = matches === undefined
+      ? eligible.sort((a, b) => b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt))
+      : this.config.memoryDynamics === undefined
+        ? matches.map(match => match.value)
+        : accessibleMemories(matches, memoryAccessibility(eligible, state.events, this.config.memoryDynamics, now), query.text)
     for (const memory of ranked) {
       if (result.length >= Math.max(0, Math.min(query.limit, this.config.queryLimit))) break
       const next = [...result, memory]
@@ -2918,7 +3051,26 @@ export class LifeCore {
   private async readState(): Promise<LifeState> {
     await this.chain
     this.assertUsable()
+    await this.expireMemories()
     return this.state()
+  }
+
+  private async expireMemories(): Promise<void> {
+    const policy = this.config.memoryDynamics
+    if (!policy?.forgetting) return
+    const now = new Date()
+    let expired: MemoryId[] = []
+    await this.change((state) => {
+      const retired = new Set(expired)
+      state.memories = state.memories.filter(memory => !retired.has(memory.id))
+      for (const memory of state.memories) {
+        if (memory.experienceIds?.some(id => retired.has(id))) memory.experienceIds = memory.experienceIds.filter(id => !retired.has(id))
+      }
+      for (const id of expired) fact(state, 'memory.forgotten', `memory:forgotten:${id}`, { memoryId: id }, 'system', undefined, undefined, now.toISOString())
+    }, (state) => {
+      expired = expiredMemories(state, policy, now)
+      return expired.length === 0 ? { result: undefined } : undefined
+    })
   }
 
   /** Historical events and growth entries are append-only; mutable projections remain transaction-local. */
@@ -2953,11 +3105,22 @@ export class LifeCore {
       if (retained !== undefined) return retained.result === undefined ? retained.result : structuredClone(retained.result)
       const state = this.copyState()
       const result = operation(state)
+      const previousMemories = new Map(this.state().memories.map(memory => [memory.id, memory]))
       const knownPeople = new Set([
         ...(state.people?.people.map(person => person.id) ?? []),
         ...(state.contacts?.items.map(person => person.personId) ?? []),
       ])
       for (const memory of state.memories) {
+        const previous = previousMemories.get(memory.id)
+        if (isNonDeclarative(memory)) {
+          delete memory.contentChangedAt
+          delete memory.summaries
+        } else if (previous !== undefined) {
+          if (previous.content !== memory.content || previous.attribution !== memory.attribution
+            || previous.confidence !== memory.confidence || isNonDeclarative(previous)) {
+            memory.contentChangedAt = memory.updatedAt
+          } else if (previous.contentChangedAt !== undefined) memory.contentChangedAt = previous.contentChangedAt
+        }
         const organization = memoryOrganization(memory)
         if (
           organization?.subjects?.some(

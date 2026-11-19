@@ -1,4 +1,5 @@
 /** Life status and one-time naming, exported through the existing authenticated Gateway. @module */
+import type { MemoryBatcher } from './memory-batch.ts'
 import { intimacySettingsSchema, initialIntimacy, type IntimacySettings, type IntimacyStatus } from './intimacy-state.ts'
 import { searchText, memoryDocument } from './search.ts'
 import { memoryBrowserFilterSchema, memoryBrowserPage } from './memory-browser.ts'
@@ -74,6 +75,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
       preferences: EmbeddingPreferences
       models: ModelPreferences
       memory: LifeMemoryEngine | undefined
+      memoryBatcher?: MemoryBatcher | undefined
       emotion: LifeEmotionEngine | undefined
       interest: LifeInterestEngine | undefined
       lifeMode: (agent: Agent | undefined) => boolean
@@ -436,10 +438,10 @@ export class GenesisStatusGateway extends TypertRemoteService {
   }
 
   /**
-   * Retry the latest failed review while its live evidence remains available.
+   * Retry pending batches, or the latest failed per-turn review while its live evidence remains available.
    * @param sessionId - Conversation that owns the failed review.
    * @param signal - Caller cancellation; no new chat reply is generated.
-   * @returns After the retry settles; restart or newer-turn evidence requires a new conversation turn.
+   * @returns After retry settles; batch evidence survives reopening, while per-turn mode requires retained live evidence.
    */
   @Remote('retryMemory')
   async retryMemory(sessionId: SessionId, signal: AbortSignal): Promise<void> {
@@ -466,7 +468,8 @@ export class GenesisStatusGateway extends TypertRemoteService {
       if (this.options.config.awakening !== undefined && !this.options.lifeMode(agent))
         throw new GenesisError('invalid-source', 'Only Life conversations can update life memory.')
       await agent.whenIdle()
-      await memory.retry(agent, status.turn, signal)
+      if (this.options.memoryBatcher === undefined) await memory.retry(agent, status.turn, signal)
+      else await this.options.memoryBatcher.retry(agent, signal)
     })
   }
 
@@ -622,7 +625,7 @@ export class GenesisStatusGateway extends TypertRemoteService {
         signal.throwIfAborted()
         await this.ctx.genesis.scan(agent.session.id, this.ctx.tools.schemas(agent))
       }
-      const state = await this.ctx.genesis.snapshot()
+      const state = await this.ctx.genesis.statusSnapshot(agents.map(agent => agent.session.id))
       const capabilities = agents.flatMap(agent =>
         (state.sessions[agent.session.id] ?? [])
           .filter(capability => capability.available)
@@ -634,11 +637,11 @@ export class GenesisStatusGateway extends TypertRemoteService {
         sampledAt: new Date().toISOString(),
         operator: state.operator ?? { name: '', identity: '', revision: 0 },
         runtime: { platform: process.platform, node: process.versions.node, liveSessions: agents.length },
-        counts: { events: state.events.length, memories: state.memories.length, growth: state.growth.length },
+        counts: state.counts,
         capabilities: [],
         memories: [],
         growth: [],
-        omitted: { capabilities: capabilities.length, memories: state.memories.length, growth: state.growth.length },
+        omitted: { capabilities: capabilities.length, memories: state.counts.memories, growth: state.counts.growth },
       }
       if (this.options.emotion !== undefined && state.emotion !== undefined) {
         const review = this.options.emotion.status()
@@ -742,13 +745,10 @@ export class GenesisStatusGateway extends TypertRemoteService {
       }
       admit(
         result.memories,
-        state.memories
-          .slice()
-          .sort((a, b) => b.importance - a.importance)
-          .map(memoryView),
+        state.memories,
         'memories',
       )
-      admit(result.growth, state.growth.slice().reverse(), 'growth')
+      admit(result.growth, state.growth, 'growth')
       admit(result.capabilities, capabilities, 'capabilities')
       if (result.interest !== undefined) {
         const interests = state.interests ?? []
@@ -774,16 +774,12 @@ export class GenesisStatusGateway extends TypertRemoteService {
             break
           }
         }
-        const history = state.events.filter(event => event.type === 'interest.changed').reverse()
-        result.interest.historyOmitted = history.length
-        for (const event of history.slice(0, this.options.config.queryLimit)) {
+        result.interest.historyOmitted = state.interestHistory.total
+        for (const { event, sourceEventIds } of state.interestHistory.entries) {
           const interestId = z.string().parse(event.payload['interestId'])
           const item = interests.find(value => value.id === interestId)
           if (item === undefined)
             throw new GenesisError('invalid-state', 'Interest history refers to an absent topic. Restore verified life storage.')
-          const sourceEventIds = state.events
-            .filter(source => Array.isArray(event.payload['sourceEventIds']) && event.payload['sourceEventIds'].includes(source.id))
-            .map(source => source.id)
           result.interest.history.push({
             id: event.id,
             interestId: item.id,
@@ -804,26 +800,12 @@ export class GenesisStatusGateway extends TypertRemoteService {
         }
       }
       if (result.emotion !== undefined) {
-        const history = state.events
-          .filter(
-            event =>
-              event.type === 'emotion.initialized' ||
-              event.type === 'emotion.configured' ||
-              event.type === 'emotion.adjusted' ||
-              event.type === 'emotion.upgraded' ||
-              event.type === 'relationship.adjusted' ||
-              (event.type === 'emotion.reviewed' && event.payload['changed'] === true),
-          )
-          .reverse()
-        result.emotion.omitted = history.length
-        for (const event of history.slice(0, this.options.config.queryLimit)) {
+        result.emotion.omitted = state.emotionHistory.total
+        for (const { event, sourceEventIds } of state.emotionHistory.entries) {
           const sample = event.type === 'emotion.initialized' ? event.payload['state'] : event.payload['after']
           // Historical generations remain in the event store; current readouts never reinterpret them.
           if (sample !== null && typeof sample === 'object' && !Array.isArray(sample) && sample['version'] !== 3) continue
           const after = emotionStateSchema.parse(sample)
-          const sourceEventIds = state.events
-            .filter(source => Array.isArray(event.payload['sourceEventIds']) && event.payload['sourceEventIds'].includes(source.id))
-            .map(source => source.id)
           result.emotion.history.push({
             id: event.id,
             timestamp: event.timestamp,

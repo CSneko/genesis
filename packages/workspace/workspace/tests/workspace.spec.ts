@@ -243,6 +243,36 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     })
   })
 
+  it('shares successful directory probes within a header batch and revalidates later batches', async () => {
+    const dir = await makeDir('shared-header-cwd')
+    const missing = join(base, 'shared-header-missing')
+    const sessions = [
+      ...Array.from({ length: 12 }, (_, index) => header(`shared-${index}`, dir, index)),
+      header('missing-first', missing),
+      header('missing-second', missing),
+    ]
+    const probe = vi.spyOn(workspacePaths, 'realpathNormalize')
+    onTestFinished(() => { probe.mockRestore() })
+    const first = await harness({ sessions })
+    onTestFinished(() => first.ctx.fiber.dispose())
+    const workspaceId = first.registry.list()[0]!.id
+    expect(first.registry.get(workspaceId)!.sessionIds).toEqual(
+      sessions.slice(0, 12).reverse().map(session => session.id),
+    )
+    expect(probe.mock.calls.filter(([path]) => path === dir)).toHaveLength(1)
+    expect(probe.mock.calls.filter(([path]) => path === missing)).toHaveLength(2)
+    await first.fiber.dispose()
+    await rm(dir, { recursive: true })
+    await writeFile(dir, 'Directory replaced by a file')
+    probe.mockClear()
+
+    const restarted = await harness({ pool: first.pool, sessions })
+    onTestFinished(() => restarted.ctx.fiber.dispose())
+    expect(restarted.registry.get(workspaceId)!.sessionIds).toEqual([])
+    expect(probe.mock.calls.filter(([path]) => path === dir)).toHaveLength(12)
+    expect(probe.mock.calls.filter(([path]) => path === missing)).toHaveLength(2)
+  })
+
   it('breaks equal bootstrap timestamps by session id and canonical path', async () => {
     const first = await makeDir('tie-first')
     const second = await makeDir('tie-second')

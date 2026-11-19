@@ -91,7 +91,11 @@ it('keeps organization edits atomic, preserves evidence and resumes after restar
 
 it('suppresses retained summaries, permits full reads and restores compacted content', async () => {
   const { core } = await fixture()
-  const memory = (await core.snapshot()).memories[0]!
+  const source = (await core.snapshot()).events[0]!
+  const memory = await core.remember({
+    category: 'semantic', kind: 'declarative', content: '数据库事务中的操作要么全部提交，要么全部回滚。',
+    summary: '事务的原子性', importance: 0.5, confidence: 0.4, sourceEventIds: [source.id],
+  })
   const session = Session.create(SessionId('memory-reading-retention'))
   const now = new Date('2026-11-10T00:00:00.000Z')
   const summary = memoryReading(memory, 'summary', now, 'UTC')
@@ -115,7 +119,7 @@ it('suppresses retained summaries, permits full reads and restores compacted con
   expect(memoryReadingSections([summary], session, 20000)).toHaveLength(1)
   expect(memoryReadingSections([summary], session, 1)).toEqual([])
   session.append('user/message', lifeContextUpdate(session, memoryReadingSections([summary], session, 20000))!, { surfaceOp: 'append' })
-  const removed = memoryReadingSections([], session, 20000, new Set())
+  const removed = memoryReadingSections([], session, 20000, () => undefined)
   expect(removed[0]?.text).toContain('unavailable')
   session.append('user/message', lifeContextUpdate(session, removed)!, { surfaceOp: 'append' })
   expect(retainedMemoryReadings(session)).toEqual([])

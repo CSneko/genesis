@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { useEffect, useRef, useState } from 'react'
 import { Button, StateDot, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { BundleInfo } from '@deepseek-ai/dsh-api-remotes/client'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
@@ -10,6 +11,7 @@ import { StatusResource } from './resource.ts'
 import css from './StatusPanel.module.css'
 
 const plugins = [
+  { id: 'punishment', package: '@deepseek-ai/dsh-genesis-punishment' },
   { id: 'weather', package: '@deepseek-ai/dsh-genesis-weather' },
   { id: 'qq', package: '@deepseek-ai/dsh-experimental-genesis-qq' },
   { id: 'mail', package: '@deepseek-ai/dsh-experimental-genesis-mail' },
@@ -23,6 +25,7 @@ type Selection = (typeof plugins)[number]['id'] | 'intimacy'
 const en = {
   title: 'Genesis',
   description: 'Enable optional Genesis capabilities and configure them here. Core life services remain enabled.',
+  punishment: 'Punishment',
   weather: 'Weather',
   qq: 'QQ',
   mail: 'Mail',
@@ -51,6 +54,7 @@ type Key = keyof typeof en
 const zh: Record<Key, string> = {
   title: 'Genesis',
   description: '在这里启停和配置 Genesis 的可选能力，核心生命功能保持启用',
+  punishment: '惩罚',
   weather: '天气',
   qq: 'QQ',
   mail: '邮件',
@@ -76,7 +80,8 @@ const zh: Record<Key, string> = {
   browserAuthor: 'Harness 浏览器集成',
 }
 interface Actions {
-  hooks: { settings: HostObservable<string> }
+  hooks: { settings: HostObservable<string>; punishmentConfig: HostObservable<ConfigFormSnapshot<{ enabled: boolean }>> }
+  setPunishmentEnabled(value: boolean): Promise<boolean>
   setEnabled: TypertClientRemote['pluginManager']['setBundleEnabled']
   refresh(): void
 }
@@ -104,6 +109,8 @@ export function GenesisPlugins({
   setEnabled,
   refresh,
   useSettings,
+  usePunishmentConfig,
+  setPunishmentEnabled,
 }: PropsRuntime<'plugins.tab'> & PropsRenderSlots<'genesis.plugin.settings'> & PropsLocale<'genesis.plugins'> & InjectFace<Actions>) {
   const resource = useResource<'genesis-plugins'>('dsh-resource://genesis-plugins/catalog')
   const [selected, setSelected] = useState<Selection>()
@@ -122,7 +129,10 @@ export function GenesisPlugins({
     operation.current = true
     setPending(name)
     setNotice(undefined)
-    void setEnabled(name, enabled)
+    const result = name === '@deepseek-ai/dsh-genesis-punishment'
+      ? setPunishmentEnabled(enabled).then(ok => ({ ok, value: { application: 'applied' as const } }))
+      : setEnabled(name, enabled)
+    void result
       .then((result) => {
         if (!mounted.current) return
         setNotice(
@@ -144,9 +154,10 @@ export function GenesisPlugins({
         if (mounted.current) setPending(undefined)
       })
   }
+  const punishment = usePunishmentConfig(value => value)
   const availableSettings = useSettings(value => value).split('\0')
   const selectedPlugin = plugins.find(plugin => plugin.id === selected)
-  const enabled = selectedPlugin === undefined || resource.value?.find(bundle => bundle.name === selectedPlugin.package)?.enabled === true
+  const enabled = selected === 'punishment' || selectedPlugin === undefined || resource.value?.find(bundle => bundle.name === selectedPlugin.package)?.enabled === true
   return (
     <section className={css.panel}>
       <header className={css.header}>
@@ -163,20 +174,21 @@ export function GenesisPlugins({
         resource.value === undefined ? null : (
           <ul className={css.records}>
             {plugins.map((plugin) => {
+              const builtin = plugin.id === 'punishment'
               const bundle = resource.value?.find(item => item.name === plugin.package)
+              const enabled = builtin ? punishment.value?.enabled === true : bundle?.enabled === true
               return (
                 <li key={plugin.id}>
                   <div className={css.header}>
                     <span>{t(plugin.id)}</span>
                     <Switch
                       label={t(plugin.id)}
-                      checked={bundle?.enabled === true}
+                      checked={enabled}
                       disabled={
                         pending !== undefined ||
-                        resource.status !== 'live' ||
-                        bundle === undefined ||
-                        bundle.availability === 'missing' ||
-                        bundle.readOnlyReason !== undefined
+                        (builtin
+                          ? punishment.status !== 'ready' || !punishment.writable
+                          : resource.status !== 'live' || bundle === undefined || bundle.availability === 'missing' || bundle.readOnlyReason !== undefined)
                       }
                       onChange={(value) => {
                         toggle(plugin.package, value)
@@ -184,10 +196,10 @@ export function GenesisPlugins({
                     />
                   </div>
                   <p className={css.secondary}>
-                    {t(plugin.id === 'browser' ? 'browserAuthor' : 'author')} · {t(bundle?.enabled ? 'enabled' : 'disabled')}
+                    {t(plugin.id === 'browser' ? 'browserAuthor' : 'author')} · {t(enabled ? 'enabled' : 'disabled')}
                   </p>
                   {bundle?.error ? <p role="alert">{t('failure')}</p> : null}
-                  {bundle === undefined && resource.status === 'live' ? <p>{t('unavailable')}</p> : null}
+                  {!builtin && bundle === undefined && resource.status === 'live' ? <p>{t('unavailable')}</p> : null}
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -245,6 +257,7 @@ export function GenesisPlugins({
 export function mountGenesisPlugins(ctx: Context): void {
   ctx.inject(['remote.pluginManager'], (scope) => {
     const resource = new StatusResource()
+    const punishment = scope.configForms.get<{ enabled: boolean }>('genesis-punishment')
     scope.effect(() => scope.locale.register('genesis.plugins', { en, zh }))
     scope.effect(() =>
       scope.resources.register<'genesis-plugins'>({
@@ -271,6 +284,7 @@ export function mountGenesisPlugins(ctx: Context): void {
           children: { 'genesis.plugin.settings': { kind: 'keyed', scope: 'root' } },
           inject: (): Actions => ({
             hooks: {
+              punishmentConfig: punishment,
               settings: {
                 getSnapshot: () =>
                   scope.slots
@@ -280,6 +294,7 @@ export function mountGenesisPlugins(ctx: Context): void {
                 subscribe: listener => scope.slots.subscribe('genesis.plugin.settings', listener),
               },
             },
+            setPunishmentEnabled: value => punishment.set('enabled', value),
             setEnabled: (...args) => scope.remote.pluginManager.setBundleEnabled(...args),
             refresh: () => {
               resource.refresh()

@@ -65,18 +65,19 @@ declare module '@deepseek-ai/dsh-session/types' {
  * @param models - Routes captured once for this review.
  * @param config - Complete input, output and token budgets.
  * @param criteria - Optional explicit yes/no descriptions for the decision endpoint.
+ * @param attemptTimeoutMs - Optional retryable deadline for one inference attempt, inside the operation deadline.
  * @returns Untrusted decoded JSON; no state is changed by this function.
  */
 export async function auxiliaryCall(ctx: Context, session: Session, role: AuxiliaryRole, system: string,
   input: Record<string, unknown>, signal: AbortSignal, models: MemoryModelsSettings, config: MemoryConfig,
-  criteria?: { true: string; false: string }): Promise<unknown> {
+  criteria?: { true: string; false: string }, attemptTimeoutMs?: number): Promise<unknown> {
   input = { ...input, participants: input['participants'] ?? participants(await ctx.genesis.snapshot()) }
   system = auxiliarySystem(role, system)
   const text = JSON.stringify(input)
   if (text.length > config.inputChars) throw new GenesisError('capacity', 'Memory review exceeds memory.inputChars. Increase the review budget; nothing was updated.')
   const route = models[role === 'decision' || role === 'emotion-decision' ? 'decision' : 'writer']
   const maxRetries = models.maxRetries ?? config.maxRetries
-  return retryRequest(async () => {
+  return retryRequest(async (signal) => {
     if (ctx.get('genesisSleep')?.ownsMaintenance(session.id) !== true) ctx.get('genesisSpontaneity')?.reserveOutput(session, config.maxTokens)
     if (route.kind !== 'provider') {
       const body = endpointRequest(route, system, input, config.maxTokens, role === 'emotion-decision' ? 'emotion' : 'remember', criteria)
@@ -129,5 +130,5 @@ export async function auxiliaryCall(ctx: Context, session: Session, role: Auxili
     return JSON.parse(result)
   }, maxRetries, config.retryDelayMs, signal, (retry) => {
     ctx.logger.warn(`Genesis ${role} request failed; retrying (${retry}/${maxRetries}).`)
-  })
+  }, attemptTimeoutMs)
 }

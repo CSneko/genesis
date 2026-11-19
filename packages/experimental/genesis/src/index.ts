@@ -1,3 +1,4 @@
+import { recallResultReadings, retainedMemoryReadings, trimMemoryContext } from './memory-delivery.ts'
 import { GenesisContactsGateway } from './contacts-gateway.ts'
 import './social-projection.ts'
 import './task-source.ts'
@@ -25,7 +26,7 @@ import { isHumanSource, personSource } from './people-model.ts'
 export { participantIdentity } from './participants.ts'
 export { modelHeaders, modelJson } from './model-endpoint.ts'
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { GenesisAgencyGateway } from './agency-gateway.ts'
@@ -51,6 +52,7 @@ import { PARTICIPANT_GUIDANCE } from './participants.ts'
 import { GenesisStatusGateway } from './status.ts'
 import { GenesisMemoryGateway } from './memory-gateway.ts'
 import { registerTools } from './tools.ts'
+import { MemoryBatcher } from './memory-batch.ts'
 import { LifeMemoryEngine, MEMORY_GUIDANCE } from './memory.ts'
 import { backupPath } from './backup.ts'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -406,6 +408,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       deliberation,
       config.socialInitiative,
       agent => config.awakening === undefined || lifeMode(agent),
+      config.spontaneity !== undefined,
     )
     const engine = social
     ctx.provide('genesisInitiative', engine)
@@ -454,12 +457,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       )
   const consolidation =
     memory === undefined || config.memory === undefined ? undefined : new MemoryConsolidator(ctx, core, memory, config.memory)
+  const memoryBatcher = memory === undefined || config.memory === undefined || config.memory.batchTurns === 1
+    ? undefined : new MemoryBatcher(ctx, memory, config.memory)
   if (memory !== undefined) {
-    ctx.effect(() => () => memory.close())
+    ctx.effect(() => async () => { await Promise.all([memoryBatcher?.close(), memory.close()]) })
     ctx.on(
       'agent/turn-stopping',
       ({ agent, turn }) => {
-        if (!participates(agent)) return
+        if (!participates(agent) || memoryBatcher !== undefined) return
         void memory.review(agent, turn).catch((error) => {
           ctx.logger.error(
             `Genesis memory review failed. A storage or backup failure may follow a committed update; inspect storage before retrying. Otherwise check model and embedding configuration. ${statusFailure(error).message}`,
@@ -530,8 +535,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     engine: social,
     applies: (agent: Agent) => config.awakening === undefined || lifeMode(agent),
   })
-  await ctx.plugin(GenesisStatusGateway, { config, preferences, models, memory, emotion, interest, lifeMode, purge })
+  await ctx.plugin(GenesisStatusGateway, { config, preferences, models, memory, memoryBatcher, emotion, interest, lifeMode, purge })
   const associations = new Map<object, string>()
+  const pendingMemoryContext = new WeakMap<Agent, UserMessage>()
   const selectTools = (agent: Agent, registered: readonly ToolDefinition[]) => {
     let eligible = [...registered]
     if (lifeMode(agent)) {
@@ -545,7 +551,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           (tool.name === 'genesis_message' && !core.isQqSession(agent.id) && core.isOperatorSession(agent.id)) ||
           (core.isQqSession(agent.id) && toolkits.qqAllowed(agent, tool.name, 'advertise')) ||
           (config.deliberation !== undefined && tool.name === 'genesis_plan') ||
-          (config.spontaneity !== undefined && ['genesis_thought', 'genesis_socialize'].includes(tool.name)) ||
+          (config.spontaneity !== undefined && ['genesis_thought', 'genesis_socialize', 'genesis_workspace'].includes(tool.name)) ||
           (tool.name === TOOLKIT_TOOL && toolkits.discoverable(agent)) ||
           (learned.includes(tool.name) && toolkits.exposed(agent, tool.name)),
       )
@@ -657,9 +663,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     async ({ agent, source }) => {
       if (!participates(agent)) return
       await core.bind(agent.session.id, source, ctx.tools.schemas(agent))
+      memoryBatcher?.attach(agent)
     },
     { global: true },
   )
+  for (const agent of ctx.agents.list()) if (participates(agent)) memoryBatcher?.attach(agent)
   ctx.on(
     'system-prompt/assemble',
     async (_assembly, context, next) => {
@@ -725,7 +733,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       }
       if (decision.kind === 'enter') {
         const update = lifeContextUpdate(agent.session, await refresh(agent))
-        if (update !== undefined) decision.messages.push(update)
+        if (update !== undefined) {
+          pendingMemoryContext.set(agent, update)
+          decision.messages.push(update)
+        } else pendingMemoryContext.delete(agent)
         const temporaryUpdate = await temporary.context(agent)
         if (temporaryUpdate !== undefined) decision.messages.push(temporaryUpdate)
       }
@@ -733,6 +744,17 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
     { global: true },
   )
+  ctx.on('agent/request', async ({ agent, signal }, next) => {
+    const request = await next()
+    if (!participates(agent)) return request
+    const pending = pendingMemoryContext.get(agent)
+    pendingMemoryContext.delete(agent)
+    const ids = new Set(retainedMemoryReadings(agent.session).map(reading => reading.id))
+    const current = await core.memoriesForContext(agent.id, ids)
+    signal.throwIfAborted()
+    trimMemoryContext(agent.session, config.memoryContextChars, pending, current, new Date(), config.timeZone)
+    return request
+  }, { global: true })
   ctx.on(
     'agent/request-error',
     async ({ agent, signal }, next) => {
@@ -749,11 +771,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   )
   ctx.on(
     'agent/disposed',
-    ({ agent }) => {
+    async ({ agent }) => {
       if (deliberation !== undefined)
         void deliberation.settle(agent, true).catch((error) => {
           ctx.logger.error(`Genesis decision settlement failed during disposal. Inspect life storage. ${statusFailure(error).message}`)
         })
+      await memoryBatcher?.forget(agent.session.id)
       memory?.forget(agent.session.id)
       replied.delete(agent.session.id)
       associations.delete(agent)
@@ -777,6 +800,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           })
       }
       memory?.observe(session.id, event)
+      if (memoryBatcher !== undefined) {
+        if (event.type === 'turn/start' || event.type === 'user/message') memoryBatcher.activity(session.id)
+        if (event.type === 'turn/end' && event.data.reason.kind === 'completed') {
+          const agent = ctx.agents.get(session.id)
+          if (agent !== undefined) memoryBatcher.schedule(agent)
+        }
+      }
       if (event.type === 'user/message' && isHumanSource(event.data.source)) consolidation?.activity()
       if (event.type === 'turn/start') replied.delete(session.id)
       if (
@@ -803,6 +833,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         return
       }
       if (event.type !== 'user/message' && event.type !== 'tool/result') return
+      if (event.surfaceOp !== 'append') return
       if (event.type === 'user/message' && !isHumanSource(event.data.source)) return
       if (event.type === 'user/message') userEvidence.set(session.id, event)
       // Life facts never emit Session events; live evidence is bounded to the latest user and pending calls.
@@ -824,6 +855,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
             kind: 'tool-result' as const,
             ...(toolName === undefined ? {} : { tool: toolName }),
             success: !event.data.message.isError,
+            ...(config.memoryDynamics !== undefined && toolName === 'genesis_recall' && !event.data.message.isError
+              && event.data.message.content.length === 1 && event.data.message.content[0]?.type === 'text'
+              ? { readings: recallResultReadings(event.data.message.content[0].text) } : {}),
           }
       void core.observe(observation).catch((error: unknown) => {
         ctx.logger.error(

@@ -5,10 +5,37 @@ import { RemoteError, remoteErrorOf, type RemoteFailure } from '@deepseek-ai/dsh
 import type { ReviewStage } from './status-types.ts'
 import { GenesisError } from './error.ts'
 
+function inputType(input: unknown): string {
+  if (input === undefined) return 'missing'
+  if (input === null) return 'null'
+  return Array.isArray(input) ? 'array' : typeof input
+}
+
+function validationDetail(issue: z.core.$ZodIssue): string {
+  if (issue.code === 'invalid_type') {
+    const received = 'input' in issue ? `; received=${inputType(issue.input)}` : ''
+    const required = 'input' in issue && issue.input === undefined ? ' (required field)' : ''
+    const hint = issue.path.length === 1 && issue.path[0] === 'changes' && issue.expected === 'array'
+      ? '; the memory writer must return a changes array, including "changes": [] when no item changes are needed' : ''
+    return `; expected=${issue.expected}${received}${required}${hint}`
+  }
+  if (issue.code === 'invalid_value') {
+    const allowed = new Set(['upsert', 'delete', 'declarative', 'non-declarative', 'episodic', 'semantic', 'self', 'procedural', 'user-stated', 'model-inference'])
+    return issue.values.every(value => typeof value === 'string' && allowed.has(value))
+      ? `; allowed=${issue.values.join('|')}` : ''
+  }
+  if (issue.code === 'invalid_format') {
+    const formats = new Set(['uuid', 'date', 'time', 'datetime', 'email', 'url'])
+    return formats.has(issue.format) ? `; expected format=${issue.format}` : ''
+  }
+  return ''
+}
+
 /**
  * Preserve owned diagnostics and classify transport/validation failures without disclosing response bodies or input values.
  * @param error - Rejected life settings operation.
- * @returns A failure with a stable code and safe diagnostic; the original cause remains Host-only.
+ * @returns A failure with a stable code, field path and schema constraints. Retained inputs contribute only their type.
+ * The original cause remains Host-only.
  */
 export function statusFailure(error: unknown): RemoteFailure {
   const remote = remoteErrorOf(error)
@@ -35,21 +62,22 @@ export function statusFailure(error: unknown): RemoteFailure {
       'appraisal', 'novelty', 'expectationMatch', 'controllability', 'relationshipMeaning', 'responsibility', 'summary', 'shortSummary',
       'relationshipDelta', 'affection', 'trust', 'attachment', 'familiarity', 'feltSecurity', 'label',
       'relationshipEnabled', 'maxRelationshipDelta', 'moodSupportTurns', 'importantEventThreshold', 'repetitionDiscount', 'maxNeedsDelta', 'needsHalfLifeMs', 'interactionHalfLifeMs', 'socialDesire', 'socialSatisfaction', 'relationshipQuality', 'recentInteraction', 'solitudePreference', 'exploration', 'autonomy', 'creativity', 'loneliness',
-      'changes', 'action', 'sourceSeqs', 'memory', 'category', 'importance', 'confidence', 'attribution',
+      'changes', 'experience', 'action', 'sourceSeqs', 'memoryIds', 'memory', 'category', 'importance', 'confidence', 'attribution',
+      'topics', 'organization', 'subjects', 'paths', 'personId', 'text',
       'motivations', 'goals', 'candidates', 'selected', 'strength', 'status', 'interestIds', 'memoryIds', 'sourceEventIds',
       'origin', 'motivationIds', 'priority', 'nextAction', 'failures', 'disposition', 'goalIds', 'factors', 'createdAt', 'updatedAt',
       'motivation', 'interest', 'commitment', 'benefit', 'cost', 'risk', 'urgency', 'relationship', 'context',
       'offlineChanges', 'moodEmotionScale', 'emotionMoodInfluence', 'clockCheckpointMs',
       'enabled', 'sessionId', 'intervalMs', 'minSendIntervalMs', 'maxPer24Hours', 'userIdleMs', 'eventImportance', 'maxPending', 'maxPendingAgeMs'])
     message = error.issues.slice(0, 8).map((issue) => {
-      const path = issue.path.filter(part => typeof part === 'number' || fields.has(String(part))).join('.') || 'configuration/response'
+      const path = issue.path.map(part => typeof part === 'number' || fields.has(String(part)) ? part : '<unrecognized field>').join('.') || 'configuration/response'
       const bound = 'minimum' in issue ? `; minimum=${String(issue.minimum)}` : 'maximum' in issue ? `; maximum=${String(issue.maximum)}` : ''
       const keys = issue.code === 'unrecognized_keys' ? issue.keys.filter(key => fields.has(key)).slice(0, 8) : []
       const unknown = issue.code === 'unrecognized_keys' ? issue.keys.length - keys.length : 0
       const fieldsText = keys.length ? `; fields=${keys.join(',')}` : ''
       const unknownText = issue.code === 'unrecognized_keys'
         ? `${unknown > 0 ? `; unknown fields=${unknown}` : ''}; inspect the logged auxiliary response` : ''
-      return `${path}: ${issue.code}${bound}${fieldsText}${unknownText}`
+      return `${path}: ${issue.code}${validationDetail(issue)}${bound}${fieldsText}${unknownText}`
     }).join('; ')
   } else if (error instanceof HarnessError) {
     if (error.code === 'GENESIS_DELIBERATION_FAILED'
@@ -81,5 +109,9 @@ export function statusFailure(error: unknown): RemoteFailure {
  */
 export function reviewFailure(stage: ReviewStage, error: unknown): RemoteError<'genesis/review'> {
   const diagnostic = statusFailure(error)
-  return new RemoteError('genesis/review', diagnostic.message, { stage, reason: diagnostic.code }, { cause: error })
+  const subject: Record<ReviewStage, string> = { evidence: 'Conversation evidence', configuration: 'Memory configuration',
+    decision: 'Memory decision response', retrieval: 'Memory retrieval', writer: 'Memory writer response',
+    embedding: 'Memory embedding', storage: 'Memory storage' }
+  const message = error instanceof z.ZodError ? `${subject[stage]} failed validation. ${diagnostic.message}` : diagnostic.message
+  return new RemoteError('genesis/review', message, { stage, reason: diagnostic.code }, { cause: error })
 }

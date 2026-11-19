@@ -1,0 +1,3 @@
+- insert:
+    - id: genesis-see-now
+      name: '@deepseek-ai/dsh-genesis-see-now'

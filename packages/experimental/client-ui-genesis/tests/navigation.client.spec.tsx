@@ -32,6 +32,8 @@ it('groups daily-use sections into four sidebar destinations, retains selections
     apply(ctx) {
       ctx.effect(() => ctx.locale.register('genesis', { en, zh }))
       mountNavigation(ctx)
+      ctx.slots.inject('genesis.page', () => ctx.slots.register({ name: 'genesis.page', key: 'thoughts' }, () => <p>Private cognition controls</p>))
+      ctx.slots.inject('genesis.page', () => ctx.slots.register({ name: 'genesis.page', key: 'cognition-messages' }, () => <p>Channel policy and receipts</p>))
       ctx.slots.inject('genesis.page', () => ctx.slots.register({ name: 'genesis.page', key: 'mail' }, Section))
     },
   })
@@ -44,7 +46,7 @@ it('groups daily-use sections into four sidebar destinations, retains selections
   const cases = [
     { id: 'genesis', title: zh.homeTitle, sections: [zh.title, zh.emotionTitle, zh.thoughtsTitle] },
     { id: 'genesis-memories', title: zh.memoryPageTitle, sections: [zh.memoryPageTitle, zh.personalityTitle, zh.recordsTitle] },
-    { id: 'genesis-actions', title: zh.actionsWorkspaceTitle, sections: [zh.tasksTitle, zh.agencyTitle, zh.outboxTitle] },
+    { id: 'genesis-actions', title: zh.actionsWorkspaceTitle, sections: [zh.tasksTitle, zh.agencyTitle] },
     { id: 'genesis-people', title: zh.peopleWorkspaceTitle, sections: [zh.contactsTitle, zh.peopleTitle, zh.mailTitle] },
   ]
   const slot = runtime.renderSlot('main', {}, { entryKey: 'genesis' })
@@ -59,13 +61,17 @@ it('groups daily-use sections into four sidebar destinations, retains selections
     await waitFor(() => {
       expect(page.getByRole('button', { name: last }).getAttribute('aria-current')).toBe('page')
     })
+    if (destination.id === 'genesis') {
+      expect(page.getByText('Private cognition controls')).toBeTruthy()
+      expect(page.getByText('Channel policy and receipts')).toBeTruthy()
+    }
     if (destination.id === 'genesis-people') {
       fireEvent.click(page.getByRole('button', { name: 'Return to conversation' }))
       expect(selectPanel).toHaveBeenCalledWith(null)
     }
   }
   slot.update({}, { entryKey: 'genesis-actions' })
-  expect(page.getByRole('button', { name: zh.outboxTitle }).getAttribute('aria-current')).toBe('page')
+  expect(page.getByRole('button', { name: zh.agencyTitle }).getAttribute('aria-current')).toBe('page')
   await feature.dispose()
   expect(runtime.slots.entriesOfSlot('main')).toHaveLength(0)
   expect(runtime.slots.entriesOfSlot('sidebar.panellist')).toHaveLength(0)

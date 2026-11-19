@@ -116,14 +116,17 @@ export function relativeMemoryTime(value: string, now: Date, timeZone: string): 
  * @param timeZone - Deployment calendar zone.
  * @returns Serializable reading without embeddings; date anchors remain exact, time anchors and record timestamps become relative.
  */
-export function readMemory(memory: LifeMemory, now: Date, timeZone: string): Omit<LifeMemory, 'embedding'> {
+export function readMemory(memory: LifeMemory, now: Date, timeZone: string): Omit<LifeMemory, 'embedding' | 'contentChangedAt'> {
   const prose = (text: string) => text.split(markers).map((part, index) => index % 2 === 1
     ? part.startsWith('date:') ? exactDate(part.slice(5)) : relativeMemoryTime(part.slice(5), now, timeZone)
     : part).join('')
   const timestamp = (value: string) => relativeMemoryTime(dateKey(new Date(value), timeZone), now, timeZone)
   const habit = (value: NonNullable<LifeMemory['habit']>) => ({ ...value, cue: prose(value.cue), response: prose(value.response) })
-  const { embedding: _embedding, ...view } = memory
+  const { embedding: _embedding, contentChangedAt: _contentChangedAt, ...view } = memory
   return { ...view, content: prose(memory.content), createdAt: timestamp(memory.createdAt), updatedAt: timestamp(memory.updatedAt),
+    ...(memory.summaries === undefined ? {} : { summaries: {
+      brief: prose(memory.summaries.brief), medium: prose(memory.summaries.medium), detail: prose(memory.summaries.detail),
+    } }),
     ...(memory.habit === undefined ? {} : { habit: habit(memory.habit) }),
     ...(memory.experience === undefined ? {} : { experience: { ...memory.experience,
       startedAt: timestamp(memory.experience.startedAt), endedAt: timestamp(memory.experience.endedAt),

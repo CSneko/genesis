@@ -64,3 +64,67 @@ it('refuses forged intermediate citations and stops before exceeding the overvie
     })).rejects.toThrow('maxCalls')
   expect(calls).toBe(1)
 })
+
+it('treats omitted overview citation lists as empty without coercing invalid field values', () => {
+  const schema = z.object(overviewReferences(150))
+  const id = randomUUID()
+  expect(schema.parse({ sourceSeqs: [4] })).toEqual({ sourceSeqs: [4], memoryIds: [] })
+  expect(schema.parse({ memoryIds: [id] })).toEqual({ sourceSeqs: [], memoryIds: [id] })
+  expect(schema.safeParse({ sourceSeqs: '4', memoryIds: null }).success).toBe(false)
+  expect(schema.safeParse({ sourceSeqs: [4], memoryIds: ['invented-memory'] }).success).toBe(false)
+})
+
+it('retains chat citations when the overview writer omits an empty memory list', async () => {
+  const prepared = await prepareConversationOverview(input, 'Final overview', models, config, signal, async () =>
+    ({ text: '用户谈到了植物图案。', sourceSeqs: [4] }))
+  expect(prepared.sourceSeqs).toEqual(new Set([4]))
+  expect(prepared.memoryIds.size).toBe(0)
+})
+
+it('rejects overview notes with no citations instead of inventing references', async () => {
+  await expect(prepareConversationOverview(input, 'Final overview', models, config, signal, async () =>
+    ({ text: '没有引用的推断' }))).rejects.toThrow()
+  await expect(prepareConversationOverview(input, 'Final overview', models, config, signal, async () =>
+    ({ text: '没有引用的推断', sourceSeqs: [], memoryIds: [] }))).rejects.toThrow()
+})
+
+it('supplies exact citation choices and repairs a fabricated reference using the same evidence', async () => {
+  const requests: Array<Record<string, unknown>> = []
+  const parts: string[] = []
+  const invented = randomUUID()
+  const prepared = await prepareConversationOverview(input, 'Final overview', models, config, signal, async (system, value) => {
+    requests.push(value)
+    if (models.writer.kind === 'provider') throw new Error('Expected HTTP fixture')
+    expect(JSON.stringify(endpointRequest(models.writer, `${system}\n\n${PARTICIPANT_GUIDANCE}\n\n${MEMORY_TIME_GUIDANCE}`,
+      value, config.maxTokens)).length).toBeLessThanOrEqual(config.inputChars)
+    const supplied = z.object({ allowedReferences: z.object({ sourceSeqs: z.array(z.number()), memoryIds: z.array(z.string()) }),
+      citationRetry: z.boolean(), evidence: z.array(z.object({ text: z.string() })) }).parse(value)
+    expect(supplied.allowedReferences).toEqual({ sourceSeqs: [4], memoryIds: [] })
+    if (requests.length === 1) return { text: '无效来源', sourceSeqs: [999], memoryIds: [invented] }
+    for (const part of supplied.evidence) parts.push(part.text)
+    return { text: '用户谈到了植物图案。', sourceSeqs: [4], memoryIds: [] }
+  })
+  expect(requests[1]!['citationRetry']).toBe(true)
+  expect(requests[1]!['evidence']).toEqual(requests[0]!['evidence'])
+  expect(requests[1]!['previous']).toEqual(requests[0]!['previous'])
+  expect(requests[2]!['citationRetry']).toBe(false)
+  expect(parts.join('')).toBe(text)
+  expect(prepared.sourceSeqs).toEqual(new Set([4]))
+  expect(prepared.memoryIds.size).toBe(0)
+})
+
+it('bounds citation repair attempts and keeps invented sources rejected', async () => {
+  let calls = 0
+  await expect(prepareConversationOverview(input, 'Final overview', models, config, signal, async () => {
+    calls++
+    return { text: '来源仍然无效', sourceSeqs: [999], memoryIds: [] }
+  })).rejects.toThrow('not supplied')
+  expect(calls).toBe(1 + config.overview.maxCitationRetries)
+  calls = 0
+  await expect(prepareConversationOverview(input, 'Final overview', models,
+    { ...config, overview: { ...config.overview, maxCalls: 2 } }, signal, async () => {
+      calls++
+      return { text: '来源仍然无效', sourceSeqs: [999], memoryIds: [] }
+    })).rejects.toThrow('maxCalls')
+  expect(calls).toBe(1)
+})

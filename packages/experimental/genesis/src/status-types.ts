@@ -263,8 +263,12 @@ export interface MemoryCatalog {
   browser?: MemoryBrowserCatalog['browser']
 }
 
-/** Declarative organization selection, independent of the legacy memory category. */
+/** Memory categories, organization and explicit source relationships selected before pagination. */
 export interface MemoryBrowserFilter {
+  /** Optional legacy category filter applied before paging. */
+  category?: LifeMemory['category'] | undefined
+  /** Select this memory and records sharing explicit source events or experience references. */
+  relatedTo?: MemoryId | undefined
   type?: NonNullable<LifeMemory['organization']>['type'] | undefined
   path?: string[] | undefined
   subject?: { name: string; personId?: import('./people-model.ts').PersonId | undefined; memoryId?: MemoryId | undefined } | undefined

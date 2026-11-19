@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-punishment/README.md
+/:
+  en: 3bab86c9e281042e
+  zh: 414791cabdb0c420
+/deepseek-ai-dsh-genesis-punishment:
+  en: 72354c4bfe8be958
+  zh: 641becb2e0b59a80
+/deepseek-ai-dsh-genesis-punishment/summary:
+  en: d17f5ce0b4d56e67
+  zh: 72c28ff3c0d8da54
+/deepseek-ai-dsh-genesis-punishment/table-of-contents:
+  en: 23386452a66b2fbd
+  zh: 5176718abae48f36
+/deepseek-ai-dsh-genesis-punishment/use-this-package:
+  en: 1f5ca14e98442008
+  zh: 27ad35485305b19d
+/deepseek-ai-dsh-genesis-punishment/understand-the-implementation:
+  en: 66b5af4da5580517
+  zh: f0edaaf02faa8693
+/deepseek-ai-dsh-genesis-punishment/further-exploration:
+  en: 5d20b7551465ab8c
+  zh: 12c0539155cdf6f3
+/deepseek-ai-dsh-genesis-punishment/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-genesis-punishment/model-experience/configured-tool-and-delivery-result:
+  en: 805c7d9775ea6c99
+  zh: 7744c6dbaba8a9e7
+/deepseek-ai-dsh-genesis-punishment/model-experience/configured-tool-and-delivery-result/what-the-model-sees:
+  en: 276251588b038f42
+  zh: 2f11d11ae22e9783
+/deepseek-ai-dsh-genesis-punishment/model-experience/configured-tool-and-delivery-result/token-effect:
+  en: ddf9df3d6f65e833
+  zh: b3d09a48c0d4020c
+/deepseek-ai-dsh-genesis-punishment/model-experience/configured-tool-and-delivery-result/kv-cache-effect:
+  en: aa3186365374b9be
+  zh: 331cf05f1c38188e
+/deepseek-ai-dsh-genesis-punishment/known-limitations-and-deferred-work:
+  en: 5410a9fac2fd48e6
+  zh: 6e737a63ea639d16
+/deepseek-ai-dsh-genesis-punishment/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

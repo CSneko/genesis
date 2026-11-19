@@ -521,3 +521,58 @@ it('saves manually selected knowledge classification and its directory path', as
     ),
   )
 })
+
+it('explores only the current memory page in 3D and opens the selected sourced record without writing', async () => {
+  const preference = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+  vi.stubGlobal('matchMedia', () => preference)
+  const { props, save, remove, convert } = fixture()
+  const other: LifeMemory = { ...sample, id: brandString<LifeMemory['id']>('2ad3d042-eb44-4e98-8983-5c1ab187596a'),
+    content: 'A shared walk by the sea.', category: 'episodic' }
+  props.browse = vi.fn().mockResolvedValue({ ok: true, value: { items: [sample, other], total: 51, nextOffset: 2 } })
+  const mounted = render(<MemoryPanel {...props} />)
+  await screen.findByText(sample.content)
+  fireEvent.click(screen.getByRole('button', { name: en.memoryStarView }))
+  expect(screen.getByText('Showing 2 memories from the current page and filters')).toBeTruthy()
+  const star = screen.getByRole('button', { name: other.content })
+  fireEvent.keyDown(star, { key: 'Enter' })
+  expect(star.getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByText(other.content, { selector: 'p' })).toBeTruthy()
+  expect(screen.queryByText(sample.content, { selector: 'p' })).toBeNull()
+  fireEvent.change(screen.getByRole('combobox', { name: en.starMapSelect }), { target: { value: sample.id } })
+  expect(screen.getByText(sample.content, { selector: 'p' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: en.starMapRotate }).hasAttribute('disabled')).toBe(true)
+  fireEvent.change(screen.getByRole('slider', { name: en.starMapZoom }), { target: { value: '1.4' } })
+  fireEvent.click(screen.getByRole('button', { name: en.starMapReset }))
+  expect((screen.getByRole('slider') as HTMLInputElement).value).toBe('1')
+  fireEvent.click(screen.getByRole('button', { name: en.memoryListView }))
+  expect(screen.queryByRole('group', { name: en.starMapTitle })).toBeNull()
+  expect(screen.getByText(other.content, { selector: 'p' })).toBeTruthy()
+  expect(save).not.toHaveBeenCalled()
+  expect(remove).not.toHaveBeenCalled()
+  expect(convert).not.toHaveBeenCalled()
+  mounted.unmount()
+  expect(preference.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function))
+})
+
+
+it('searches the complete memory store from star categories and sourced related-memory filters', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
+  const { props, browse } = fixture()
+  render(<MemoryPanel {...props} />)
+  await screen.findByText(sample.content)
+  fireEvent.click(screen.getByRole('button', { name: en.memoryStarView }))
+  fireEvent.click(screen.getByRole('button', { name: 'Search Knowledge memories' }))
+  await waitFor(() => expect(browse).toHaveBeenLastCalledWith('', 'all', 0, expect.any(AbortSignal),
+    { category: 'semantic', navigationOffset: 0 }))
+  fireEvent.change(screen.getByRole('textbox', { name: en.starMapSearch }), { target: { value: 'oolong' } })
+  fireEvent.click(screen.getByRole('button', { name: en.starMapSearch }))
+  await waitFor(() => expect(browse).toHaveBeenLastCalledWith('oolong', 'all', 0, expect.any(AbortSignal),
+    { category: 'semantic', navigationOffset: 0 }))
+  fireEvent.click(screen.getByRole('button', { name: sample.content }))
+  fireEvent.click(screen.getByRole('button', { name: en.starMapFindRelated }))
+  await waitFor(() => expect(browse).toHaveBeenLastCalledWith('', 'all', 0, expect.any(AbortSignal),
+    { relatedTo: sample.id, navigationOffset: 0 }))
+  expect(screen.getByText(en.starMapRelatedFilter)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: en.starMapClearFilters }))
+  await waitFor(() => expect(browse).toHaveBeenLastCalledWith('', 'all', 0, expect.any(AbortSignal), { navigationOffset: 0 }))
+})

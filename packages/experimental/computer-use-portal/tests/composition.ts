@@ -9,9 +9,11 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import { LlmAdapter, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { isJsonValue } from '@deepseek-ai/dsh-util-values'
 import { expect } from 'vitest'
 import type {} from '@deepseek-ai/dsh-agent-loop'
+import { ComputerUseProviderName } from '@deepseek-ai/dsh-computer-use/brand'
 import type {} from '@deepseek-ai/dsh-computer-use'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-user-questions'
@@ -45,7 +47,7 @@ export async function check(interactive: boolean, signal: AbortSignal, python?: 
   try {
     const config = join(root, 'cordis.yml')
     await writeFile(config, JSON.stringify([
-      ...['llm', 'session', 'session-projection', 'system-prompt', 'tools', 'agent', 'subprocess-local', 'computer-use']
+      ...['llm', 'session', 'session-projection', 'system-prompt', 'tools', 'tool-executor-native', 'agent', 'subprocess-local', 'computer-use']
         .map(name => ({ name: `@deepseek-ai/dsh-${name}` })),
       { name: '@deepseek-ai/dsh-attachment-local', config: { dshHome: root } },
       { name: '@deepseek-ai/dsh-experimental-computer-use-portal', config: { consentTimeoutMs: 30000, callTimeoutMs: 5000, accessibilityTimeoutMs: 1000, requireApplicationConsent: semantic !== 'automatic', ...(python === undefined ? {} : { python }) } },
@@ -133,9 +135,21 @@ export async function check(interactive: boolean, signal: AbortSignal, python?: 
       expect(JSON.stringify(results[0])).toContain('not-granted')
       expect(JSON.stringify(results[1])).toContain('consent-required')
     }
+    expect(ctx.computerUse.captureSources()).toEqual([ComputerUseProviderName('host-desktop')])
+    if (python !== undefined && interactive && semantic === undefined) {
+      await expect(ctx.computerUse.capture(ComputerUseProviderName('host-desktop'), agent.id, signal))
+        .rejects.toMatchObject({ code: 'capture-failed' })
+      const connected = await executeToolFixture(ctx, { callId: ToolCallId('capture-reconnect'), name: 'computer',
+        arguments: { action: 'connect' }, agent, signal })
+      expect(connected.isError).toBe(false)
+      const capture = await ctx.computerUse.capture(ComputerUseProviderName('host-desktop'), agent.id, signal)
+      expect(capture.png.byteLength).toBeGreaterThan(0)
+      expect(Number.isFinite(Date.parse(capture.capturedAt))).toBe(true)
+    }
     const provider = [...ctx.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-experimental-computer-use-portal')
     await provider?.fiber?.dispose()
     expect(ctx.computerUse.providerName).toBeUndefined()
+    expect(ctx.computerUse.captureSources()).toEqual([])
     expect(ctx.tools.schemas().find(tool => tool.name === 'computer')).toBeUndefined()
   } finally {
     await ctx.fiber.dispose()

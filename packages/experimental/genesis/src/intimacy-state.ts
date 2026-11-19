@@ -97,14 +97,15 @@ export function withoutIntimacy(state: EmotionState): Omit<EmotionState, 'intima
 }
 
 /**
- * Exclude private intimacy projections and their appraisal text from general history tools.
+ * Exclude private intimacy projections and internal memory retention evidence from general history tools.
  * @param events - Retained immutable life records.
- * @returns Records without intimacy configuration or emotion snapshots containing intimacy.
+ * @returns Life records safe to present as general history.
  */
 export function publicLifeEvents(events: LifeEvent[]): LifeEvent[] {
   return events.filter(
     event =>
       !event.type.startsWith('intimacy.') &&
+      !['memory.recalled', 'memory.matured', 'memory.policystarted'].includes(event.type) &&
       !['before', 'after', 'state'].some((key) => {
         const value = event.payload[key]
         return value !== null && typeof value === 'object' && !Array.isArray(value) && value['intimacy'] !== undefined

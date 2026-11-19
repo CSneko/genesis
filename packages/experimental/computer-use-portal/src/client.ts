@@ -106,12 +106,31 @@ export class PortalClient {
    * @returns Canonical MCP content for the shared attachment and tool-result adapter.
    */
   call(owner: SessionId, args: { action: string; appId?: string }, signal: AbortSignal): Promise<unknown> {
+    return this.request(owner, args, signal, false)
+  }
+
+  /**
+   * Capture through an existing worker without restarting sharing or interrupting other consumers.
+   * Cancellation before dispatch prevents capture; cancellation after dispatch drains the bounded read and discards its result.
+   * @param owner - Session whose existing grant applies.
+   * @param signal - Caller cancellation; an in-flight read may take up to callTimeoutMs to settle.
+   * @returns Canonical MCP screenshot content, or a cancellation rejection after the read settles.
+   */
+  capture(owner: SessionId, signal: AbortSignal): Promise<unknown> {
+    return this.request(owner, { action: 'screenshot' }, signal, true)
+  }
+
+  private request(
+    owner: SessionId, args: { action: string; appId?: string }, signal: AbortSignal, readOnlyCapture: boolean,
+  ): Promise<unknown> {
     const combined = AbortSignal.any([signal, this.lifetime.signal])
     const operation = this.tail.catch((_reportedFailure: unknown) => {
       // The preceding caller owns its failure; its worker has already settled.
     }).then(async () => {
       combined.throwIfAborted()
       if (args.action === 'release' && this.handle === undefined) return undefined
+      if (readOnlyCapture && this.handle === undefined)
+        throw new Error('Desktop capture requires a running shared connection. Reconnect before observing.')
       await this.start()
       combined.throwIfAborted()
       const handle = this.handle
@@ -124,16 +143,20 @@ export class PortalClient {
         if (!('id' in value) || value.id !== id) { this.fail(new Error('Desktop worker response ID mismatch. Reconnect before acting.')); return }
         response.resolve(value.result)
       }
-      const abort = () => { this.fail(new Error('Desktop operation interrupted; delivered input is not rolled back. Reconnect and inspect before retrying.')) }
+      const abort = () => {
+        if (readOnlyCapture && !this.lifetime.signal.aborted) return
+        this.fail(new Error('Desktop operation interrupted; delivered input is not rolled back. Reconnect and inspect before retrying.'))
+      }
       combined.addEventListener('abort', abort, { once: true })
       const timeoutMs = args.action === 'connect' ? this.config.consentTimeoutMs + this.config.callTimeoutMs : this.config.callTimeoutMs
       const timeout = setTimeout(() => {
         const diagnostic = handle.collected.stderr?.readFrom(0).text ?? ''
         this.fail(new Error(`Desktop ${args.action} timed out after ${timeoutMs} ms; desktop access was closed. Reconnect and inspect before retrying input. ${diagnostic}`))
       }, timeoutMs)
+      let result: unknown
       try {
         stdin.write(JSON.stringify({ id, owner, args }) + '\n', (error) => { if (error) this.fail(error) })
-        return await response.promise
+        result = await response.promise
       } catch (error) {
         handle.terminate()
         await handle.done
@@ -144,6 +167,8 @@ export class PortalClient {
         this.receive = undefined
         this.reject = undefined
       }
+      combined.throwIfAborted()
+      return result
     })
     this.tail = operation
     return operation

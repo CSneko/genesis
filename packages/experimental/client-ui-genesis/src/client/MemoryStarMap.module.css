@@ -1,0 +1,41 @@
+.map { min-width: 0; margin: 16px 0; border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); overflow: hidden; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; background: var(--dsw-alias-bg-layer-1); }
+.toolbar h4 { margin: 0; font-size: 15px; font-weight: 500; }
+.toolbar p, .footer p { margin: 4px 0 0; font-size: 13px; color: var(--dsw-alias-label-secondary); line-height: 1.6; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.stage { position: relative; background: radial-gradient(ellipse at 50% 45%, #12223c, #060c18 75%); color: #dbe8ff; }
+.scene { display: block; width: 100%; height: clamp(300px, 50vw, 480px); touch-action: none; cursor: grab; }
+.scene:active { cursor: grabbing; }
+.orbit { fill: none; stroke: #738eaf; stroke-width: 0.6; stroke-dasharray: 3 9; opacity: 0.3; pointer-events: none; }
+.link { stroke: currentColor; stroke-width: 0.8; pointer-events: none; }
+.episodic { color: #79caff; }
+.semantic { color: #8ce5c4; }
+.self { color: #c4a6ff; }
+.procedural { color: #ffcb85; }
+.coreHalo { fill: #b9cfff; opacity: 0.08; }
+.core { fill: #e0eaff; }
+.coreLabel { fill: #e0eaff; text-anchor: middle; font-size: 15px; font-weight: 500; }
+.star { outline: none; }
+.star[role='button'] { cursor: pointer; }
+.hit { fill: transparent; }
+.glow { fill: currentColor; opacity: 0.08; pointer-events: none; }
+.dot { fill: currentColor; pointer-events: none; }
+.label { fill: currentColor; text-anchor: middle; font-size: 13px; pointer-events: none; }
+.selection { fill: none; stroke: currentColor; stroke-width: 1.5; pointer-events: none; }
+.star:focus-visible .hit { stroke: #fff; stroke-width: 2; }
+.star:focus-visible .glow { opacity: 0.3; }
+@media (hover: hover) { .star[role='button']:hover .glow { opacity: 0.3; } }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 20px; padding: 0 16px 16px; font-size: 13px; }
+.legend > button { font: inherit; background: transparent; border: 0; padding: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.legend span span { opacity: 0.8; }
+.footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px 16px; }
+.footer p { flex: 1 1 100%; margin: 0; }
+.footer label, .picker label { font-size: 13px; }
+.footer input { min-width: 0; max-width: 100%; accent-color: var(--dsw-alias-label-primary); }
+.picker { display: grid; gap: 8px; padding: 0 16px 16px; }
+.picker select { width: 100%; min-width: 0; padding: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); font: inherit; font-size: 13px; }
+@media (pointer: coarse) { .picker select { font-size: 16px; } }
+
+.legend > button[aria-pressed='true'] { text-decoration: underline; text-underline-offset: 4px; }
+.legend > button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

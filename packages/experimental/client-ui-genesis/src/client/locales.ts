@@ -1,5 +1,24 @@
 /** Typed English and Chinese copy owned by the Genesis workspace and settings. @module */
 export const en = {
+  starMapSearch: 'Search the star map',
+  starMapSearchCategory: 'Search {category} memories',
+  starMapFindRelated: 'Find related memories',
+  starMapCategoryFilter: 'Category: {category}',
+  starMapRelatedFilter: 'Related by shared source events or experience references',
+  starMapClearFilters: 'Clear star map filters',
+
+  memoryListView: 'List',
+  memoryStarView: '3D star map',
+  starMapTitle: 'Memory constellation',
+  starMapScope: 'Showing {count} memories from the current page and filters',
+  starMapHint: 'Drag to rotate, scroll to zoom, select a star to inspect its memory. Lines show category membership; star size shows importance.',
+  starMapRotate: 'Auto-rotate',
+  starMapPause: 'Pause rotation',
+  starMapReset: 'Reset view',
+  starMapZoom: 'Zoom',
+  starMapSelect: 'Inspect a memory',
+  starMapSelectHint: 'Select a star or choose a memory',
+
   qqPermissionsTitle: 'QQ tool permissions',
   qqPermissionsHint:
     'Person rules override group rules. Within one scope, exact names override the same prefix; longer prefixes win. Use a tool name, prefix* or * for all tools. Allow opens learned or basic tools without toolkit activation, including full browser operations. Tool authorization and sandbox limits still apply. Unmatched tools keep existing defaults. Only the operator can manage permissions in chat with genesis_qq_permissions.',
@@ -70,7 +89,7 @@ export const en = {
   rhythmUnavailable: 'Could not refresh. Retained data may be stale; retry.',
   rhythmDisabled: 'This feature is unavailable in the current profile.',
   sleepTitle: 'Sleep and waking',
-  thoughtsTitle: 'Spontaneous thoughts',
+  thoughtsTitle: 'Cognition and initiative',
   'sleepMode.awake': 'Awake',
   'sleepMode.asleep': 'Asleep',
   'sleepMode.temporary': 'Temporarily awake',
@@ -848,7 +867,7 @@ export const en = {
   manualConversationScope: 'Whole conversation',
   manualConversationGenerate: 'Organize conversation memories',
   manualConversationDescription:
-    'Review all user and assistant chat text and every memory associated with this conversation. The AI decides what to keep, merge, update, delete or add. Tool output, injected context and reasoning are excluded. Long conversations are read in sections and saved together after organization succeeds. Failures retain the original memories.',
+    'Review user and assistant chat after the latest context compaction and memories sourced entirely from that range; without compaction, review the whole conversation. Earlier records and the compaction summary are excluded. The AI decides what to keep, merge, update, delete or add. Tool output, injected context and reasoning are excluded. Long conversations are read in sections and saved together after organization succeeds. Failures retain the original memories.',
   manualDescription:
     'Use this completed reply and bounded recent exchanges from the same conversation. Your choice bypasses the decision model; the independent writer extracts sourced memories. Automatic review remains enabled.',
   manualPending: 'Generating memory…',
@@ -1026,6 +1045,25 @@ export const en = {
 export type GenesisKey = keyof typeof en
 /** Simplified Chinese counterpart of the English dictionary. */
 export const zh: Record<GenesisKey, string> = {
+  starMapSearch: '检索星图',
+  starMapSearchCategory: '检索{category}记忆',
+  starMapFindRelated: '检索关联记忆',
+  starMapCategoryFilter: '类别：{category}',
+  starMapRelatedFilter: '关联依据：共同来源事件或经历引用',
+  starMapClearFilters: '清除星图筛选',
+
+  memoryListView: '列表',
+  memoryStarView: '3D 星图',
+  starMapTitle: '记忆星图',
+  starMapScope: '展示当前页及筛选内的 {count} 条记忆',
+  starMapHint: '拖动旋转，滚轮缩放，选择星点查看记忆。连线表示类别归属，星点大小表示重要程度',
+  starMapRotate: '自动旋转',
+  starMapPause: '暂停旋转',
+  starMapReset: '重置视角',
+  starMapZoom: '缩放',
+  starMapSelect: '查看一条记忆',
+  starMapSelectHint: '选择星点或从此处选择记忆',
+
   qqPermissionsTitle: 'QQ 工具权限',
   qqPermissionsHint:
     '个人规则优先于群规则；同范围内精确名称优先于同前缀，较长前缀优先。可填工具名、前缀* 或 *（全部工具）。允许规则直接开放已学会或基础工具，无需启用工具包，包含完整浏览器操作；工具自身授权和沙箱限制仍然生效。未匹配工具沿用原策略。仅操作者可在对话中通过 genesis_qq_permissions 管理权限。',
@@ -1095,7 +1133,7 @@ export const zh: Record<GenesisKey, string> = {
   rhythmUnavailable: '无法刷新，保留的数据可能已过时，请重试',
   rhythmDisabled: '当前配置未启用此功能',
   sleepTitle: '作息与睡眠',
-  thoughtsTitle: '自发认知',
+  thoughtsTitle: '自发认知与主动交流',
   'sleepMode.awake': '清醒',
   'sleepMode.asleep': '睡眠中',
   'sleepMode.temporary': '临时清醒',
@@ -1826,7 +1864,7 @@ export const zh: Record<GenesisKey, string> = {
   manualConversationScope: '整个对话',
   manualConversationGenerate: '总览整理当前对话',
   manualConversationDescription:
-    '结合整个会话的用户、助手聊天文本及全部关联记忆，由 AI 决定保留、合并、更新、删除或新增。排除工具输出、上下文注入和推理内容；长对话自动分段阅读，整理成功后统一保存，失败时保留原记忆',
+    '仅整理最近一次上下文压缩后的用户、助手聊天文本，以及来源全部属于该范围的记忆；没有压缩时整理整个对话。排除压缩前记录及压缩摘要，由 AI 决定保留、合并、更新、删除或新增。排除工具输出、上下文注入和推理内容；长对话自动分段阅读，整理成功后统一保存，失败时保留原记忆',
   manualDescription: '结合这条已完成回复与同一会话中有界的近期交流，跳过自动决策，由独立写入模型提炼带来源的记忆。每轮自动评估仍然保留',
   manualPending: '正在生成记忆…',
   manualSaved: '记忆已保存',

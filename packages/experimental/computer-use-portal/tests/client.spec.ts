@@ -62,3 +62,42 @@ it.skipIf(process.platform !== 'linux').each(['python.mjs', 'python-worker.py'])
   const result = await client.call(SessionId('large'), { action: 'large-response' }, new AbortController().signal)
   expect(result).toEqual({ payload: 'x'.repeat(512 * 1024) })
 })
+
+it('refuses screenshot without starting or restoring a stopped worker', async () => {
+  ctx = new Context()
+  await ctx.plugin(SubprocessLocal)
+  const spawn = vi.spyOn(ctx.subprocess, 'spawn')
+  client = new PortalClient(ctx, Config({ autoConnect: false }))
+  await expect(client.capture(SessionId('capture'), new AbortController().signal))
+    .rejects.toThrow('requires a running shared connection')
+  expect(spawn).not.toHaveBeenCalled()
+})
+
+it.skipIf(process.platform !== 'linux')('drains a cancelled read-only capture without closing the shared worker', async () => {
+  ctx = new Context()
+  await ctx.plugin(SubprocessLocal)
+  const handles: SubprocessHandle[] = []
+  const originalSpawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+  const spawn = vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
+    const handle = originalSpawn(spec)
+    handles.push(handle)
+    return handle
+  })
+  client = new PortalClient(ctx, Config({ python: fileURLToPath(new URL('./fixtures/python.mjs', import.meta.url)) }))
+  await client.start()
+  await client.call(SessionId('shared'), { action: 'connect' }, new AbortController().signal)
+  const stdin = handles[0]?.stdin
+  if (stdin === undefined) throw new Error('Capture fixture has no stdin')
+  const controller = new AbortController()
+  const write = stdin.write.bind(stdin)
+  const intercept = vi.spyOn(stdin, 'write').mockImplementation((...args: Parameters<typeof write>) => {
+    const result = write(...args)
+    controller.abort()
+    return result
+  })
+  await expect(client.capture(SessionId('shared'), controller.signal)).rejects.toThrow()
+  intercept.mockRestore()
+  const status = await client.call(SessionId('shared'), { action: 'status' }, new AbortController().signal)
+  expect(JSON.stringify(status)).toContain('granted')
+  expect(spawn).toHaveBeenCalledTimes(1)
+})

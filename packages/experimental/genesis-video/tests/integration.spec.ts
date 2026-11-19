@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-experimental-genesis'
 import type {} from '../src/index.ts'
 import { jobSchema } from '../src/model.ts'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
@@ -36,7 +37,7 @@ async function directory() {
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   return root
 }
-async function boot(root: string) {
+async function boot(root: string, drawai = false, externalDrawai?: string) {
   const path = join(root, 'cordis.yml')
   await writeFile(path, JSON.stringify([
     { name: '@deepseek-ai/dsh-llm' }, { name: '@deepseek-ai/dsh-session' },
@@ -53,7 +54,11 @@ async function boot(root: string) {
     { name: '@deepseek-ai/dsh-experimental-genesis', config: { leasePath: join(root, 'life.lock'), awakening: { provider: 'fixture', model: 'chat', lifePreset: 'life' }, memory: { decisionProvider: 'reviewer', decisionModel: 'decision', writerProvider: 'reviewer', writerModel: 'writer', embeddingUrl: 'https://video.invalid/embeddings', embeddingModel: 'fixture', embeddingDimensions: 2, associationLimit: 0, maxRetries: 0, consolidation: { enabled: false } } } },
     { name: '@deepseek-ai/dsh-session-persistence-jsonl', config: { root: join(root, 'sessions'), compression: 'none' } },
     { name: '@deepseek-ai/dsh-attachment-local', config: { dshHome: root } },
-    { name: '@deepseek-ai/dsh-experimental-genesis-video', config: { dataDir: join(root, 'video'), browserExecutable: browser } },
+    ...(externalDrawai ? [
+      { name: '@deepseek-ai/dsh-host-webserver', config: { host: '127.0.0.1', port: 0 } },
+      { name: pathToFileURL(externalDrawai).href },
+    ] : []),
+    { name: '@deepseek-ai/dsh-experimental-genesis-video', config: { dataDir: join(root, 'video'), browserExecutable: browser, drawai } },
     { name: '@deepseek-ai/dsh-agent-loop', config: { agents: [] } },
   ]))
   const ctx = new Context()
@@ -97,6 +102,107 @@ const saved = z.object({ projectId: z.uuid(), revisionId: z.uuid() })
 const jobResult = z.object({ projectId: z.uuid(), jobId: z.uuid(), state: z.string(),
   result: z.object({ message: z.string(), diagnostics: z.string() }).nullable() })
 const base = { title: '三段素材', width: 320, height: 180, fps: 10, duration: 30 }
+
+it('discovers installed canvas tools without teaching them and denies unmanaged media execution', async () => {
+  const root = await directory()
+  const ctx = await boot(root, true)
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['fixture'], new Model([]))
+  const agent = await create(ctx, 'drawai-policy')
+  const ordinary = await create(ctx, 'drawai-ordinary', 'standard')
+  let seq = 0
+  let edits = 0
+  const call = (name: string, args: object, owner = agent) => executeToolFixture(ctx, {
+    callId: ToolCallId(`drawai-${++seq}`), name, arguments: args, agent: owner, signal: new AbortController().signal,
+  })
+  expect((await ctx.genesisToolkits.inspect(new AbortController().signal)).managed).toBeUndefined()
+  const fixture = defineTool({ name: 'diagram_apply', description: 'External canvas fixture.',
+    parameters: { path: { type: 'string' }, ops: { type: 'array', items: { type: 'json' } } },
+    output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }, execute: async () => { edits++; return { edited: true } },
+  })
+  const remove = ctx.tools.register(fixture)
+  ctx.tools.register(defineTool({ name: 'motion_render', description: 'External renderer fixture.',
+    parameters: { action: { type: 'string' } }, output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: async () => { throw new Error('The unmanaged renderer must never execute.') },
+  }))
+  expect((await ctx.genesisToolkits.inspect(new AbortController().signal)).managed).toMatchObject([{ id: 'drawai', tools: ['diagram_apply'] }])
+  expect(await call('diagram_apply', { path: 'story.drawai', ops: [{ op: 'addNode' }] })).toMatchObject({ isError: true })
+  expect(await call('learn', { name: 'diagram_apply' })).toMatchObject({ isError: false })
+  expect(await call('genesis_toolkit', { action: 'enable', id: 'drawai' })).toMatchObject({ isError: false })
+  const edited = await call('diagram_apply', { path: 'story.drawai', ops: [{ op: 'addNode' }] })
+  if (edited.isError) throw new Error(JSON.stringify(edited.error))
+  expect(await call('diagram_apply', { path: 'story.drawai', ops: [{ op: 'extractFrames' }] })).toMatchObject({ isError: true })
+  expect(await call('diagram_apply', { ops: [{ op: 'addNode' }] })).toMatchObject({ isError: true })
+  expect(await call('diagram_apply', { path: 'story.drawai', ops: [{ op: 'addNode' }] }, ordinary)).toMatchObject({ isError: true })
+  expect(await call('learn', { name: 'motion_render' })).toMatchObject({ isError: false })
+  expect(await call('motion_render', { action: 'start' })).toMatchObject({ isError: true })
+  expect(edits).toBe(1)
+  remove()
+  expect((await ctx.genesisToolkits.inspect(new AbortController().signal)).managed).toBeUndefined()
+  expect(ctx.genesis.learningStatus().tools).toContain('diagram_apply')
+  ctx.tools.register(fixture)
+  expect((await ctx.genesisToolkits.inspect(new AbortController().signal)).managed).toMatchObject([{ id: 'drawai' }])
+  const plugin = [...ctx.loader.entries()].find(entry => entry.options.name === '@deepseek-ai/dsh-experimental-genesis-video')!
+  await plugin.fiber!.dispose()
+  expect((await ctx.genesisToolkits.inspect(new AbortController().signal)).managed).toBeUndefined()
+  expect(await call('diagram_apply', { path: 'story.drawai', ops: [{ op: 'addNode' }] }, ordinary)).toMatchObject({ isError: false })
+})
+
+it.skipIf(!process.env.GENESIS_DRAWAI_PLUGIN)('imports a real DrawAI PNG into a durable video revision and restores it', async () => {
+  const root = await directory()
+  const ctx = await boot(root, true, process.env.GENESIS_DRAWAI_PLUGIN)
+  expect(ctx.tools.get('diagram_apply')).toBeDefined()
+  await ctx.genesis.awaken('小芽')
+  const model = new Model([{ name: 'genesis_video', args: { action: 'guide' } }, '素材已导入，可以继续制作。'])
+  ctx.llm.registerAdapter(['fixture'], model)
+  const agent = await create(ctx, 'drawai-assets')
+  let seq = 0
+  const call = async (name: string, args: object) => {
+    const result = await executeToolFixture(ctx, { callId: ToolCallId(`drawai-real-${++seq}`), name, arguments: args,
+      agent, signal: new AbortController().signal })
+    if (result.isError) throw new Error(JSON.stringify(result.error))
+    return result.value
+  }
+  for (const name of ['diagram_apply', 'diagram_read', 'diagram_export', 'genesis_video']) await call('learn', { name })
+  for (const id of ['drawai', 'video']) await call('genesis_toolkit', { action: 'enable', id })
+  const path = join(root, 'external.drawio')
+  const original = '<mxfile><diagram id="cover" name="Cover"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="title" value="Genesis 创作" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="240" height="100" as="geometry"/></mxCell><mxCell id="footer" value="Keep the complete canvas" style="text;" vertex="1" parent="1"><mxGeometry x="40" y="160" width="240" height="30" as="geometry"/></mxCell></root></mxGraphModel></diagram><diagram id="notes" name="Notes"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="note" value="Second page retained" vertex="1" parent="1"><mxGeometry x="20" y="20" width="200" height="80" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>'
+  await writeFile(path, original)
+  const cover = JSON.stringify(await call('diagram_read', { path, page: 0 }))
+  expect(cover).toContain('Genesis 创作')
+  expect(cover).toContain('Keep the complete canvas')
+  expect(cover).toContain('#d5e8d4')
+  expect(JSON.stringify(await call('diagram_read', { path, page: 1 }))).toContain('Second page retained')
+  const exported = z.object({ absolute: z.string(), format: z.literal('png') }).parse(await call('diagram_export', { path, format: 'png' }))
+  expect(await readFile(path, 'utf8')).toBe(original)
+  expect((await readFile(exported.absolute)).subarray(1, 4).toString()).toBe('PNG')
+  const initial = saved.parse(await call('genesis_video', { action: 'save', input: { ...base, duration: 5, timeline: { clips: [] } } }))
+  const imported = z.object({ asset: z.string() }).parse(await call('genesis_video', { action: 'import', input: { projectId: initial.projectId, path: exported.absolute } }))
+  const revision = saved.parse(await call('genesis_video', { action: 'save', input: { ...base, duration: 5,
+    projectId: initial.projectId, parentRevision: initial.revisionId,
+    timeline: { clips: [{ kind: 'image', asset: imported.asset, from: 0, duration: 5, fade: 0.5 }], texts: [{ text: 'Genesis', from: 0, duration: 5 }] } } }))
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '查看当前视频与画布能力。' }] }))
+  await agent.whenIdle()
+  expect(JSON.stringify(agent.session.ownEvents())).toContain('DrawAI and Genesis projects remain separate')
+  expect(JSON.stringify(agent.session.ownEvents())).toContain('A complete existing .drawio or .drawai canvas may be opened, reused and exported as a whole')
+  if (process.env.GENESIS_VIDEO_CHROMIUM) {
+    const render = jobResult.parse(await call('genesis_video', { action: 'render', input: { ...revision, mode: 'final', wait: true } }))
+    expect(render.state, JSON.stringify(render)).toBe('completed')
+    const artifact = z.object({ attachment: z.object({ bytes: z.number() }) }).parse(await call('genesis_video', {
+      action: 'status', input: { projectId: render.projectId, jobId: render.jobId, deliver: true },
+    }))
+    expect(artifact.attachment.bytes).toBeGreaterThan(1000)
+    if (process.env.GENESIS_DRAWAI_VIDEO_ARTIFACT) await writeFile(process.env.GENESIS_DRAWAI_VIDEO_ARTIFACT,
+      await readFile(join(root, 'video', render.projectId, 'jobs', render.jobId, 'output.mp4')))
+  }
+  const identity = (await ctx.genesis.snapshot()).identity
+  await ctx.fiber.dispose()
+  const next = await boot(root, true, process.env.GENESIS_DRAWAI_PLUGIN)
+  expect((await next.genesis.snapshot()).identity).toEqual(identity)
+  expect(next.genesis.learningStatus().tools).toContain('diagram_export')
+  expect(await readFile(join(root, 'video', revision.projectId, 'revisions', revision.revisionId + '.json'), 'utf8')).toContain(imported.asset)
+  expect((await next.genesisToolkits.inspect(new AbortController().signal)).managed).toMatchObject([{ id: 'drawai' }])
+})
 
 it.skipIf(!process.env.GENESIS_VIDEO_CHROMIUM)('edits clips and resumes after restart', async () => {
   const root = await directory()

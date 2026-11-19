@@ -58,6 +58,8 @@ kind: "package-reference"
 | `accessibilityTimeoutMs` | `5000` | 遍历与单个 AT-SPI 请求期限；须小于 `callTimeoutMs` 的一半 |
 | `processGraceMs` | `1000` | 受管 worker 终止宽限时间 |
 
+提供方也注册只读的 `host-desktop` 采集来源，供 Genesis 屏幕观察等集成使用。它复用当前共享授权及调用方 Session，返回 PNG 字节，不发送输入。集成采集要求工作进程仍在运行；不会重启已停止的进程或请求替代授权。取消已发送的读取时，会等待有界响应后丢弃结果，保留共享连接，除非工作进程本身失败或超时。
+
 ### 观察、操作与验证
 
 调用 `computer` 的 `action: status` 可在不请求授权的情况下检查访问。`connect` 通过 GNOME 请求共享一个显示器、键盘和指针。`autoConnect: false` 时，授权归调用聊天所有，直到 `disconnect`、系统撤销、Agent 释放、工作进程中断或 DSH 退出。手动连接不保存或恢复权限。autoConnect 模式下，Agent 释放保留部署级授权。该模式要求 RemoteDesktop portal 版本 2 并返回恢复令牌；不支持持久授权、拒绝授权、令牌文件不可读或损坏、令牌写入失败均会拒绝启动。令牌每次恢复后轮换。系统撤销或已保存显示器不可用时，可能再次显示系统对话框。`disconnect` 关闭当前连接；GNOME 权限设置可撤销记住的授权。须先停止 DSH，再删除令牌文件以重置保存的授权。

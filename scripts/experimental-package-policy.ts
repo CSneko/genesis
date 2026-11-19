@@ -6,6 +6,8 @@
  * experimental name only through this map.
  */
 export const EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'packages/experimental/genesis-punishment': '@deepseek-ai/dsh-genesis-punishment',
+  'packages/experimental/genesis-see-now': '@deepseek-ai/dsh-genesis-see-now',
   'packages/experimental/genesis-weather': '@deepseek-ai/dsh-genesis-weather',
   'packages/experimental/cua': '@deepseek-ai/dsh-cua',
   'packages/experimental/cua-bundle': '@deepseek-ai/dsh-cua-bundle',

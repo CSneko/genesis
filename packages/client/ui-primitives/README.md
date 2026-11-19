@@ -13,6 +13,8 @@ Use `dsh-client-ui-primitives` to build web-client controls and render agent out
 
 When `labels.media` is supplied, `![Description](<path>)` embeddings use native audio controls for MP3, WAV, OGG/OGA, M4A, AAC, FLAC and Opus, and video controls for MP4, WebM, OGV, MOV and M4V. Embedded files retain a download link, including files without a preview and failed media loads. Playback does not start automatically; codec support depends on the browser. Local media uses the existing path resolver after the message settles. Remote downloads remain subject to browser origin rules.
 
+`extractMarkdownFilePaths(text)` collects decoded local file destinations and path-like prose using the renderer’s GFM grammar. It strips line selectors, deduplicates paths and ignores fenced code, HTML, external URLs and unused link definitions; callers own file existence checks, authorization and downloads.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

@@ -1,4 +1,8 @@
 # Apply after cordis.patch.yml; add the Genesis UI overlay for interactive first-run naming.
+- id: sandbox-policy
+  config:
+    mode: !!js process.env.DSH_PERMISSION_MODE ?? 'danger-full-access'
+
 - id: agent-default-model
   config:
     provider: !!js process.env.GENESIS_CHAT_PROVIDER ?? 'deepseek-official'
@@ -11,6 +15,8 @@
   config:
     leasePath: !!js dshHomePath('genesis.writer.lock')
     memorySharing: life
+    memoryDynamics:
+      forgetting: true
     maxRecords: 100000
     maxStateChars: 50000000
     personalDirectory: !!js dshHomePath('personal')
@@ -29,6 +35,7 @@
       provider: !!js process.env.GENESIS_CHAT_PROVIDER ?? 'deepseek-official'
       model: !!js process.env.GENESIS_CHAT_MODEL ?? 'deepseek-v4-flash'
     memory:
+      backfillSummaries: true
       decisionProvider: !!js process.env.GENESIS_DECISION_PROVIDER ?? process.env.GENESIS_CHAT_PROVIDER ?? 'deepseek-official'
       decisionUrl: !!js process.env.GENESIS_DECISION_URL ?? 'https://api.typesafe.ai/v1/systemone'
       decisionKeyEnv: GENESIS_DECISION_API_KEY

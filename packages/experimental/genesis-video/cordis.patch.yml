@@ -3,6 +3,7 @@
     - id: genesis-video
       name: '@deepseek-ai/dsh-experimental-genesis-video'
       config:
+        drawai: true
         dataDir: !!js dshHomePath('video-projects')
         browserExecutable: !!js process.env.GENESIS_VIDEO_CHROMIUM ?? ''
         ffprobeExecutable: !!js process.env.GENESIS_VIDEO_FFPROBE ?? 'ffprobe'

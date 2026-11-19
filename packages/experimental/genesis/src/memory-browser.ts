@@ -13,6 +13,8 @@ import { GenesisError } from './error.ts'
 
 /** Filters are validated at the remote request parser, independently of the current page. */
 export const memoryBrowserFilterSchema = z.strictObject({
+  category: z.enum(['episodic', 'semantic', 'self', 'procedural']).optional(),
+  relatedTo: z.uuid().transform(brandString<MemoryId>).optional(),
   type: z.enum(['knowledge', 'person', 'event', 'unclassified']).optional(),
   path: z.array(z.string().min(1).max(80)).max(8).optional(),
   subject: z
@@ -46,10 +48,18 @@ export function memoryBrowserPage(
   filter: MemoryBrowserFilter,
   config: Config,
 ): MemoryBrowserCatalog {
+  const anchor = filter.relatedTo === undefined ? undefined : state.memories.find(memory => memory.id === filter.relatedTo)
+  if (filter.relatedTo !== undefined && anchor === undefined)
+    throw new GenesisError('invalid-source', 'The selected memory was removed. Clear the related-memory filter and search again.')
+  const sources = new Set(anchor?.sourceEventIds ?? [])
+  const experiences = new Set(anchor === undefined ? [] : [anchor.id, ...(anchor.experienceIds ?? [])])
   const declarative = state.memories.filter(memory => memoryOrganization(memory) !== undefined)
   const eligible = state.memories
     .filter(
       memory =>
+        (filter.category === undefined || memory.category === filter.category) &&
+        (anchor === undefined || memory.id === anchor.id || memory.sourceEventIds.some(source => sources.has(source))
+          || experiences.has(memory.id) || memory.experienceIds?.some(id => experiences.has(id))) &&
         (kind === 'all' || (memory.kind ?? (memory.category === 'procedural' ? 'non-declarative' : 'declarative')) === kind) &&
         organizationMatches(memory, {
           ...(filter.type === undefined || filter.subject !== undefined ? {} : { type: filter.type }),

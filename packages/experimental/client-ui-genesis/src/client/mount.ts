@@ -6,6 +6,7 @@ import mailContribution from '@deepseek-ai/dsh-experimental-genesis-mail/remote'
 import { mountMail } from './mail-mount.ts'
 import companionContribution from '@deepseek-ai/dsh-experimental-genesis-companion/remote'
 import { mountCompanion } from './companion-mount.ts'
+import { mountPunishment } from './punishment-mount.tsx'
 import { mountWeather } from './weather-mount.tsx'
 import { mountSpeech } from './speech-mount.tsx'
 import { mountGenesisPlugins } from './plugins-mount.tsx'
@@ -132,6 +133,7 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
       mountTemporary(scope)
       mountSpeech(scope)
       mountWeather(scope)
+      mountPunishment(scope)
       mountBrowser(scope)
       mountPurge(scope)
       mountIntimacy(scope)
@@ -139,10 +141,9 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
         scope.slots.register(
           {
             name: 'genesis.page',
-            key: 'outbox',
+            key: 'cognition-messages',
             locale: 'genesis',
             inject: (): InitiativeActions => ({
-              view: 'activity',
               refresh: () => {
                 resource.refresh()
               },
@@ -257,31 +258,6 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
       scope.on('connection/reset', () => {
         resource.refresh()
       })
-      scope.slots.inject('settings.section', () =>
-        scope.slots.register(
-          {
-            name: 'settings.section',
-            id: 'genesis-initiative',
-            order: 21,
-            locale: 'genesis',
-            label: () => scope.locale.bind('genesis')('initiativePolicyTitle'),
-            inject: (): InitiativeActions => ({
-              view: 'settings',
-              refresh: () => {
-                resource.refresh()
-              },
-              saveSettings: async (...args) => {
-                try {
-                  return await scope.remote.genesisInitiativeStatus.saveSettings(...args)
-                } finally {
-                  resource.refresh()
-                }
-              },
-            }),
-          },
-          InitiativePanel,
-        ),
-      )
       scope.effect(() => {
         const refresh = () => {
           resource.refresh()

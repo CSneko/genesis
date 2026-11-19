@@ -6,8 +6,13 @@ import { GenesisError } from './error.ts'
 import { retainMemoryHistory } from './memory-history.ts'
 import type { LifeState, MemoryId, LifeEventId, LifeMemory, MemoryHabit, MemoryInput, MemoryEmbedding } from './model.ts'
 
-/** Actual user evidence grouped by completed Session turn, independent of manual saves. */
-export interface ReviewEvidence { sessionId: SessionId; turn: number; userEventIds: LifeEventId[] }
+interface ReviewTurnEvidence { turn: number; userEventIds: LifeEventId[] }
+
+/** Actual user evidence for the final completed turn and any earlier turns in the same review batch. */
+export interface ReviewEvidence extends ReviewTurnEvidence {
+  sessionId: SessionId
+  earlierTurns?: ReviewTurnEvidence[]
+}
 /** Non-destructive consolidation replacement; source experiences are retained. */
 export interface ConsolidationChange {
   id?: MemoryId

@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-see-now/README.md
+/:
+  en: 7599ceb9bd4ead78
+  zh: ef636369f7ceb5ad
+/deepseek-ai-dsh-genesis-see-now:
+  en: 82720728dceb1596
+  zh: 3c97d631889b3ea7
+/deepseek-ai-dsh-genesis-see-now/summary:
+  en: 7673c522a88f4615
+  zh: ad0d18b692e579b0
+/deepseek-ai-dsh-genesis-see-now/table-of-contents:
+  en: 990504b7974bdecf
+  zh: 94d2ffd5e25e13f6
+/deepseek-ai-dsh-genesis-see-now/use:
+  en: 0b094821c9c39ded
+  zh: 652efe4873687672
+/deepseek-ai-dsh-genesis-see-now/configuration:
+  en: 4db672c4a9a57ad2
+  zh: 1b893b4c32d2919f
+/deepseek-ai-dsh-genesis-see-now/implementation:
+  en: 000658122cfbf7c9
+  zh: 84913d65d99b89e0
+/deepseek-ai-dsh-genesis-see-now/further-exploration:
+  en: 0cb4c34d36f26b13
+  zh: dea4a96138aba065
+/deepseek-ai-dsh-genesis-see-now/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-genesis-see-now/model-experience/screen-observation:
+  en: 0458e780306963df
+  zh: 68c583a5d1325f41
+/deepseek-ai-dsh-genesis-see-now/model-experience/screen-observation/what-the-model-sees:
+  en: 5d7fdb47a4475b08
+  zh: 995ae93ae35ad792
+/deepseek-ai-dsh-genesis-see-now/model-experience/screen-observation/token-effect:
+  en: 8856dd12c96fd80d
+  zh: ab6f0b834cd824bc
+/deepseek-ai-dsh-genesis-see-now/model-experience/screen-observation/kv-cache-effect:
+  en: 015f9490a9cdff22
+  zh: 950194e722524303
+/deepseek-ai-dsh-genesis-see-now/known-limitations-and-deferred-work:
+  en: 081879f93057fb67
+  zh: e508dab01dcc555e
+/deepseek-ai-dsh-genesis-see-now/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

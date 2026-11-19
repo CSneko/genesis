@@ -1,3 +1,5 @@
+import { CompactionId } from '@deepseek-ai/dsh-compaction'
+import { compactCheckpointSource } from '@deepseek-ai/dsh-compaction/checkpoint'
 import type { LifeGoalId } from '@deepseek-ai/dsh-experimental-genesis'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
@@ -104,7 +106,7 @@ function genesisAuditRecord(event: SessionEvent) {
 }
 async function boot(
   root: string,
-  activation: boolean | Pick<Config, 'memorySharing'> = true,
+  activation: boolean | (Pick<Config, 'memorySharing'> & { memoryContextChars?: number; memoryDynamics?: Partial<NonNullable<Config['memoryDynamics']>> }) = true,
   memory?: MemoryConfig,
   awakening = false,
   credentials = false,
@@ -120,6 +122,7 @@ async function boot(
   taskServices = false,
   spontaneity?: Partial<SpontaneityConfig>,
   defaultModel?: { provider: string; model: string },
+  sandboxMode?: 'workspace-write' | 'danger-full-access',
 ) {
   const configPath = join(root, 'cordis.yml')
   await writeFile(
@@ -149,7 +152,7 @@ async function boot(
       '    backend: json',
       "- name: '@deepseek-ai/dsh-sandbox-policy'",
       '  config:',
-      `    mode: ${personal ? 'workspace-write' : 'read-only'}`,
+      `    mode: ${sandboxMode ?? (personal ? 'workspace-write' : 'read-only')}`,
       `    workspaceRoot: ${JSON.stringify(root)}`,
       ...(personal
         ? [
@@ -177,7 +180,9 @@ async function boot(
       `  disabled: ${!activation}`,
       '  config:',
       `    leasePath: ${JSON.stringify(join(root, 'writer.lock'))}`,
-      ...(typeof activation === 'boolean' ? [] : [`    memorySharing: ${activation.memorySharing}`]),
+      ...(typeof activation === 'boolean' ? [] : [`    memorySharing: ${activation.memorySharing}`,
+        ...(activation.memoryContextChars === undefined ? [] : [`    memoryContextChars: ${activation.memoryContextChars}`]),
+        ...(activation.memoryDynamics === undefined ? [] : [`    memoryDynamics: ${JSON.stringify(activation.memoryDynamics)}`])]),
       ...(emotion ? [`    emotion: ${JSON.stringify(emotion === true ? {} : emotion)}`] : []),
       ...(personality === undefined ? [] : [`    personality: ${JSON.stringify(personality)}`]),
       ...(interest ? ['    interest: {}'] : []),
@@ -1227,7 +1232,10 @@ it('restores a life across two actual Agent Sessions and Loader restarts, with d
   agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Please remember: I prefer oolong tea' }], source: { kind: 'user' } }))
   await agent.whenIdle()
   const initial = await first.genesis.snapshot()
+  const fullSnapshot = vi.spyOn(first.genesis, 'snapshot').mockRejectedValue(new Error('Overview must select before copying'))
   const status = await first.genesisStatus.inspect(new AbortController().signal)
+  expect(fullSnapshot).not.toHaveBeenCalled()
+  fullSnapshot.mockRestore()
   expect(status.identity.id).toBe(initial.identity.id)
   expect(status.runtime.liveSessions).toBe(1)
   expect(status.counts.memories).toBe(initial.memories.length)
@@ -1364,6 +1372,8 @@ async function embeddingFixture() {
     embeddingUrl: `http://127.0.0.1:${address.port}/embeddings`,
     embeddingModel: 'fixture-embedding',
     embeddingDimensions: 3,
+    batchTurns: 1,
+    batchIdleMs: 180000,
     windowTurns: 1,
     timeoutMs: 5000,
     maxRetries: 0,
@@ -1375,7 +1385,10 @@ async function embeddingFixture() {
     organizationLimit: 20,
     identityRewriteLimit: 100,
     maxChanges: 8,
-    overview: { maxCalls: 64, timeoutMs: 5000, maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384 },
+    overview: {
+      maxCalls: 64, maxCitationRetries: 1, requestTimeoutMs: 1000, timeoutMs: 5000,
+      maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384,
+    },
     maxImplicitMemories: 4,
     minSimilarity: 0.8,
     consolidation: {
@@ -1419,6 +1432,7 @@ class MemoryWriter extends ScriptedModel {
       .parse(JSON.parse(input.text)).conversation
     const user = conversation.find(message => message.role === 'user')!
     const assistant = conversation.find(message => message.role === 'assistant')!
+    const sourceSeqs = [this.invalidAttribution ? assistant.seq : user.seq]
     const memory = {
       category: 'semantic',
       content: 'The user prefers oolong.',
@@ -1428,10 +1442,10 @@ class MemoryWriter extends ScriptedModel {
       attribution: 'user-stated',
     }
     const changes = [
-      { action: 'upsert', sourceSeqs: [this.invalidAttribution ? assistant.seq : user.seq], memory },
+      { action: 'upsert', sourceSeqs, memory },
       {
         action: 'upsert',
-        sourceSeqs: [user.seq],
+        sourceSeqs,
         memory: { ...memory, content: 'Use a gentle tone.', category: 'procedural', kind: 'non-declarative' },
       },
     ]
@@ -1852,6 +1866,110 @@ it('organizes whole conversation text and related memories atomically, excludes 
   expect(await restored.genesis.getMemory(retained.id)).toEqual(edited)
 })
 
+it('reports a writer response missing changes with its expected type and repair guidance without exposing its contents', async () => {
+  const root = await directory()
+  const config = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, config)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":true}']))
+  ctx.llm.registerAdapter(['memory-writer'], new ScriptedModel([
+    '{"experience":{"summary":"private model response"}}', '{"changes":"private wrong type"}',
+  ]))
+  ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['聊天回复仍然正常完成。']))
+  const agent = await ctx.agentLoop.create(SessionId('memory-writer-schema-diagnostic'), { provider: 'fixture', model: 'chat' })
+  const originalMemories = (await ctx.genesis.snapshot()).memories
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '一起完成作品是一段值得记住的经历。' }] }))
+  await agent.whenIdle()
+  await waitForMemoryReview(ctx, agent.session, 'failed')
+  const review = (await ctx.genesisStatus.inspect(new AbortController().signal)).review
+  if (review?.state !== 'failed') throw new Error('Expected rejected writer output')
+  expect(review.failure.stage).toBe('writer')
+  expect(review.failure.message).toContain('Memory writer response failed validation')
+  expect(review.failure.message).toContain('changes: invalid_type; expected=array; received=missing (required field)')
+  expect(review.failure.message).toContain('"changes": [] when no item changes are needed')
+  expect(review.failure.message).not.toContain('private model response')
+  const state = await ctx.genesis.snapshot()
+  expect(state.memories).toEqual(originalMemories)
+  expect(state.events.some(event => event.type === 'memory.reviewed')).toBe(false)
+  await expect(ctx.genesisMemory.overview(agent.id, brandString<MemoryOrganizationId>(randomUUID()), new AbortController().signal))
+    .rejects.toThrow('changes: invalid_type; expected=array; received=string')
+  expect((await ctx.genesis.snapshot()).memories).toEqual(originalMemories)
+})
+
+it('limits manual overview to chat and memories after the latest committed compaction across restart', async () => {
+  const root = await directory()
+  const config = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(root, true, config, false, false, false, true)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":false}', '{"update":false}']))
+  ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['压缩前的旧回复。', '压缩后的新回复。']))
+  const agent = await ctx.agentLoop.create(SessionId('overview-compaction'), { provider: 'fixture', model: 'chat' })
+  const signal = new AbortController().signal
+  const send = async (text: string) => {
+    agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
+    await agent.whenIdle()
+    await waitForMemoryReview(ctx, agent.session, 'skipped')
+  }
+  await send('压缩前的旧话题。')
+  const oldSource = (await ctx.genesis.snapshot()).events.find(event => event.relatedSessionId === agent.id && event.source === 'user')!
+  const oldMemory = await ctx.genesis.remember({ category: 'semantic', content: '压缩前已经保存的旧记忆。',
+    kind: 'declarative', attribution: 'user-stated', importance: 0.5, confidence: 0.7, sourceEventIds: [oldSource.id] })
+  const historical = await ctx.genesis.remember({ category: 'semantic', content: '压缩前的历史版本。',
+    kind: 'declarative', attribution: 'user-stated', importance: 0.5, confidence: 0.7, sourceEventIds: [oldSource.id] })
+  const failedId = CompactionId(randomUUID())
+  agent.session.append('compaction/start', { compactionId: failedId, turn: null })
+  agent.session.append('compaction/end', { compactionId: failedId, turn: null, error: 'fixture summary failed' })
+  expect(ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)?.messages).toHaveLength(2)
+
+  const firstChatSeq = ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)!.messages[0]!.seq
+  const nodes = agent.session.surface.nodes.filter(seq => seq >= firstChatSeq)
+  const startSeq = nodes[0]!, endSeq = nodes.at(-1)!
+  const compactionId = CompactionId(randomUUID())
+  const start = agent.session.append('compaction/start', { compactionId, turn: null })
+  const summary = agent.session.append('compaction/summary', { compactionId,
+    summary: [{ type: 'text', text: '压缩摘要也不能作为原始证据重新带入。' }],
+    shadowedRange: { start: startSeq, end: endSeq }, shadowedSeqs: nodes, shadowedTokenCount: 100,
+    provider: 'fixture', model: 'summary' })
+  const checkpoint = agent.session.append('user/message', createUserMessage({ source: compactCheckpointSource(compactionId),
+    content: [{ type: 'text', text: '压缩摘要也不能作为原始证据重新带入。' }] }),
+  { surfaceOp: { op: 'replace', startSeq, endSeq }, sourceEventSeqs: [start.seq, summary.seq, ...nodes] })
+  agent.session.append('compaction/end', { compactionId, turn: null })
+  expect(ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)).toEqual({ afterSeq: checkpoint.seq, messages: [] })
+  await expect(ctx.genesisMemory.overview(agent.id, brandString<MemoryOrganizationId>(randomUUID()), signal)).rejects.toThrow('after the latest compaction')
+  await send('压缩后的新话题。')
+  const newSource = (await ctx.genesis.snapshot()).events.findLast(event => event.relatedSessionId === agent.id && event.source === 'user')!
+  const current = await ctx.genesis.remember({ category: 'semantic', content: '压缩后保存的新记忆。', kind: 'declarative',
+    attribution: 'user-stated', importance: 0.5, confidence: 0.7, sourceEventIds: [newSource.id] })
+  const mixed = await ctx.genesis.remember({ category: 'semantic', content: '混合了压缩前后证据的记忆。', kind: 'declarative',
+    attribution: 'model-inference', importance: 0.5, confidence: 0.7, sourceEventIds: [oldSource.id, newSource.id] })
+  await ctx.genesis.reviewMemory('fixture-post-compaction-revision', [{ action: 'upsert', id: historical.id,
+    input: { category: 'semantic', content: '当前来源已换成压缩后的证据，但保留旧版本。', kind: 'declarative',
+      attribution: 'model-inference', importance: 0.5, confidence: 0.7, sourceEventIds: [newSource.id] } }])
+  const revised = await ctx.genesis.getMemory(historical.id)
+  expect(revised?.history?.[0]?.sourceEventIds).toEqual([oldSource.id])
+  const before = ctx.genesisSessionEvidence.conversationMemoryOf(agent.session)
+  await ctx.fiber.dispose()
+
+  const restored = await boot(root, true, config, false, false, false, true)
+  const { agent: resumed } = await restored.agents.resume({ resumeSessionId: agent.id })
+  expect(restored.genesisSessionEvidence.conversationMemoryOf(resumed.session)).toEqual(before)
+  const writer = new ScriptedModel(['{"changes":[]}', JSON.stringify({ changes: [{ action: 'delete', id: oldMemory.id }] })])
+  restored.llm.registerAdapter(['memory-writer'], writer)
+  expect(await restored.genesisMemory.overview(resumed.id, brandString<MemoryOrganizationId>(randomUUID()), signal)).toBe(false)
+  const block = writer.requests[0]!.messages[0]!.content.find(block => block.type === 'text')!
+  if (block.type !== 'text') throw new Error('Missing overview evidence')
+  const input = z.object({
+    conversation: z.array(z.object({ text: z.string() })),
+    memories: z.array(z.object({ id: z.string() })),
+  }).parse(JSON.parse(block.text))
+  expect(input.conversation.map(message => message.text)).toEqual(['压缩后的新话题。', '压缩后的新回复。'])
+  expect(input.memories.map(memory => memory.id)).toEqual([current.id])
+  expect(block.text).not.toContain('压缩前的旧话题')
+  expect(block.text).not.toContain('压缩摘要也不能')
+  await expect(restored.genesisMemory.overview(resumed.id, brandString<MemoryOrganizationId>(randomUUID()), signal)).rejects.toThrow('unprovided or duplicate memory')
+  expect(await restored.genesis.getMemory(oldMemory.id)).toEqual(oldMemory)
+  expect(await restored.genesis.getMemory(mixed.id)).toEqual(mixed)
+  expect(await restored.genesis.getMemory(historical.id)).toEqual(revised)
+})
+
 it('saves valid overview entries despite invalid neighbors, retains deletions and replays the partial result after restart', async () => {
   const root = await directory()
   const embeddings = await embeddingFixture()
@@ -1896,14 +2014,15 @@ it('saves valid overview entries despite invalid neighbors, retains deletions an
       },
       { ...upsert, id: randomUUID() },
       { ...upsert, sourceSeqs: [], memoryIds: [] },
+      { action: 'upsert', memory },
       { action: 'delete', id: original.id },
-      upsert,
+      { action: 'upsert', sourceSeqs: [seq], memory },
     ],
   }
   const writer = new ScriptedModel([
     JSON.stringify(plan),
     JSON.stringify({ changes: [{ ...upsert, memory: { ...memory, summary: '长'.repeat(41) } }] }),
-    JSON.stringify({ changes: [{ ...upsert, memory: { ...memory, content: '用户也谈到了饮茶。' } }] }),
+    JSON.stringify({ changes: [{ action: 'upsert', memoryIds: [original.id], memory: { ...memory, content: '用户也谈到了饮茶。' } }] }),
     JSON.stringify({ changes: [upsert] }),
   ])
   ctx.llm.registerAdapter(['memory-writer'], writer)
@@ -2090,6 +2209,192 @@ it('prepares oversized conversation evidence with over one hundred citations, pr
   expect(await restored.genesisMemory.overview(resumed.id, id, signal)).toBe(true)
 })
 
+
+it('batches completed memory exchanges and resumes a partial idle batch without reviewing settled messages again', async () => {
+  const root = await directory()
+  expect(Genesis.Config({ leasePath: join(root, 'writer.lock'), memory: {} }).memory).toMatchObject({ batchTurns: 4, batchIdleMs: 180000, windowTurns: 8 })
+  const config = { ...(await embeddingFixture()).config, batchTurns: 4, batchIdleMs: 180000, windowTurns: 8, associationLimit: 0 }
+  const first = await boot(root, true, config, false, false, false, true)
+  const decision = new ScriptedModel(['{"update":false}'])
+  first.llm.registerAdapter(['memory-decision'], decision)
+  first.llm.registerAdapter(['fixture'], new ScriptedModel(Array.from({ length: 6 }, (_, i) => `回答${i + 1}`)))
+  const agent = await first.agentLoop.create(SessionId('memory-batches'), { provider: 'fixture', model: 'chat' })
+  const send = async (text: string) => {
+    agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
+    await agent.whenIdle()
+  }
+  for (let i = 1; i <= 3; i++) await send(`交流${i}`)
+  expect(decision.requests).toHaveLength(0)
+  await send('交流4')
+  await waitForMemoryReview(first, agent.session, 'skipped')
+  expect(decision.requests).toHaveLength(1)
+  const readInput = (request: GenerateOptions) => {
+    const block = request.messages[0]!.content.find(block => block.type === 'text')!
+    if (block.type !== 'text') throw new Error('Missing batch evidence')
+    return z.object({ conversation: z.array(z.object({ seq: z.number(), role: z.string(), text: z.string() })),
+      newSourceSeqs: z.array(z.number()),
+      clock: z.object({ now: z.string(), timeZone: z.string() }).optional(),
+    }).parse(JSON.parse(block.text))
+  }
+  const initial = readInput(decision.requests[0]!)
+  expect(initial.newSourceSeqs).toHaveLength(8)
+  expect(initial.clock).toBeDefined()
+  expect(decision.requests[0]!.system).not.toContain('organization')
+  await vi.waitFor(() => expect(first.genesisSessionEvidence.memoryBatchOf(agent.session)?.through).toBe(initial.newSourceSeqs.at(-1)))
+  await send('我喜欢一种茶。')
+  await send('是乌龙茶，每天下午都喝。')
+  expect(decision.requests).toHaveLength(1)
+  const identity = (await first.genesis.snapshot()).identity
+  await first.fiber.dispose()
+
+  const second = await boot(root, true, config, false, false, false, true)
+  const resumedDecision = new ScriptedModel(['{"update":true}'])
+  const writer = new ScriptedModel([])
+  writer.stream = async function* (options) {
+    this.requests.push(options)
+    const input = readInput(options)
+    expect(input.conversation).toHaveLength(12)
+    expect(input.newSourceSeqs).toHaveLength(4)
+    expect(input.newSourceSeqs.every(seq => !initial.newSourceSeqs.includes(seq))).toBe(true)
+    const users = input.conversation.filter(message => input.newSourceSeqs.includes(message.seq) && message.role === 'user')
+    yield* new ScriptedModel([JSON.stringify({ changes: [{ action: 'upsert', sourceSeqs: users.map(message => message.seq),
+      memory: { category: 'semantic', content: '用户自述每天下午喝乌龙茶。', kind: 'declarative', attribution: 'user-stated', importance: 0.6, confidence: 0.8 } }] })]).stream(options)
+  }
+  second.llm.registerAdapter(['memory-decision'], resumedDecision)
+  second.llm.registerAdapter(['memory-writer'], writer)
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  onTestFinished(() => { vi.useRealTimers() })
+  const { agent: resumed } = await second.agents.resume({ resumeSessionId: agent.id, agentOptions: { provider: 'fixture', model: 'chat' } })
+  expect(resumedDecision.requests).toHaveLength(0)
+  await vi.advanceTimersByTimeAsync(config.batchIdleMs)
+  vi.useRealTimers()
+  await waitForMemoryReview(second, resumed.session)
+  await vi.waitFor(() => expect(second.genesisSessionEvidence.memoryBatchOf(resumed.session)?.through)
+    .toBe(readInput(writer.requests[0]!).newSourceSeqs.at(-1)))
+  expect(resumedDecision.requests).toHaveLength(1)
+  expect(writer.requests).toHaveLength(1)
+  const state = await second.genesis.snapshot()
+  expect(state.identity).toEqual(identity)
+  expect(state.memories.filter(memory => memory.content === '用户自述每天下午喝乌龙茶。')).toHaveLength(1)
+  expect(state.memories.find(memory => memory.content === '用户自述每天下午喝乌龙茶。')?.sourceEventIds).toHaveLength(2)
+  await second.fiber.dispose()
+  const third = await boot(root, true, config, false, false, false, true)
+  const unused = new ScriptedModel([])
+  third.llm.registerAdapter(['memory-decision'], unused)
+  await third.agents.resume({ resumeSessionId: agent.id, agentOptions: { provider: 'fixture', model: 'chat' } })
+  expect(unused.requests).toHaveLength(0)
+  expect((await third.genesis.snapshot()).memories.filter(memory => memory.content === '用户自述每天下午喝乌龙茶。')).toHaveLength(1)
+})
+
+it('saves knowledge alongside invalid drafts and restores independent habit evidence from the same batch', async () => {
+  const root = await directory()
+  const memory = Genesis.Config({
+    leasePath: join(root, 'writer.lock'),
+    memory: {
+      decisionProvider: 'memory-decision', decisionModel: 'decision',
+      writerProvider: 'memory-writer', writerModel: 'writer',
+      batchTurns: 3, associationLimit: 0,
+    },
+  }).memory!
+  const config = { ...memory, consolidation: { ...memory.consolidation, enabled: false } }
+  const first = await boot(root, true, config, false, false, false, true)
+  const original = await first.genesis.remember({
+    category: 'self', kind: 'non-declarative', attribution: 'user-stated',
+    content: '认真听完对方再回答。', importance: 0.5, confidence: 0.7,
+    sourceEventIds: [(await first.genesis.snapshot()).events[0]!.id],
+  })
+  first.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":true}']))
+  first.llm.registerAdapter(['fixture'], new ScriptedModel(['明白。', '你好。', '好的。']))
+  const writer = new ScriptedModel([])
+  const content = '数据库事务要么全部提交，要么全部回滚。'
+  const organization = { version: 1, type: 'knowledge', paths: [['数据库', '事务']] }
+  const feedback = '用户表示喜欢简短温和的问候。'
+  writer.stream = async function* (options) {
+    const block = options.messages[0]?.content.find(item => item.type === 'text')
+    if (block?.type !== 'text') throw new Error('Missing writer request')
+    const input = z.object({
+      conversation: z.array(z.object({ role: z.string(), seq: z.number() })),
+      memories: z.array(z.object({ id: z.string() })),
+      recentExperienceIds: z.array(z.string()),
+    }).parse(JSON.parse(block.text))
+    expect(input.memories.map(({ id }) => id)).toContain(original.id)
+    expect(input.recentExperienceIds).toEqual([])
+    const sourceSeqs = input.conversation.filter(message => message.role === 'user').map(message => message.seq)
+    yield* new ScriptedModel([JSON.stringify({
+      experience: { id: randomUUID(), sourceSeqs, summary: '聊过事务和打招呼的方式。', topics: [], importance: 0.6, confidence: 0.7 },
+      changes: [
+        { action: 'delete', id: original.id },
+        { action: 'upsert', sourceSeqs: sourceSeqs.slice(0, 1), memory: {
+          category: 'semantic', kind: 'declarative', attribution: 'user-stated', content, organization, importance: 0.6, confidence: 0.7,
+        } },
+        { action: 'upsert', sourceSeqs, memory: {
+          category: 'semantic', kind: 'declarative', attribution: 'user-stated', content: feedback,
+          organization: { version: 1, type: 'person', subjects: [{ name: '用户' }] }, importance: 0.6, confidence: 0.7,
+        } },
+        { action: 'upsert', sourceSeqs, memory: {
+          category: 'procedural', kind: 'non-declarative', attribution: 'model-inference',
+          content: '打招呼时保持简短温和。', importance: 0.6, confidence: 0.7,
+        } },
+      ],
+    })]).stream(options)
+  }
+  first.llm.registerAdapter(['memory-writer'], writer)
+  const agent = await first.agentLoop.create(SessionId('memory-draft-recovery'), { provider: 'fixture', model: 'chat' })
+  for (const text of ['事务的提交和回滚是原子的，平常打招呼简短一些。', '打招呼的时候，用简短又温和的语气。', '以后见面时，简单温和地说声你好就行。']) {
+    agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
+    await agent.whenIdle()
+  }
+  await waitForMemoryReview(first, agent.session)
+  const saved = await first.genesis.snapshot()
+  expect(saved.memories).toContainEqual(original)
+  expect(saved.memories.find(memory => memory.content === content)?.organization).toEqual(organization)
+  expect(saved.memories.map(memory => memory.content)).not.toContain('聊过事务和打招呼的方式。')
+  expect(saved.memories.map(memory => memory.content)).not.toContain('打招呼时保持简短温和。')
+  expect(saved.events.filter(event => event.type === 'memory.reviewed').map(event => event.payload['changes'])).toEqual([2])
+  await first.fiber.dispose()
+
+  const restored = await boot(root, true, config, false, false, false, true)
+  expect((await restored.genesis.snapshot()).memories).toEqual(saved.memories)
+  restored.llm.registerAdapter(['memory-writer'], new HabitWriter())
+  expect(await restored.genesisMemory.consolidate(new AbortController().signal)).toBe(true)
+  const habit = (await restored.genesis.snapshot()).memories.find(memory => memory.habit !== undefined)
+  expect(habit?.habit?.supportEventIds).toEqual(saved.memories.find(memory => memory.content === feedback)?.sourceEventIds)
+  expect(habit?.habit?.supportEventIds).toHaveLength(3)
+})
+
+it('retains a failed memory batch for retry without consuming subsequent exchanges', async () => {
+  const root = await directory()
+  const config = { ...(await embeddingFixture()).config, batchTurns: 2, windowTurns: 8, associationLimit: 0 }
+  const ctx = await boot(root, true, config)
+  const decision = new ScriptedModel(['invalid JSON', 'invalid JSON', '{"update":false}'])
+  ctx.llm.registerAdapter(['memory-decision'], decision)
+  ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['回答一', '回答二', '回答三']))
+  const agent = await ctx.agentLoop.create(SessionId('memory-batch-failure'), { provider: 'fixture', model: 'chat' })
+  const baseline = ctx.genesisSessionEvidence.memoryBatchOf(agent.session)?.through
+  const send = async (text: string) => {
+    agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
+    await agent.whenIdle()
+  }
+  await send('第一条证据')
+  await send('第二条证据')
+  await waitForMemoryReview(ctx, agent.session, 'failed')
+  expect(ctx.genesisSessionEvidence.memoryBatchOf(agent.session)?.through).toBe(baseline)
+  expect((await ctx.genesis.snapshot()).events.filter(event => event.type === 'memory.reviewed')).toHaveLength(0)
+  await expect(ctx.genesisStatus.retryMemory(agent.id, new AbortController().signal)).rejects.toThrow()
+  expect(ctx.genesisSessionEvidence.memoryBatchOf(agent.session)?.through).toBe(baseline)
+  await send('后续证据')
+  await vi.waitFor(() => expect(ctx.genesisSessionEvidence.memoryBatchOf(agent.session)?.through).toBeGreaterThan(baseline!))
+  expect(decision.requests).toHaveLength(3)
+  const input = decision.requests[2]!.messages[0]!.content.find(block => block.type === 'text')!
+  if (input.type !== 'text') throw new Error('Missing retried batch evidence')
+  expect(input.text).toContain('第一条证据')
+  expect(input.text).toContain('第二条证据')
+  expect(input.text).not.toContain('后续证据')
+  const later = ctx.genesisSessionEvidence.manualMemoryOf(agent.session)!
+  const lastSeq = Math.max(...Object.values(later.replies).flatMap(reply => reply.messages.map(message => message.seq)))
+  expect(ctx.genesisSessionEvidence.memoryBatchOf(agent.session)?.through).toBeLessThan(lastSeq)
+})
+
 it('combines bounded completed turns after restart and counts only new user evidence for learning', async () => {
   const root = await directory()
   const embeddings = await embeddingFixture()
@@ -2157,8 +2462,8 @@ it('combines bounded completed turns after restart and counts only new user evid
   await resumed.whenIdle()
   await waitForMemoryReview(second, resumed.session)
   expect(writer.requests).toHaveLength(1)
-  expect(writer.requests[0]?.system).toContain('短摘要只表达一个核心主题或结论，优先用6～12字的中文短语，最多20个字符。')
-  expect(writer.requests[0]?.system).toContain('经历对象的长正文仍使用 summary，短摘要必须使用 shortSummary')
+  expect(writer.requests[0]?.system).toContain('包含 brief、medium 和 detail')
+  expect(writer.requests[0]?.system).toContain('经历对象的长正文仍使用 summary，三档摘要使用 summaries')
   const state = await second.genesis.snapshot()
   expect(state.identity).toEqual(identity)
   const memory = state.memories.find(memory => memory.summary === '用户午后喝乌龙茶')!
@@ -2176,7 +2481,32 @@ it('combines bounded completed turns after restart and counts only new user evid
   expect(JSON.stringify(decision.requests.at(-1))).not.toContain('最早的无关话题')
 })
 
-it('regenerates only a short summary, refuses stale or oversized results and restores it after restart', async () => {
+it('refreshes summary and classification atomically without changing evidence and restores metadata after restart', async () => {
+  const root = await directory()
+  const { config } = await embeddingFixture()
+  const ctx = await boot(root, true, config)
+  const birth = (await ctx.genesis.snapshot()).events[0]!
+  const memory = await ctx.genesis.remember({ category: 'semantic', content: '用户自述喜欢乌龙茶。',
+    kind: 'declarative', attribution: 'user-stated', importance: 0.5, confidence: 0.7, sourceEventIds: [birth.id] })
+  const organization = { version: 1, type: 'person', subjects: [{ name: '用户' }] }
+  const writer = new ScriptedModel([
+    JSON.stringify({ summary: '用户自述喜欢乌龙茶' }),
+    JSON.stringify({ summary: '用户自述喜欢乌龙茶', organization }),
+  ])
+  ctx.llm.registerAdapter(['memory-writer'], writer)
+  const signal = new AbortController().signal
+  await expect(ctx.genesisMemory.refreshMetadata(memory.id, memory.updatedAt, signal)).rejects.toThrow()
+  expect(await ctx.genesis.getMemory(memory.id)).toEqual(memory)
+  const refreshed = await ctx.genesisMemory.refreshMetadata(memory.id, memory.updatedAt, signal)
+  expect(refreshed).toEqual({ ...memory, summary: '用户自述喜欢乌龙茶', organization, updatedAt: refreshed.updatedAt })
+  await expect(ctx.genesisMemory.refreshMetadata(memory.id, memory.updatedAt, signal)).rejects.toThrow('changed')
+  expect(writer.requests).toHaveLength(2)
+  await ctx.fiber.dispose()
+  const restored = await boot(root, true, config)
+  expect(await restored.genesis.getMemory(memory.id)).toEqual(refreshed)
+})
+
+it('regenerates three summaries, refuses stale or oversized results and restores them after restart', async () => {
   const root = await directory()
   const embeddings = await embeddingFixture()
   const ctx = await boot(root, true, embeddings.config)
@@ -2190,19 +2520,20 @@ it('regenerates only a short summary, refuses stale or oversized results and res
     confidence: 0.4,
     sourceEventIds: [birth.id],
   })
-  const writer = new ScriptedModel([JSON.stringify({ summary: '长'.repeat(41) }), JSON.stringify({ summary: '或许喜欢午后读书饮茶' })])
+  const summaries = { brief: '或许喜欢午后读书饮茶', medium: '用户可能喜欢午后阅读和喝乌龙茶',
+    detail: '用户可能喜欢在安静的午后阅读，也许偏爱乌龙茶，尚未确认。' }
+  const writer = new ScriptedModel([JSON.stringify({ summaries: { ...summaries, detail: '长'.repeat(121) } }), JSON.stringify({ summaries })])
   const unregisterWriter = ctx.llm.registerAdapter(['memory-writer'], writer)
   const signal = new AbortController().signal
   await expect(ctx.genesisMemory.summarize(memory.id, memory.updatedAt, signal)).rejects.toThrow()
   expect(await ctx.genesis.getMemory(memory.id)).toEqual(memory)
   const generated = await ctx.genesisMemory.summarize(memory.id, memory.updatedAt, signal)
-  expect(generated).toEqual({ ...memory, summary: '或许喜欢午后读书饮茶', updatedAt: generated.updatedAt })
+  expect(generated).toEqual({ ...memory, summary: summaries.brief, summaries, updatedAt: generated.updatedAt })
   expect(generated.updatedAt).not.toBe(memory.updatedAt)
   expect(embeddings.requests).toHaveLength(0)
   expect(writer.requests).toHaveLength(2)
-  expect(writer.requests[0]?.system).toContain('短摘要只表达一个核心主题或结论，优先用6～12字的中文短语，最多20个字符。')
-  expect(writer.requests[0]?.system).toContain('中文、标点、数字、空格和英文字母都逐个计数，不是20个词。')
-  expect(writer.requests[0]?.system).toContain('输出前检查字符数，超过20个字符就删去次要信息并重新概括')
+  expect(writer.requests[0]?.system).toContain('每档都应脱离对话独立读懂')
+  expect(writer.requests[0]?.system).toContain('归属、否定、条件和不确定性')
   const entered = Promise.withResolvers<undefined>()
   const release = Promise.withResolvers<undefined>()
   disposers.push(async () => {
@@ -3623,6 +3954,41 @@ it('accepts a Gemini-style single embedding without index and refuses incorrect 
   await ctx.genesisStatus.testEmbedding(signal)
 })
 
+it('bounds combined writer candidates without dropping new dialogue or modifying omitted memories', async () => {
+  const root = await directory()
+  const config = { ...(await embeddingFixture()).config, inputChars: 6000, associationLimit: 0 }
+  const ctx = await boot(root, true, config)
+  const birth = (await ctx.genesis.snapshot()).events[0]!
+  const originals = []
+  for (let index = 0; index < 8; index++) {
+    originals.push(await ctx.genesis.remember({
+      category: 'procedural', kind: 'non-declarative', attribution: 'user-stated',
+      content: `Habit ${index}: ${'温和地回应。'.repeat(450)}`, importance: 0.7, confidence: 0.8, sourceEventIds: [birth.id],
+    }))
+  }
+  const writer = new MemoryWriter()
+  ctx.llm.registerAdapter(['memory-writer'], writer)
+  ctx.llm.registerAdapter(['memory-decision'], new ScriptedModel(['{"update":true}']))
+  ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['Your oolong preference matters.']))
+  const agent = await ctx.agentLoop.create(SessionId('writer-candidate-budget'), { provider: 'fixture', model: 'chat' })
+  const text = 'I prefer oolong. Use a gentle tone.'
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
+  await agent.whenIdle()
+  await waitForMemoryReview(ctx, agent.session)
+  expect(writer.requests).toHaveLength(1)
+  const block = writer.requests[0]!.messages[0]!.content.find(item => item.type === 'text')!
+  if (block.type !== 'text') throw new Error('Missing writer evidence')
+  expect(block.text.length).toBeLessThanOrEqual(config.inputChars)
+  const input = z.object({ conversation: z.array(z.object({ text: z.string() })), memories: z.array(z.object({ id: z.string() })) })
+    .parse(JSON.parse(block.text))
+  expect(input.conversation.map(item => item.text)).toEqual([text, 'Your oolong preference matters.'])
+  expect(input.memories.length).toBeGreaterThan(0)
+  expect(input.memories.length).toBeLessThan(originals.length)
+  const saved = await ctx.genesis.snapshot()
+  for (const memory of originals) expect(saved.memories.find(item => item.id === memory.id)).toEqual(memory)
+  expect(saved.memories.some(item => item.content === 'The user prefers oolong.')).toBe(true)
+})
+
 it('reports the evidence budget failure without invoking a decision model or failing the chat reply', async () => {
   const root = await directory()
   const embeddings = await embeddingFixture()
@@ -3734,17 +4100,18 @@ class ExperienceWriter extends ScriptedModel {
     const input = z
       .object({
         conversation: z.array(z.object({ role: z.string(), seq: z.number(), text: z.string() })),
-        memories: z.array(z.object({ id: z.string(), category: z.string(), experience: z.object({ sessionId: z.string() }).optional() })),
+        memories: z.array(z.object({ id: z.string(), category: z.string() })),
+        recentExperienceIds: z.array(z.string()),
       })
       .parse(JSON.parse(block.text))
     const user = input.conversation.find(item => item.role === 'user')!
     const changed = user.text.includes('black tea')
     const old = input.memories.find(item => item.category === 'semantic')
-    const episode = input.memories.find(item => item.experience !== undefined)
+    const episodeId = input.recentExperienceIds[0]
     yield* new ScriptedModel([
       JSON.stringify({
         experience: {
-          ...(episode === undefined ? {} : { id: episode.id }),
+          ...(episodeId === undefined ? {} : { id: episodeId }),
           summary: changed ? 'We discussed the change from oolong to black tea.' : 'The user introduced their preference for oolong.',
           topics: ['tea', 'preferences'],
           sourceSeqs: [user.seq],
@@ -3830,7 +4197,8 @@ it('remembers an experience across turns, preserves changed preferences and reca
   expect(firstRequest).not.toContain('The user prefers oolong.')
   expect(firstRequest).not.toContain('Unstored private marker')
   const recall = other.session.ownEvents().find(event => event.type === 'tool/result')
-  expect(JSON.stringify(recall)).toContain(current.content)
+  expect(JSON.stringify(recall)).toContain('alreadyPresent')
+  expect(JSON.stringify(recall)).not.toContain(current.content)
   expect(JSON.stringify(recall)).not.toContain('The user prefers oolong.')
   expect(JSON.stringify(recall)).not.toContain('supersededAt')
   expect(JSON.stringify(other.session.ownEvents())).toContain('genesis:memory:')
@@ -4334,7 +4702,7 @@ class OrganizationWriter extends ScriptedModel {
             confidence: 0.6,
           },
         ]
-    yield* new ScriptedModel([JSON.stringify({ memories })]).stream(options)
+    yield* new ScriptedModel([JSON.stringify({ memories: memories.map(memory => ({ ...memory, summary: '用户饮茶与问候偏好', organization: { version: 1, type: 'person', subjects: [{ name: '用户' }] } })) })]).stream(options)
   }
 }
 
@@ -4375,7 +4743,7 @@ it('organizes only the selected versions into one or several sourced memories, w
   const identity = (await ctx.genesis.snapshot()).identity
   const result = await ctx.genesisMemory.organize(request, signal)
   expect(result).toHaveLength(1)
-  expect(result[0]).toMatchObject({ attribution: 'model-inference', kind: 'declarative' })
+  expect(result[0]).toMatchObject({ attribution: 'model-inference', kind: 'declarative', summary: '用户饮茶与问候偏好', organization: { type: 'person' } })
   expect(result[0]!.content).toContain('{{time:2026-10-23}}')
   let state = await ctx.genesis.snapshot()
   expect(state.memories.some(memory => memories.some(source => source.id === memory.id))).toBe(false)
@@ -5724,6 +6092,75 @@ it('spontaneity privately explores without a goal, records actual results and re
   expect(second.agents.list()).toEqual([])
 })
 
+it.each(['workspace-write', 'danger-full-access'] as const)('spontaneity learns tools and explores files and browser tools under %s', async (sandboxMode) => {
+  const root = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const ctx = await boot(
+    root, true, memory, true, false, true, true, false, true, undefined, false, {}, false, undefined, false, {}, undefined, sandboxMode,
+  )
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new SpontaneityModel(Array(10).fill('{"update":false}')))
+  const browserName = 'mcp__playwright-mcp__browser_navigate'
+  const visits: string[] = []
+  let internal: import('@deepseek-ai/dsh-agent').Agent | undefined
+  ctx.on('agent/created', ({ agent }) => { if (ctx.genesis.isSpontaneitySession(agent.id)) internal = agent }, { global: true })
+  // Browser transport is substituted; learning, activation and execution admission remain real.
+  ctx.tools.register(defineTool({
+    name: browserName,
+    description: 'Open a browser fixture page.',
+    parameters: { url: { type: 'string', required: true } },
+    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+    async execute(args) { visits.push(args.url); return 'Fixture page opened.' },
+  }))
+  const release = ctx.llm.registerAdapter(['fixture'], new SpontaneityModel(['Hello.']))
+  const { agent } = await ctx.agents.create({
+    sessionId: SessionId('spontaneity-tool-learning'), meta: { cwd: root },
+    agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') },
+  })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Explore a small idea later.' }] }))
+  await agent.whenIdle()
+  const source = (await ctx.genesis.snapshot()).events.findLast(event => event.relatedSessionId === agent.id && event.source === 'user')!
+  // Platform temporary directories are writable even under workspace-write; use an external non-temp root.
+  const outputRoot = sandboxMode === 'danger-full-access'
+    ? await mkdtemp(join(outsideTempWorkspaceParent(), 'genesis-unrestricted-'))
+    : join(root, 'personal')
+  if (sandboxMode === 'danger-full-access') disposers.push(() => rm(outputRoot, { recursive: true, force: true }))
+  const output = join(outputRoot, 'exploration.txt')
+  release()
+  const thinking = new SpontaneityModel([
+    { name: 'learn', args: { name: 'write' } },
+    { name: 'learn', args: { name: 'read' } },
+    { name: 'learn', args: { name: browserName } },
+    { name: 'genesis_toolkit', args: { action: 'enable', id: 'computer-operation' } },
+    { name: 'genesis_thought', args: { action: 'explore', title: 'A small page', content: 'Save a note and open a page.',
+      reason: 'I am curious.', sourceEventIds: [source.id], revisitAfter: null } },
+    'I will try my idea.',
+    { name: 'write', args: { file_path: output, content: 'A private exploration note.' } },
+    { name: 'read', args: { file_path: output } },
+    { name: browserName, args: { url: 'https://example.com/' } },
+    'I saved and read my note and opened the fixture page.',
+  ])
+  ctx.llm.registerAdapter(['fixture'], thinking)
+  await ctx.genesisSpontaneity.consider(agent)
+  expect(ctx.genesisSpontaneity.inspect().runs[0]?.status).toBe('completed')
+  expect(await readFile(output, 'utf8')).toBe('A private exploration note.')
+  expect(visits).toEqual(['https://example.com/'])
+  expect(thinking.requests[0]?.tools?.map(tool => tool.name)).toContain('learn')
+  expect(thinking.requests[3]?.tools?.map(tool => tool.name)).toContain('genesis_toolkit')
+  expect(thinking.requests[4]?.tools?.map(tool => tool.name)).not.toContain(browserName)
+  expect(thinking.requests[6]?.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining(['read', 'write', browserName]))
+  expect(ctx.genesis.learningStatus().tools).toEqual(expect.arrayContaining(['read', 'write', browserName]))
+  expect(internal).toBeDefined()
+  expect(ctx.sandboxPolicy.resolve({ session: internal!.session }).mode).toBe(sandboxMode)
+  const denied = await executeToolFixture(ctx, {
+    name: browserName, arguments: { url: 'https://example.com/stopped' }, agent: internal!,
+    callId: ToolCallId('stopped-cognition-browser'), signal: new AbortController().signal,
+  })
+  expect(denied.isError).toBe(true)
+  expect(visits).toEqual(['https://example.com/'])
+})
+
 it('spontaneity stops before a model request exceeds its reserved output budget and retains the saved thought', async () => {
   const root = await directory()
   const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
@@ -5850,7 +6287,7 @@ it('spontaneity yields a live internal inference to user input and drains it wit
   expect(ctx.agents.list().map(item => item.id)).toEqual([agent.id])
 })
 
-it('spontaneity defaults to 50M tokens and completes more than six requests and twelve tools without a per-request cap', async () => {
+it('spontaneity defaults to 30 minutes and 50M tokens and completes more than six requests and twelve tools without a per-request cap', async () => {
   const root = await directory()
   const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
   const ctx = await boot(root, true, memory, true, false, true, true, false, false, undefined, false, {}, false, undefined, false, {
@@ -5881,7 +6318,7 @@ it('spontaneity defaults to 50M tokens and completes more than six requests and 
   expect(ctx.genesisSpontaneity.inspect().settings).toEqual({
     enabled: true,
     idleMs: 0,
-    maxDurationMs: 180000,
+    maxDurationMs: 1800000,
     maxOutputTokens: 50000000,
     maxPer24Hours: 6,
   })
@@ -6219,6 +6656,61 @@ it('offers recurring boredom opportunities without new user messages and respect
   expect(life.emotion?.boredom?.mode).toBe('idle')
 })
 
+it('unifies private cognition with Web delivery and scoped access to existing workspaces', async () => {
+  const root = await directory()
+  const other = await directory()
+  const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
+  const open = () => boot(root, true, memory, true, false, true, true, false, true, undefined, false, {}, true, undefined, true, {})
+  const ctx = await open()
+  await ctx.genesis.awaken('小芽')
+  ctx.llm.registerAdapter(['memory-decision'], new SpontaneityModel(Array(20).fill('{"update":false}')))
+  const workspace = await ctx.workspaceRegistry.create(other, 'Other project')
+  let internal: import('@deepseek-ai/dsh-agent').Agent | undefined
+  ctx.on('agent/created', ({ agent }) => { if (ctx.genesis.isSpontaneitySession(agent.id)) internal = agent }, { global: true })
+  const model = new SpontaneityModel(['Hello.'])
+  const release = ctx.llm.registerAdapter(['fixture'], model)
+  const { agent } = await ctx.agents.create({ sessionId: SessionId('social-test'), meta: { cwd: root },
+    agentOptions: { provider: 'fixture', model: 'chat' }, setup: async (scope) => { await ctx.agentPresets.mount(scope, 'life') } })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Hello.' }] }))
+  await agent.whenIdle()
+  await ctx.genesis.learn('write', agent.id)
+  const source = (await ctx.genesis.snapshot()).events.findLast(event => event.relatedSessionId === agent.id && event.source === 'user')!
+  await ctx.genesis.requestInteraction('legacy-pending', source.id)
+  await ctx.genesisInitiative.resume()
+  expect((await ctx.genesis.snapshot()).initiative?.records[0]?.status).toBe('skipped')
+  release()
+  const chat = new SpontaneityModel([
+    { name: 'genesis_workspace', args: { action: 'list' } },
+    { name: 'genesis_workspace', args: { action: 'enter', workspace_id: 'missing' } },
+    { name: 'genesis_workspace', args: { action: 'enter', workspace_id: workspace.id } },
+    { name: 'genesis_thought', args: { action: 'explore', title: 'A small sketch', content: 'Write a sketch in the other workspace.',
+      reason: 'I am curious.', sourceEventIds: [source.id], revisitAfter: null } },
+    'I will try it.',
+    { name: 'write', args: { file_path: join(other, 'sketch.txt'), content: 'A real sketch.' } },
+    { name: 'genesis_socialize', args: { action: 'targets' } },
+    { name: 'genesis_socialize', args: { action: 'send', target: 'web:social-test', text: 'I made a small sketch.' } },
+    'I made a small sketch.',
+    'My private activity is complete.',
+  ])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  await ctx.genesisInitiative.tick()
+  expect(chat.requests).toHaveLength(0)
+  await ctx.genesisSpontaneity.consider(agent)
+  expect(await readFile(join(other, 'sketch.txt'), 'utf8')).toBe('A real sketch.')
+  expect(ctx.genesisSpontaneity.inspect().runs[0]).toMatchObject({ status: 'completed', social: { status: 'confirmed' } })
+  expect((await ctx.genesis.snapshot()).initiative?.records).toMatchObject([{ status: 'skipped' }, { status: 'sent', sessionId: agent.id }])
+  expect(ctx.sandboxPolicy.resolve({ session: internal!.session }).additionalWritableRoots ?? []).not.toContain(other)
+  const denied = await executeToolFixture(ctx, { name: 'genesis_workspace', arguments: { action: 'enter', workspace_id: workspace.id },
+    agent, callId: ToolCallId('outside-cognition'), signal: new AbortController().signal })
+  expect(denied.isError).toBe(true)
+  const results = internal!.session.ownEvents().filter(event => event.type === 'tool/result')
+  expect(results.some(event => event.type === 'tool/result' && event.data.message.isError)).toBe(true)
+  await ctx.fiber.dispose()
+  const restored = await open()
+  expect((await restored.genesis.snapshot()).initiative?.records).toMatchObject([{ status: 'skipped' }, { status: 'sent' }])
+  expect(restored.agents.list()).toEqual([])
+})
+
 it('admits one logged boredom conversation per opportunity and preserves social limits across restart', async () => {
   const root = await directory()
   const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
@@ -6385,4 +6877,111 @@ it('derives provider toolkits without saving them or granting learning, and with
   await ctx.fiber.dispose()
   const restored = await boot(root)
   expect((await restored.genesisToolkits.inspect(signal)).managed).toBeUndefined()
+})
+
+
+it('reinforces a recalled memory from committed Loader tool results without counting duplicate reads', async () => {
+  const root = await directory()
+  const ctx = await boot(root, { memorySharing: 'life', memoryDynamics: {} })
+  const birth = (await ctx.genesis.snapshot()).events[0]!
+  const memory = await ctx.genesis.remember({ category: 'semantic', content: '用户喜欢乌龙茶。',
+    importance: 0.4, confidence: 0.5, kind: 'declarative', attribution: 'user-stated', sourceEventIds: [birth.id] })
+  const chat = new ScriptedModel([
+    { name: 'genesis_recall', args: { query: memory.id } },
+    { name: 'genesis_recall', args: { query: memory.id } },
+    '我记得你喜欢乌龙茶。',
+  ])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  const agent = await ctx.agentLoop.create(SessionId('reinforced-recall'), { provider: 'fixture', model: 'chat' })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '还记得我喜欢喝什么吗？' }] }))
+  await agent.whenIdle()
+  const state = await ctx.genesis.snapshot()
+  const reinforced = state.events.filter(event => event.type === 'memory.recalled')
+  expect(reinforced).toHaveLength(1)
+  expect(reinforced[0]?.payload).toMatchObject({ version: 1, memoryId: memory.id })
+  expect(state.memories.find(item => item.id === memory.id)).toEqual(memory)
+  expect(agent.session.ownEvents().filter(event => event.type === 'tool/result')).toHaveLength(2)
+})
+
+it('bounds accumulated recall content in a model request while preserving original tool results', async () => {
+  const root = await directory()
+  const ctx = await boot(root, { memorySharing: 'life', memoryContextChars: 1550 })
+  const birth = (await ctx.genesis.snapshot()).events[0]!
+  const stored = []
+  for (const marker of ['first-note', 'second-note', 'third-note']) {
+    stored.push(await ctx.genesis.remember({ category: 'semantic', content: `${marker} ${'解释'.repeat(425)}`,
+      importance: 0.4, confidence: 0.5, sourceEventIds: [birth.id] }))
+  }
+  const chat = new ScriptedModel([
+    ...stored.map(memory => ({ name: 'genesis_recall', args: { query: memory.id, level: 'full' } })),
+    '已查阅。',
+    '以修订后的笔记为准。',
+  ])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  const agent = await ctx.agentLoop.create(SessionId('bounded-recall'), { provider: 'fixture', model: 'chat' })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '查阅这三条笔记。' }] }))
+  await agent.whenIdle()
+  expect(chat.requests).toHaveLength(4)
+  const latest = JSON.stringify(chat.requests.at(-1))
+  expect(latest).toContain('third-note')
+  expect(latest).not.toContain('first-note')
+  expect(latest).not.toContain('second-note')
+  const original = agent.session.ownEvents().filter(event => event.type === 'tool/result' && event.surfaceOp === 'append')
+  expect(original).toHaveLength(3)
+  expect(JSON.stringify(original)).toContain('first-note')
+  expect(JSON.stringify(original)).toContain('second-note')
+
+  await ctx.genesis.updateMemory(stored[2]!.id, { category: 'semantic', content: 'corrected-note',
+    importance: 0.4, confidence: 0.5, sourceEventIds: [birth.id] })
+  const seq = agent.session.seq
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '继续。' }] }))
+  await agent.whenIdle()
+  expect(JSON.stringify(chat.requests.at(-1))).toContain('corrected-note')
+  expect(JSON.stringify(chat.requests.at(-1))).not.toContain('third-note')
+  const updates = agent.session.ownEvents().flatMap(event => event.seq >= seq && event.type === 'user/message'
+    && event.surfaceOp === 'append' && event.data.source.kind === 'genesis-state' && event.data.source.form === 'snapshot'
+    ? event.data.source.sections.filter(section => section.name.startsWith('genesis:memory:')) : [])
+  expect(updates.map(section => section.name)).toEqual([`genesis:memory:${stored[2]!.id}`])
+})
+
+it('retries a stalled overview summary without restarting completed source segments', async () => {
+  const embeddings = await embeddingFixture()
+  const config = { ...embeddings.config, inputChars: 8000, maxRetries: 1, retryDelayMs: 0, associationLimit: 0,
+    overview: { ...embeddings.config.overview, requestTimeoutMs: 100 } }
+  const ctx = await boot(await directory(), true, config, false, false, false, true)
+  ctx.llm.registerAdapter(['fixture'], new ScriptedModel(['我了解了。']))
+  const agent = await ctx.agentLoop.create(SessionId('overview-attempt-timeout'), { provider: 'fixture', model: 'chat' })
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '用户谈到了饮茶偏好。'.repeat(1500) }] }))
+  await agent.whenIdle()
+  const sections: string[] = []
+  let calls = 0
+  const writer = new (class extends ScriptedModel {
+    override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      const block = options.messages[0]!.content.find(block => block.type === 'text')!
+      if (block.type !== 'text') throw new Error('Missing overview request')
+      const input = z.object({ purpose: z.string(), evidence: z.array(z.object({ seq: z.number(), text: z.string() })).optional() })
+        .parse(JSON.parse(block.text))
+      if (input.purpose === 'conversation-overview-summary') {
+        calls++
+        sections.push(JSON.stringify(input.evidence))
+        if (calls === 2) {
+          const signal = options.signal
+          if (signal === undefined) throw new Error('Missing overview cancellation signal')
+          await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+        }
+        yield* new ScriptedModel([JSON.stringify({ text: '用户谈到了饮茶偏好。', sourceSeqs: input.evidence!.map(row => row.seq), memoryIds: [] })]).stream(options)
+      } else yield* new ScriptedModel(['{"changes":[]}']).stream(options)
+    }
+  })([])
+  ctx.llm.registerAdapter(['memory-writer'], writer)
+  const before = (await ctx.genesis.snapshot()).memories
+  const id = brandString<MemoryOrganizationId>(randomUUID())
+  await expect(ctx.genesisMemory.overview(agent.id, id, new AbortController().signal)).resolves.toBe(false)
+  expect(calls).toBeGreaterThan(2)
+  expect(sections[1]).toBe(sections[2])
+  expect(sections.filter(section => section === sections[0])).toHaveLength(1)
+  expect((await ctx.genesis.snapshot()).memories).toEqual(before)
+  const audits = agent.session.ownEvents().map(genesisAuditRecord)
+    .filter(row => row?.type === 'plugin:genesis/memory-call' && row.data.phase === 'request')
+  expect(audits.length).toBeGreaterThan(calls)
 })

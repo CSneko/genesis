@@ -1,4 +1,8 @@
 /** Proactive conversation outbox using Super-Agent's reservation/receipt policy and the existing Agent channel. @module */
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { MessageTargetId } from './message-routing.ts'
+import type { IdleConversationProvider } from './spontaneity.ts'
+import { deliberationPlanSchema } from './agency-state.ts'
 import { isHumanSource } from './people-model.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -26,9 +30,11 @@ export class SocialInitiative {
 
   /** @param ctx - Actual channel and Session projections. @param core - Durable life owner.
    * @param decisions - Existing bounded emotion/motivation/memory deliberation.
-   * @param policy - Validated delivery limits. @param applies - Character preset selection. */
+   * @param policy - Validated delivery limits. @param applies - Character preset selection.
+   * @param unified - Cognition owns new opportunities; this owner retains delivery and recovery. */
   constructor(private readonly ctx: Context, private readonly core: LifeCore, private readonly decisions: LifeDeliberationEngine,
-    private readonly policy: SocialInitiativeConfig, private readonly applies: (agent: Agent) => boolean) {}
+    private readonly policy: SocialInitiativeConfig, private readonly applies: (agent: Agent) => boolean,
+    private readonly unified = false) {}
 
   /** Initialize pending deliveries and schedule checks from the saved policy.
    * @returns After initialization, pending-receipt recovery and timer setup; startup creates no new opportunity. */
@@ -36,12 +42,101 @@ export class SocialInitiative {
     await this.core.initializeInitiative()
     this.unsubscribe = this.core.onCommitted((events) => {
       if (events.some(event => event.type === 'initiative.configured')) this.background(this.refreshTimer())
-      if (events.some(event => ['goal.completed', 'goal.changed', 'memory.created', 'memory.updated'].includes(event.type))) {
+      if (!this.unified && events.some(event => ['goal.completed', 'goal.changed', 'memory.created', 'memory.updated'].includes(event.type))) {
         this.background(this.serial(() => this.checkEvents()))
       }
     })
     await this.resume()
     await this.refreshTimer()
+  }
+
+  /** Expose the existing Web outbox to the single private cognition opportunity.
+   * @returns Lifecycle-scoped provider; saved channel policy and delivery limits remain authoritative.
+   */
+  conversationProvider(): IdleConversationProvider {
+    return {
+      name: 'web',
+      targets: async (signal) => {
+        signal.throwIfAborted()
+        const state = await this.core.snapshot()
+        if (!resolveInitiative(this.policy, state.initiative).enabled) return []
+        const agent = this.channel({}, state)
+        return agent === undefined ? [] : [{ target: brandString<MessageTargetId>(`web:${agent.id}`), kind: 'web', account: 'operator', name: 'Operator conversation', sessionId: agent.id }]
+      },
+      send: (target, text, origin) => this.serial(async () => {
+        if (!this.ctx.get('genesisSpontaneity')?.admitsSocial(origin.agent)) throw new GenesisError('invalid-source', 'Web initiation requires an active private activity.')
+        const state = await this.core.snapshot()
+        const agent = this.channel({}, state)
+        if (agent === undefined || target !== `web:${agent.id}` || !resolveInitiative(this.policy, state.initiative).enabled)
+          throw new GenesisError('invalid-source', 'The approved Web conversation is unavailable.')
+        const source = state.events.findLast(event => event.relatedSessionId === origin.agent.id)
+        if (source === undefined || state.agency === undefined) throw new GenesisError('invalid-state', 'Cognition source evidence is unavailable.')
+        const key = `cognition:${origin.agent.id}:${origin.callId}`
+        let record = await this.core.requestInteraction(key, source.id)
+        if (record.status !== 'pending' || record.decisionId !== undefined) return { confirmed: record.status === 'sent', receipt: record.id }
+        const limit = this.limited(state, record)
+        if (limit !== undefined) {
+          await this.core.saveInteraction({ ...record, status: 'skipped', note: limit.note })
+          return { confirmed: false, receipt: record.id }
+        }
+        const trigger = await this.core.prepareDeliberation(agent.id, key, 'event', source.id)
+        const current = await this.core.snapshot()
+        if (current.agency === undefined) throw new GenesisError('invalid-state', 'Life planning state is unavailable.')
+        const decision = await this.core.commitDeliberation({
+          key: `${agent.id}:${key}`, sessionId: agent.id, purpose: 'interaction', trigger: 'event', revision: current.agency.revision,
+          sourceEventIds: [trigger.id, source.id], memoryIds: [], interestIds: [],
+          plan: deliberationPlanSchema.parse({ motivations: [], goals: [], selected: 0, reason: 'Chosen during private cognition.',
+            candidates: [{ disposition: 'accept', action: text, reason: 'Chosen during private cognition.', goalIds: [], motivationIds: [],
+              factors: {
+                motivation: 0, interest: 0, commitment: 0, emotion: 0, needs: 0, benefit: 0,
+                cost: 0, risk: 0, urgency: 0, relationship: 0, context: 1,
+              } }] }),
+        })
+        origin.signal.throwIfAborted()
+        record = { ...record, sessionId: agent.id, decisionId: decision.id, reason: decision.reason }
+        await this.core.saveInteraction(record)
+        const signal = AbortSignal.any([origin.signal, this.lifetime.signal])
+        let admitted: { turn: number; step: number } | undefined
+        const releaseAdmission = this.ctx.on('agent/pre-step', async ({ agent: caller, turn, step }, next) => {
+          const result = await next()
+          if (caller === agent) admitted = result.kind === 'enter' && result.messages.some(message =>
+            message.source.kind === 'genesis-initiative' && message.source.interactionId === record.id) ? { turn, step } : undefined
+          return result
+        }, { global: true, prepend: true })
+        const releaseBudget = this.ctx.on('agent/request', async ({ agent: caller, turn, step, signal: requestSignal }, next) => {
+          const call = await next()
+          if (caller !== agent || admitted?.turn !== turn || admitted.step !== step) return call
+          const model = call.maxTokens === undefined
+            ? await this.ctx.llm.resolveModelInfo(call.provider, call.model, requestSignal)
+            : undefined
+          const cognition = this.ctx.get('genesisSpontaneity')
+          if (cognition === undefined) throw new GenesisError('invalid-state', 'Private activity is unavailable.')
+          return { ...call, maxTokens: cognition.reserveOutput(origin.agent.session, call.maxTokens ?? model?.defaultMaxTokens) }
+        }, { global: true })
+        try {
+          await this.process(record, signal)
+          // An admitted, tool-free message may finish after its initiating activity stops.
+          await new Promise<void>((resolve, reject) => {
+            const aborted = () => { signal.removeEventListener('abort', aborted); reject(signal.reason) }
+            signal.addEventListener('abort', aborted, { once: true })
+            void agent.whenIdle().then(() => {
+              signal.removeEventListener('abort', aborted)
+              resolve()
+            }, (error) => {
+              signal.removeEventListener('abort', aborted)
+              reject(error)
+            })
+            if (signal.aborted) aborted()
+          })
+          await this.reconcile(agent.session, agent)
+        } finally {
+          releaseBudget()
+          releaseAdmission()
+        }
+        const settled = (await this.core.snapshot()).initiative?.records.find(item => item.id === record.id)
+        return { confirmed: settled?.status === 'sent', receipt: record.id }
+      }),
+    }
   }
 
   /** Read the current delivery schedule and failure state.
@@ -56,7 +151,7 @@ export class SocialInitiative {
     this.timer = undefined
     this.nextCheckAt = null
     if (this.lifetime.signal.aborted) return
-    if (!settings.enabled) return
+    if (!settings.enabled || this.unified) return
     this.nextCheckAt = new Date(Date.now() + settings.intervalMs).toISOString()
     this.timer = setTimeout(() => {
       this.timer = undefined
@@ -119,6 +214,7 @@ export class SocialInitiative {
    * @returns After event catch-up and one scheduled opportunity. */
   tick(): Promise<void> {
     return this.serial(async () => {
+      if (this.unified) { await this.resumePending(); return }
       await this.checkEvents()
       await this.resumePending()
       const state = await this.core.snapshot()
@@ -157,7 +253,7 @@ export class SocialInitiative {
     if (last !== undefined) await this.core.advanceInitiativeCursor(last.id)
   }
 
-  private channel(record: InteractionRecord, state: LifeState): Agent | undefined {
+  private channel(record: Pick<InteractionRecord, 'sessionId'>, state: LifeState): Agent | undefined {
     const agents = this.ctx.agents.list().filter(agent => this.applies(agent) && !this.core.isQqSession(agent.id) && agent.status === 'idle'
       && agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0)
     const policy = resolveInitiative(this.policy, state.initiative)
@@ -273,7 +369,12 @@ export class SocialInitiative {
     for (const record of records) {
       if (['dispatching', 'uncertain'].includes(record.status) && !agents.some(agent => agent.session.id === record.sessionId)) {
         await this.reconcileCold(record)
-      } else if (record.status === 'pending') await this.process(record, this.lifetime.signal)
+      } else if (record.status === 'pending') {
+        if (this.unified) {
+          if (record.decisionId !== undefined) await this.core.settleDecision(record.decisionId, 'interrupted', [])
+          await this.core.saveInteraction({ ...record, status: 'skipped', note: 'Private cognition owns new communication choices; this undelivered opportunity is retained without replay.' })
+        } else await this.process(record, this.lifetime.signal)
+      }
     }
   }
 

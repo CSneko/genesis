@@ -6,6 +6,7 @@ import type { TypertClientRemote, RemoteResult } from '@deepseek-ai/dsh-typert-p
 import type { LifeMemory, MemoryCatalog, MemoryKind, MemoryBrowserFilter } from '@deepseek-ai/dsh-experimental-genesis/types'
 import { MemoryBrowserControls } from './MemoryBrowserControls.tsx'
 import { ConsolidationControls } from './ConsolidationControls.tsx'
+import { MemoryStarMap } from './MemoryStarMap.tsx'
 import { MemoryEntry } from './MemoryEntry.tsx'
 import { MemoryEditor } from './MemoryEditor.tsx'
 import { MemoryOrganizer } from './MemoryOrganizer.tsx'
@@ -60,6 +61,8 @@ export function MemoryPanel({
   const id = useId()
   const resource = useResource<'genesis'>('dsh-resource://genesis/status')
   const status = resource.value
+  const [view, setView] = useState<'list' | 'stars'>('list')
+  const [focusedMemory, setFocusedMemory] = useState<LifeMemory['id']>()
   const [query, setQuery] = useState('')
   const [applied, setApplied] = useState('')
   const [layer, setLayer] = useState<MemoryKind | 'all'>('all')
@@ -110,6 +113,7 @@ export function MemoryPanel({
   }, [applied, layer, offset, revision, filter])
   const memories = catalog?.items ?? []
   const nextOffset = catalog?.nextOffset ?? null
+  const displayedMemories = view === 'list' ? memories : memories.filter(memory => memory.id === focusedMemory)
   const resetPage = () => {
     setOffset(0)
     setHistory([])
@@ -225,7 +229,7 @@ export function MemoryPanel({
           }
         }}
       >
-        <label htmlFor={`${id}-query`}>{t('searchMemories')}</label>
+        <label htmlFor={`${id}-query`}>{t(view === 'stars' ? 'starMapSearch' : 'searchMemories')}</label>
         <Input
           id={`${id}-query`}
           value={query}
@@ -233,7 +237,7 @@ export function MemoryPanel({
             setQuery(event.target.value)
           }}
         />
-        <Button type="submit">{t('search')}</Button>
+        <Button type="submit">{t(view === 'stars' ? 'starMapSearch' : 'search')}</Button>
       </form>
       {layer === 'non-declarative' ? null : (
         <MemoryBrowserControls
@@ -245,6 +249,30 @@ export function MemoryPanel({
             resetPage()
           }}
         />
+      )}
+      <div className={css.actions}>
+        {(['list', 'stars'] as const).map(mode => (
+          <Button key={mode} size="sm" variant="outline" aria-pressed={view === mode}
+            onClick={() => setView(mode)}>{t(mode === 'list' ? 'memoryListView' : 'memoryStarView')}</Button>
+        ))}
+      </div>
+      {view === 'stars' ? <MemoryStarMap memories={memories} name={status?.identity.name || 'Genesis'}
+        selected={focusedMemory} select={setFocusedMemory} t={t} category={filter.category}
+        filterCategory={(category) => {
+          setFilter(current => ({ ...current, category: current.category === category ? undefined : category, navigationOffset: 0 }))
+          resetPage()
+        }}
+        findRelated={(relatedTo) => {
+          setQuery('')
+          setApplied('')
+          setFilter({ relatedTo, navigationOffset: 0 })
+          resetPage()
+        }}/> : null}
+      {view !== 'stars' || (filter.category === undefined && filter.relatedTo === undefined) ? null : (
+        <div className={css.actions}>
+          <span>{filter.category === undefined ? t('starMapRelatedFilter') : t('starMapCategoryFilter', { category: t(`category.${filter.category}`) })}</span>
+          <Button size="sm" variant="outline" onClick={() => { setFilter({ navigationOffset: 0 }); resetPage() }}>{t('starMapClearFilters')}</Button>
+        </div>
       )}
       <p>{t('memoryCount', { count: catalog?.total ?? status?.counts.memories ?? 0 })}</p>
       {status?.organization === undefined ? null : (
@@ -280,7 +308,7 @@ export function MemoryPanel({
         )
       ) : (
         <ul className={css.records}>
-          {memories.map(memory => (
+          {displayedMemories.map(memory => (
             <MemoryEntry
               key={memory.id}
               memory={memory}

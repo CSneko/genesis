@@ -1,6 +1,6 @@
 import { knowledgeDirectory } from './memory-catalog.ts'
 import { memoryOrganization } from './memory-organization.ts'
-import { memoryReading, memoryReadingSections, type MemoryReading } from './memory-delivery.ts'
+import { boundMemorySections, memoryReading, memoryReadingSections, type MemoryReading } from './memory-delivery.ts'
 /** Bounded runtime self description; persisted memories are quoted data. @module */
 import type { ContextSnapshotSection } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -90,13 +90,17 @@ export async function selfContextSections(
         memoryOrganization(memory)?.type === 'event' ||
         memoryOrganization(memory)?.subjects?.some(subject => subject.personId !== undefined && presentPeople.has(subject.personId)),
     )
-    .map(memory => memoryReading(memory, 'summary', now, config.timeZone))
+    .map(memory => memoryReading(memory, 'medium', now, config.timeZone))
   const associatedReadings: MemoryReading[] = associated.startsWith('[') ? JSON.parse(associated) : []
+  const current = new Map(state.memories.map(memory => [memory.id, memory]))
   const memorySections = memoryReadingSections(
     [...associatedReadings, ...cues],
     agent.session,
     config.memoryChars,
-    new Set(state.memories.map(memory => String(memory.id))),
+    (id) => {
+      const memory = current.get(id)
+      return memory === undefined ? undefined : memoryReading(memory, 'medium', now, config.timeZone)
+    },
   )
   const emotion =
     config.emotion === undefined || state.emotion === undefined
@@ -162,7 +166,7 @@ export async function selfContextSections(
   }
   const progress = core.learningStatus()
   const section = (name: string, text: string): ContextSnapshotSection => ({ name: `genesis:${name}`, text })
-  return [
+  return boundMemorySections([
     section(
       'intimacy',
       core.isOperatorSession(agent.id) &&
@@ -229,5 +233,5 @@ export async function selfContextSections(
           config.growthChars,
         )}`,
     ),
-  ]
+  ], config.memoryContextChars)
 }

@@ -14,6 +14,7 @@ import { readBackup } from '../src/backup.ts'
 import { joinState } from '../src/storage-state.ts'
 import { manifestSchema } from '../src/storage-layout.ts'
 import { openCore } from './harness.ts'
+import { selectStatusState } from '../src/status-state.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
@@ -57,6 +58,59 @@ it('copies only selected query results and keeps their nested values detached', 
   snapshot.mockRestore()
   expect(await core.getMemory(memory.id)).toEqual(memory)
   expect((await core.snapshot()).events.some(event => event.payload['changed'] !== undefined)).toBe(false)
+})
+
+it('selects detached overview previews with full counts, stable ranking and chronological sources', async () => {
+  const { core } = await setup(await directory(), 'json', { queryLimit: 2 })
+  const state = await core.snapshot()
+  const source = state.events[0]!
+  const later = { ...source, id: brandString<LifeEventId>(randomUUID()), dedupKey: 'later-source' }
+  const history = Array.from({ length: 4 }, (_, index) => ({
+    ...source,
+    id: brandString<LifeEventId>(randomUUID()),
+    type: index % 2 === 0 ? 'interest.changed' : 'emotion.adjusted',
+    dedupKey: `overview:${index}`,
+    payload: { sourceEventIds: [later.id, source.id, later.id, randomUUID()], index },
+  }))
+  state.events.push(later, ...history)
+  const memory = state.memories[0]!
+  state.memories = [0.5, 0.9, 0.9, 0.1].map((importance, index) => ({
+    ...memory, id: brandString<MemoryId>(randomUUID()), importance, content: `memory ${index}`,
+    embedding: { space: 'fixture', vector: [1, 2, 3] },
+  }))
+  state.sessions[sessionId] = []
+  state.sessions[SessionId('cold-session')] = []
+  const selected = selectStatusState(state, [sessionId], 2)
+  expect(selected.counts).toEqual({ events: state.events.length, memories: 4, growth: state.growth.length })
+  expect(selected.memories.map(item => item.content)).toEqual(['memory 1', 'memory 2'])
+  expect(selected.memories.every(item => item.embedding === undefined)).toBe(true)
+  expect(selected.growth).toEqual(state.growth.slice(-2).reverse())
+  expect(Object.keys(selected.sessions)).toEqual([sessionId])
+  expect(selected.interestHistory.total).toBe(2)
+  expect(selected.emotionHistory.total).toBe(2)
+  expect(selected.interestHistory.entries.map(item => item.event.id)).toEqual([history[2]!.id, history[0]!.id])
+  expect(selected.emotionHistory.entries.map(item => item.event.id)).toEqual([history[3]!.id, history[1]!.id])
+  expect(selected.interestHistory.entries[0]!.sourceEventIds).toEqual([source.id, later.id])
+  selected.identity.name = 'detached'
+  selected.memories[0]!.sourceEventIds.length = 0
+  selected.emotionHistory.entries[0]!.event.payload['index'] = -1
+  expect(state.identity.name).toBeNull()
+  expect(state.memories[1]!.sourceEventIds).toEqual(memory.sourceEventIds)
+  expect(history[3]!.payload.index).toBe(3)
+  expect(selectStatusState(state, [], 1).interestHistory).toMatchObject({ total: 2, entries: [{ event: history[2] }] })
+})
+
+it('reads overview data without full snapshots and refuses reads after close', async () => {
+  const { core } = await setup(await directory())
+  const original = await core.snapshot()
+  vi.spyOn(core, 'snapshot').mockRejectedValue(new Error('Full snapshot is unavailable'))
+  const status = await core.statusSnapshot([])
+  expect(status.identity).toEqual(original.identity)
+  expect(status.counts.events).toBe(original.events.length)
+  status.identity.name = 'detached'
+  expect((await core.statusSnapshot([])).identity.name).toBeNull()
+  await core.close()
+  await expect(core.statusSnapshot([])).rejects.toThrow('stopping')
 })
 
 it('replays observations without copying history or publishing another commit', async () => {
@@ -490,6 +544,25 @@ it('edits short summaries independently, bounds Unicode length and invalidates a
   expect(edited.summary).toBeUndefined()
 })
 
+it('backfills declarative summaries atomically and preserves the original records', async () => {
+  const root = await directory()
+  const { core } = await setup(root)
+  const before = await core.snapshot()
+  const first = before.memories[0]!
+  const second = await core.remember({ content: 'Some evidence about tea.', category: 'semantic', importance: 0.5,
+    confidence: 0.4, sourceEventIds: [before.events[0]!.id] })
+  const summaries = { brief: '简略', medium: '中等摘要', detail: '较详摘要' }
+  const batch = [first, second].map(({ id, updatedAt }) => ({ id, updatedAt, summaries }))
+  await expect(core.backfillMemorySummaries([batch[0]!, { ...batch[1]!, updatedAt: '2000-01-01T00:00:00.000Z' }]))
+    .rejects.toMatchObject({ code: 'configuration-conflict' })
+  expect(await core.getMemory(first.id)).toEqual(first)
+  expect(await core.backfillMemorySummaries(batch)).toBe(2)
+  for (const original of [first, second]) {
+    const current = await core.getMemory(original.id)
+    expect(current).toEqual({ ...original, updatedAt: current?.updatedAt, summary: summaries.brief, summaries })
+  }
+})
+
 it('saves manual non-declarative memories beyond prompt budgets and restores them after restart', async () => {
   const root = await directory()
   const first = await setup(root, 'json', { memoryChars: 256, queryLimit: 1 })
@@ -698,7 +771,10 @@ it('counts independent user turns rather than saved copies or assistant repetiti
       organizationLimit: 20,
       identityRewriteLimit: 100,
       maxChanges: 8,
-      overview: { maxCalls: 64, timeoutMs: 5000, maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384 },
+      overview: {
+        maxCalls: 64, maxCitationRetries: 1, requestTimeoutMs: 1000, timeoutMs: 5000,
+        maxReferences: 10000, maxChanges: 64, outputChars: 128000, maxTokens: 16384,
+      },
       maxImplicitMemories: 4,
       associationLimit: 3,
       associationChars: 2000,

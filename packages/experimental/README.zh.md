@@ -39,6 +39,7 @@ kind: "package-group"
 | [`genesis`](genesis/README.zh.md) | 持久生命身份、带来源记忆与系统成长 | `ctx.genesis`、`ctx.genesisStatus` |
 | [`genesis-bili-humanism`](genesis-bili-humanism/README.zh.md) | B 站读取与统一观影札记 | — |
 | [`genesis-minecraft`](genesis-minecraft/README.zh.md) | Minecraft Java 版游玩与 Jev 环境监测 | — |
+| [`genesis-punishment`](genesis-punishment/README.zh.md) | 操作者配置的惩罚等级 webhook | — |
 | [`genesis-video`](genesis-video/README.zh.md) | Remotion 持久剪辑工程与本地沙箱渲染 | — |
 | [`genesis-speech`](genesis-speech/README.zh.md) | 可配置 CosyVoice 语音合成与自定义音色 ID | — |
 | [`genesis-mail`](genesis-mail/README.zh.md) | 持久邮箱与遵循睡眠的自主文字通信 | — |

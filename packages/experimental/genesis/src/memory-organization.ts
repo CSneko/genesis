@@ -40,7 +40,7 @@ export function memoryOrganization(memory: LifeMemory): MemoryOrganization | und
 
 /** Writer instructions for declarative organization. */
 export const CLASSIFICATION_GUIDANCE =
-  '陈述性记忆增加 organization：{"version":1,"type":"knowledge|person|event|unclassified"}。知识包含 paths（字符串路径数组的数组，第一层为领域，后续为目录）；人物包含 subjects（{name,personId?} 数组）。事件可以关联 subjects 和 paths。无法确定或混合内容保留 unclassified，不改写或拆分正文。人物 ID 只能来自提供的已知人物且证据明确支持同一身份；同名、发言者身份和文本提及不能单独证明人物绑定。目录名称沿用提供的已有目录，避免同义重复。分类不改变事实、归属或置信度。非陈述性条目不设置 organization。'
+  '每条新建或改写的陈述性记忆必须包含 organization，不得省略：{"version":1,"type":"knowledge|person|event|unclassified"}。按正文的主要用途分类：可在其他情境复用的知识、原理和方法归 knowledge；某人的身份、关系或长期偏好归 person；一次具体活动或交流的过程和结果归 event。知识包含 paths（字符串路径数组的数组，第一层为领域，后续为目录）；人物包含 subjects（{name,personId?} 数组）。事件可以关联 subjects 和 paths。独立 experience 对象由程序分类为 event，不在该对象中添加 organization；changes 中的记忆和 memories 整理结果须各自提供 organization。分类操作不改写或拆分正文；允许生成或整理正文时，先将无关主题拆成独立条目再逐条分类。只有依据不足、无法可靠归类的内容保留 unclassified。人物 ID 只能来自提供的已知人物且证据明确支持同一身份；同名、发言者身份和文本提及不能单独证明人物绑定。目录名称沿用提供的已有目录，避免同义重复。分类不改变事实、归属或置信度。非陈述性条目不设置 organization。'
 
 /**
  * Apply directory and subject filters before ranking or budgeting.

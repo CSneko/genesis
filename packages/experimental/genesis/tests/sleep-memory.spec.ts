@@ -25,7 +25,7 @@ afterEach(async () => {
 })
 const raw = {
   memories: [
-    { evidenceIds: ['m1', 'm2'], category: 'semantic', content: '用户喜欢乌龙茶，通常在午后饮用。', importance: 0.5, confidence: 0.5 },
+    { evidenceIds: ['m1', 'm2'], category: 'semantic', content: '用户喜欢乌龙茶，通常在午后饮用。', summary: '用户午后饮乌龙茶', organization: { version: 1, type: 'person', subjects: [{ name: '用户' }] }, importance: 0.5, confidence: 0.5 },
     { evidenceIds: ['m3'], category: 'semantic', content: '用户自述养了一只猫。', importance: 0.5, confidence: 0.5 },
     { evidenceIds: ['m3'], category: 'semantic', content: '用户自述在学习钢琴。', importance: 0.5, confidence: 0.5 },
   ],
@@ -60,6 +60,7 @@ it('merges A/B, splits C, refuses incomplete batches and preserves results throu
   }
   const plan = sleepMemoryPlan(raw, records, 4, 1000, 'Asia/Shanghai')
   expect(plan).toHaveLength(3)
+  expect(plan[0]).toMatchObject({ summary: '用户午后饮乌龙茶', organization: { type: 'person', subjects: [{ name: '用户' }] } })
   const largerBatch = {
     memories: Array.from({ length: 12 }, (_, index) => ({
       ...raw.memories[index % raw.memories.length]!,

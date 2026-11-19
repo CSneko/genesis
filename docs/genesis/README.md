@@ -28,6 +28,8 @@ Web launches in this workspace load the life core, first awakening, Bilibili int
 pnpm dsh
 ```
 
+The workspace Life overlay defaults to `danger-full-access`: available file and shell tools may modify files outside the current workspace, subject to operating-system permissions. Private cognition inherits this mode from its source conversation. `DSH_PERMISSION_MODE` or a later `sandbox-policy` patch can restrict the deployment; an explicit Session sandbox selection still takes precedence. Restart the running profile to apply configuration changes.
+
 `pnpm dsh web`, `pnpm start:web` and `make web` use the same defaults, including development mode. The default `DSH_HOME` is `~/.genesis-harness`; explicit `DSH_HOME` and `--port` values take precedence, and additional `--patch` files apply after the defaults. You no longer need `PNPM_MANAGE_PACKAGE_MANAGER_VERSIONS`. Configure an API or sign in, then complete embedding settings in Knowledge Base; see [First awakening](awakening.md).
 
 For local browser testing, run `pnpm dsh web --test-no-login`. Open the authenticated URL printed at startup; it exchanges the launch token for a browser cookie without a key-entry form. This workspace-only flag applies the test overlay last, fixes the listener to `127.0.0.1` even when `--host` is supplied, and preserves `--port`. API authentication remains enabled; the bare root URL still requires a valid cookie. Omit the flag to return to key login. Use a dedicated temporary `DSH_HOME` for automated tests.
@@ -63,6 +65,8 @@ In life mode, teach exact tool names through `learn`, such as `mcp__playwright-m
 Workspace Genesis Web loads the [desktop portal provider](../../packages/experimental/computer-use-portal/README.md) on GNOME Wayland. Restart with `pnpm dsh` and teach the exact tool name `computer`. Its first `connect` opens GNOME's screen-sharing and remote-input consent dialog. Prefer application inspection and semantic control: list applications, select an application instance, then read its controls, invoke exposed actions, or replace editable text directly. The tool also supports screenshots, pointer input, scrolling, and keyboard chords on one shared monitor when accessibility is insufficient. Coordinate and keyboard input require a recent screenshot; keys affect the current focused application. The workspace overlay preapproves application access without per-application questions; GNOME system sharing consent is still required. The provider uses XDG portals and PipeWire without a Shell extension.
 
 Use `GENESIS_COMPUTER_USE=0` to disable desktop tools. The provider checks required Python/GI and GStreamer dependencies at startup; see its README for configuration and recovery. Consent is temporary and must be granted again after restart. GNOME's stop-sharing control revokes access. Learning persists separately and does not grant OS permissions; screenshots require an image-capable model route.
+
+The workspace also loads [screen observation](../../packages/experimental/genesis-see-now/README.md): teach `see_now`, enable the `vision` toolkit and select an image-capable model to observe the current host screen for a bounded duration. The source interface supports independently registered captures; remote Web access does not share the client device screen.
 
 ### Explicit compositions
 

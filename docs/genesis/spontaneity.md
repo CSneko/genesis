@@ -12,7 +12,7 @@ Spontaneity lets the main Life model associate recent dialogue, memories, simula
 
 ## Enable
 
-Workspace Genesis Web enables Spontaneity by default. Genesis → Thoughts manages saved thoughts, budgets and stopping an active exploration. For explicit compositions with naming, memory and deliberation configured, add the patch through the supported entry point:
+Workspace Genesis Web enables Spontaneity by default. Genesis → Cognition and initiative manages saved thoughts, budgets, channel policy, delivery receipts and stopping an active exploration. For explicit compositions with naming, memory and deliberation configured, add the patch through the supported entry point:
 
 ```sh
 pnpm dsh web --patch packages/experimental/genesis/cordis.spontaneity.patch.yml
@@ -26,7 +26,9 @@ After a real operator Life exchange, the quiet interval offers one opportunity. 
 
 With emotion and spontaneity enabled, a lightweight timer checks boredom every `boredomCheckMs` (default 60000), without inference. When awake, without user work or pending input, and above `boredomThreshold` (default 0.35), another opportunity is available without new user input. Higher boredom shortens the interval within `boredomMinIntervalMs` (default 300000), `boredomMaxIntervalMs` (default 1800000) and `idleMs`. Empty, failed and interrupted runs count toward the existing daily budget. Source events and receipts persist; no opportunity is created without a live operator Life conversation and model route, and cold conversations are not awakened.
 
-During internal reflection, `genesis_socialize` discovers explicitly approved live destinations and can send one original brief message. QQ exposes only separate deployment allowlists `proactiveGroups` and `proactiveUsers`, both empty by default; `outboundGroups`, `outboundUsers` and familiarity grant no autonomous permission. Each opportunity reserves at most one send, with life-wide `socialCooldownMs` (default 3600000) and `socialMaxPer24Hours` (default 3) across targets. Durable reservation precedes the existing QQ text delivery and acknowledgement flow. Uncertain outcomes count toward limits and never replay after restart. Only an admitted internal reflection can execute this tool; ordinary chats and cold Sessions cannot borrow that permission. Private history is not automatically forwarded and works are not published automatically.
+During reflection or exploration, `genesis_socialize` discovers explicitly approved live destinations and can send one original brief message. QQ exposes only separate deployment allowlists `proactiveGroups` and `proactiveUsers`, both empty by default; `outboundGroups`, `outboundUsers` and familiarity grant no autonomous permission. Each opportunity reserves at most one send, with life-wide `socialCooldownMs` (default 3600000) and `socialMaxPer24Hours` (default 3) across targets. Durable reservation precedes the existing QQ text delivery and acknowledgement flow. Uncertain outcomes count toward limits and never replay after restart. Only an admitted internal activity can execute this tool; ordinary chats and cold Sessions cannot borrow that permission. Private history is not automatically forwarded and works are not published automatically.
+
+When `socialInitiative` is also composed, cognition owns new communication decisions through `genesis_socialize`; the independent message timer and event-triggered decisions stay inactive. Enabling Web delivery in the combined page exposes the configured live operator conversation. Its existing cooldown, quiet interval, daily limit, durable reservation and assistant receipt still apply. The destination model phrases the selected intent in the character’s voice. Pausing cognition prevents new proactive sends, while existing dispatched receipts can still reconcile after restart. Undispatched pending opportunities are marked skipped without replay. Without spontaneity, explicit social-only compositions retain their independent worker.
 
 ## Choose and revisit
 
@@ -40,14 +42,16 @@ The host selects saved and resting thoughts whose revisit time has arrived. A re
 
 ## Private work and budgets
 
+The workspace Life overlay defaults to `danger-full-access`, allowing learned file tools to read and write outside the current workspace without selecting it through `genesis_workspace`. Operating-system permissions still apply. Explicit source-Session restrictions and later deployment overrides remain effective; private cognition does not widen them.
+
 Each opportunity owns a separate Life Session using the existing Agent loop, the source conversation's last logged main-model route, and its sandbox ceiling intersected with deployment policy. It is not attached to the user's workspace conversation list and does not send its assistant text to Web chat or QQ. Its persisted Session remains available for operator inspection. Files can be saved in the personal directory, and learned `genesis_record` can keep writing. Saving a thought or artifact does not automatically publish or send it.
 
-Tool learning, toolkit activation, sandbox authorization and operator stops remain effective. Reflection permits thought, recall, plan and restricted social initiation tools. Exploration additionally permits the configured exact inline tools; defaults are `read`, `write`, `edit`, `genesis_record` and `genesis_toolkit`. Unlearned tools remain unavailable. Exploration excludes delegation, jobs, messaging, scheduling and PTC execution; browser tools require an explicit deployment allowlist and their existing learning and toolkit activation.
+Tool learning, toolkit activation, sandbox authorization and operator stops remain effective. Reflection permits thought, recall, plan, workspace selection, restricted social initiation, tool learning through `learn`, and toolkit discovery and activation through `genesis_toolkit`. Each private Session starts with its own toolkit activation; source-conversation activation is not inherited. Exploration additionally permits learned, active inline tools; `tools: ['*']` is the default, including available shell and browser tools. An explicit exact-name list restricts exploration. Delegation, jobs, general messaging, scheduling and PTC execution remain excluded. `genesis_workspace` lists registered workspaces with bounded search and enters one by its ID. Subsequent operations use that directory, and a temporary Session-only write grant covers the selected directory under `workspace-write`. Selecting another workspace withdraws the preceding extra grant; activity completion also withdraws it. Read-only mode stays read-only, and selecting a workspace never resumes its conversations. Missing services or unknown workspaces fail visibly.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
 | `idleMs` | 60000 | Quiet delay after the conversation becomes idle. |
-| `maxDurationMs` | 180000 | Whole opportunity deadline, including reviews. |
+| `maxDurationMs` | 1800000 (30 minutes) | Whole opportunity deadline, including reviews. |
 | `maxOutputTokens` | 50000000 (50M) | Worst-case requested output tokens reserved across main and auxiliary calls, including retries. |
 | `maxPer24Hours` | 6 | Opportunities in a rolling twenty-four hours. |
 

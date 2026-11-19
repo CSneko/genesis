@@ -57,7 +57,7 @@ export interface SpontaneityConfig {
   maxStateChars: number
   /** Maximum serialized thought selection supplied to a model request or tool. */
   contextChars: number
-  /** Exact additional inline tools; learning, toolkits and execution authorization still apply. */
+  /** Additional inline tools, or * for all inline tools; learning, toolkits and execution authorization still apply. */
   tools: string[]
 }
 /** Sleep defaults and bounded maintenance under the life writer lease. */
@@ -172,6 +172,29 @@ export interface Config {
   }
   /** Life-wide recall across Web and QQ, or source-conversation isolation; the life overlay selects life. */
   memorySharing: 'life' | 'conversation'
+  /** Optional retention and recall policy, independent of truth confidence. */
+  memoryDynamics?: {
+    /** Initial familiarity of a new or materially corrected interpretation. */
+    initialFamiliarity: number
+    /** Familiarity added by an independently delivered recall. */
+    recallGain: number
+    /** Minimum time between recalls that extend the half-life. */
+    spacingDays: number
+    /** Physical expiration is applied only when enabled. */
+    forgetting: boolean
+    /** The familiarity below which an unprotected record is removed. */
+    forgetBelow: number
+    /** Category half-lives before importance and independent recalls extend retention. */
+    halfLifeDays: Record<'episodic' | 'semantic' | 'self' | 'procedural', number>
+    /** Minimum relevance multiplier for an old memory. */
+    floor: number
+    /** Additional half-life fraction per independent recalled exchange. */
+    reinforcement: number
+    /** Maximum recalled exchanges contributing to a longer half-life. */
+    maxReinforcements: number
+    /** Memories at this importance or above retain their accessibility. */
+    protectedImportance: number
+  } | undefined
   /** Short-lived cross-conversation summaries; independent of long-term memory review. */
   temporaryMemory: TemporaryMemoryConfig
   /** Bounds for durable social profiles and relationship proposals; strangers need no profile. */
@@ -252,6 +275,8 @@ export interface Config {
   capabilityChars: number
   /** Memory context character budget. */
   memoryChars: number
+  /** Total rendered character budget for persistent memory modules and recall results in a request. */
+  memoryContextChars: number
   /** Growth context character budget. */
   growthChars: number
   /** Complete model tool result budget, including wrappers. */
@@ -377,7 +402,11 @@ export interface DeliberationConfig {
 
 /** Explicit routes and budgets for the optional long-term memory pipeline. */
 export interface MemoryConfig {
-  /** Maximum recent conversation turns considered together, including the current turn. */
+  /** Complete exchanges accumulated before automatic review; one preserves per-turn review. */
+  batchTurns: number
+  /** Idle delay after the last completed exchange before reviewing a partial batch, in milliseconds. */
+  batchIdleMs: number
+  /** Target complete-exchange context window; pending batch evidence is retained even when it exceeds this window. */
   windowTurns: number
   /** System One endpoint or native Gemini /v1beta/decisions endpoint; absent uses the legacy provider route. */
   decisionUrl?: string
@@ -435,6 +464,10 @@ export interface MemoryConfig {
     maxTokens: number
     /** Maximum summary operations plus the final writer operation, excluding per-request retries. */
     maxCalls: number
+    /** Additional summary generations after invalid citation identifiers, within maxCalls and the overview deadline. */
+    maxCitationRetries: number
+    /** Deadline for each model attempt; expiry retries within the whole-conversation deadline. */
+    requestTimeoutMs: number
     /** Whole-conversation deadline, including summaries, retries, embeddings and commit admission. */
     timeoutMs: number
   }
@@ -442,6 +475,8 @@ export interface MemoryConfig {
   associationLimit: number
   /** Complete plain-text budget for automatic associated memories. */
   associationChars: number
+  /** Generate three summaries for an older record when it is delivered as a cue. */
+  backfillSummaries?: boolean
   /** Maximum current-input characters used as an associative cue. */
   associationInputChars: number
   /** Deadline for automatic association before a chat request; explicit recall keeps timeoutMs. */
@@ -570,14 +605,14 @@ export const Config: z<
       socialMaxPer24Hours: z.number().step(1).min(1).max(1000).default(3),
       enabled: z.boolean().default(true),
       idleMs: z.number().step(1).min(0).max(86400000).default(60000),
-      maxDurationMs: z.number().step(1).min(1000).max(3600000).default(180000),
+      maxDurationMs: z.number().step(1).min(1000).max(3600000).default(1800000),
       maxOutputTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(50000000),
       maxPer24Hours: z.number().step(1).min(1).max(1000).default(6),
       experienceImportance: z.number().min(0).max(1).default(0.3),
       maxRecords: z.number().step(1).min(1).max(100000).default(10000),
       maxStateChars: z.number().step(1).min(1000).max(50000000).default(5000000),
       contextChars: z.number().step(1).min(500).max(100000).default(8000),
-      tools: z.array(z.string().min(1).max(200)).default(['read', 'write', 'edit', 'genesis_record', 'genesis_toolkit']),
+      tools: z.array(z.string().min(1).max(200)).default(['*']),
     }),
   ]),
   people: z
@@ -726,6 +761,26 @@ export const Config: z<
     })
     .default({}),
   memorySharing: z.union(['life', 'conversation']).default('conversation'),
+  memoryDynamics: z.union([
+    z.const(undefined),
+    z.object({
+      initialFamiliarity: z.number().min(0.001).max(0.999).default(0.25),
+      recallGain: z.number().min(0.001).max(1).default(0.25),
+      spacingDays: z.number().min(1 / 24).max(365).default(1),
+      forgetting: z.boolean().default(false),
+      forgetBelow: z.number().min(0.001).max(0.999).default(0.03),
+      halfLifeDays: z.object({
+        episodic: z.number().min(1).max(36500).default(30),
+        semantic: z.number().min(1).max(36500).default(90),
+        self: z.number().min(1).max(36500).default(180),
+        procedural: z.number().min(1).max(36500).default(120),
+      }).default({}),
+      floor: z.number().min(0.01).max(1).default(0.5),
+      reinforcement: z.number().min(0).max(10).default(0.15),
+      maxReinforcements: z.number().step(1).min(1).max(1000).default(20),
+      protectedImportance: z.number().min(0).max(1).default(0.9),
+    }),
+  ]),
   leasePath: z.string().required(),
   backupPath: z.string(),
   personalDirectory: z.string(),
@@ -786,7 +841,9 @@ export const Config: z<
   memory: z.union([
     z.const(undefined),
     z.object({
-      windowTurns: z.number().step(1).min(1).max(12).default(4),
+      batchTurns: z.number().step(1).min(1).max(12).default(4),
+      batchIdleMs: z.number().step(1).min(1000).max(3600000).default(180000),
+      windowTurns: z.number().step(1).min(1).max(12).default(8),
       decisionUrl: z.string(),
       decisionKeyEnv: z.string(),
       decisionThreshold: z.number().min(0).max(1),
@@ -816,11 +873,14 @@ export const Config: z<
           outputChars: z.number().step(1).min(128).max(1000000).default(128000),
           maxTokens: z.number().step(1).min(64).max(32000).default(16384),
           maxCalls: z.number().step(1).min(1).max(1000).default(64),
+          maxCitationRetries: z.number().step(1).min(0).max(10).default(1),
+          requestTimeoutMs: z.number().step(1).min(100).max(3600000).default(60000),
           timeoutMs: z.number().step(1).min(100).max(3600000).default(300000),
         })
         .default({}),
       associationLimit: z.number().step(1).min(0).max(20).default(3),
       associationChars: z.number().step(1).min(128).max(20000).default(2000),
+      backfillSummaries: z.boolean().default(false),
       associationInputChars: z.number().step(1).min(64).max(10000).default(1000),
       associationTimeoutMs: z.number().step(1).min(50).max(30000).default(1200),
       experienceWindowMs: z.number().step(1).min(0).max(86400000).default(1800000),
@@ -884,6 +944,7 @@ export const Config: z<
   identityChars: z.number().step(1).min(512).max(10000).default(1200),
   capabilityChars: z.number().step(1).min(256).max(100000).default(4000),
   memoryChars: z.number().step(1).min(256).max(100000).default(4000),
+  memoryContextChars: z.number().step(1).min(1024).max(1000000).default(12000),
   growthChars: z.number().step(1).min(256).max(100000).default(2000),
   resultChars: z.number().step(1).min(512).max(1000000).default(16000),
   modelCatalogChars: z.number().step(1).min(128).max(16_000_000).default(4_000_000),

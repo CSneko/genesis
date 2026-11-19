@@ -156,6 +156,7 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
     [
       "- name: '@deepseek-ai/dsh-credentials-local'",
       `  config: { path: ${JSON.stringify(join(root, '.credentials.yaml'))}, watch: false }`,
+      "- name: '@deepseek-ai/dsh-fs-local'",
       "- name: '@deepseek-ai/dsh-attachment-local'",
       `  config: { dshHome: ${JSON.stringify(root)} }`,
       "- name: '@deepseek-ai/dsh-llm'",
@@ -260,6 +261,7 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
     uncertainNext: false,
     messages: new Map<string, unknown>(),
     forwards: new Map<string, unknown>(),
+    groupInfoGate: undefined as (() => Promise<void>) | undefined,
     acknowledge: true,
     acknowledgements: [] as Array<() => void>,
   }
@@ -285,7 +287,7 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
       return
     }
     if (frame.action === 'get_group_info') {
-      socket.send(
+      const respond = () => socket.send(
         JSON.stringify({
           status: metadata.fail ? 'failed' : 'ok',
           retcode: metadata.fail ? 1 : 0,
@@ -293,6 +295,8 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
           data: { group_name: metadata.groupName },
         }),
       )
+      if (metadata.groupInfoGate === undefined) respond()
+      else void metadata.groupInfoGate().then(respond)
       return
     }
     if (frame.action === 'get_forward_msg') {
@@ -1737,6 +1741,57 @@ it('admits image-only and file messages, keeps scoped quotes and sends logged me
   ).rejects.toThrow(/WAV/u)
 })
 
+it('sends local files only for the current authenticated operator and refuses invalid reads before uploading', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-local-file-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const first = await boot(root, false, false, false, true)
+  const path = join(root, '报告.txt')
+  const bytes = Buffer.from('本地文件内容\n')
+  await writeFile(path, bytes)
+  first.socket.send(incoming('private', 870, 55555))
+  await receipt(first.ctx, 1)
+  const state = await first.ctx.genesis.snapshot()
+  const conversation = state.people!.conversations.find(row => row.kind === 'private' && row.personId === qqPersonId('55555'))!
+  const agent = first.ctx.agents.get(SessionId(conversation.sessionId))!
+  const run = async (args: Record<string, string>) => {
+    const callId = ToolCallId(`local-file-${agent.session.ownEvents().length}`)
+    agent.session.append('tool/call', { turn: 1, step: 1, callId, name: 'genesis_qq_send', arguments: JSON.stringify(args) })
+    const result = await executeToolFixture(first.ctx, { agent, name: 'genesis_qq_send', callId, arguments: args, signal: new AbortController().signal })
+    agent.session.append('tool/result', {
+      turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
+    }, { surfaceOp: 'append' })
+    return result
+  }
+  const uploaded = () => first.actions.filter(row => row.action.startsWith('upload_'))
+  const result = await run({ kind: 'file', filePath: path })
+  expect(result.isError).not.toBe(true)
+  expect(uploaded()).toEqual([{ action: 'upload_private_file', params: {
+    user_id: 55555, name: '报告.txt', file: `base64://${bytes.toString('base64')}`,
+  } }])
+  expect(JSON.stringify(result)).toContain('accepted-unconfirmed-do-not-retry')
+  const attachment = result.content.find(block => block.type === 'file')
+  expect(attachment?.type).toBe('file')
+  if (attachment?.type !== 'file') throw new Error('Missing local file attachment')
+  expect(attachmentIn(agent.session, attachment.attachment.attachmentId)).toEqual({ kind: 'file', attachment: attachment.attachment })
+  expect(JSON.stringify(agent.session.ownEvents())).not.toContain(bytes.toString('base64'))
+  expect((await run({ kind: 'file', filePath: 'relative.txt' })).isError).toBe(true)
+  expect((await run({ kind: 'file', filePath: join(root, 'missing') })).isError).toBe(true)
+  expect((await run({ kind: 'file', filePath: root })).isError).toBe(true)
+  expect((await run({ kind: 'file', filePath: path, attachmentId: 'invalid' })).isError).toBe(true)
+  const large = join(root, 'large.bin')
+  await writeFile(large, Buffer.alloc(QqConfig({ cwd: root }).maxMediaBytes + 1))
+  expect((await run({ kind: 'file', filePath: large })).isError).toBe(true)
+  // A private operator route cannot lend authority to a different authenticated speaker.
+  const original = agent.session.ownEvents().find(event => event.type === 'user/message' && event.data.source.kind === 'genesis-person')!
+  if (original.type !== 'user/message' || original.data.source.kind !== 'genesis-person') throw new Error('Missing speaker')
+  agent.session.append('user/message', { ...original.data,
+    content: [{ type: 'text', text: 'send file' }],
+    source: { ...original.data.source, personId: qqPersonId('12345'), accountId: '12345', name: '妈妈' },
+  }, { surfaceOp: 'append' })
+  expect((await run({ kind: 'file', filePath: path })).isError).toBe(true)
+  expect(uploaded()).toHaveLength(1)
+})
+
 it('persists an independent QQ decision route and shows real endpoint probability without changing memory settings', async () => {
   const root = await mkdtemp(join(tmpdir(), 'genesis-qq-probability-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
@@ -2290,4 +2345,62 @@ it('configures person and group QQ permissions, denies guest escalation and rest
   data.tables.settings.policy['schemaVersion'] = 99
   await writeFile(path, JSON.stringify(data))
   await expect(boot(root)).rejects.toThrow()
+})
+
+it('admits group messages while a group title lookup is still pending', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-slow-title-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  f.metadata.groupInfoGate = () => gate
+  try {
+    f.socket.send(incoming('group', 93001))
+    await expect.poll(() => f.actions.filter(row => row.action === 'get_group_info').length).toBe(1)
+    await expect.poll(() => f.sent.length).toBe(1)
+    f.socket.send(incoming('group', 93002))
+    await expect.poll(() => f.sent.length).toBe(2)
+    expect(f.actions.filter(row => row.action === 'get_group_info')).toHaveLength(1)
+  } finally { release() }
+  const binding = (await f.ctx.genesis.snapshot()).people!.conversations.find(row => row.kind === 'group')!
+  const agent = f.ctx.agents.get(binding.sessionId)!
+  await expect.poll(() => f.ctx.sessionTitle.get(agent.session)?.title).toBe('测试群')
+})
+
+it('evaluates one reply decision for a consecutive group speaker batch and retains all observations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-group-batch-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root, false, false, false, false, true)
+  const policy = f.ctx.genesisQqSettings
+  const signal = new AbortController().signal
+  const current = await policy.inspect(signal)
+  await policy.save({ ...current.settings, groupAutoReply: true }, current.revision, signal)
+  f.model.groupReply = true
+  for (let id = 93010; id < 93015; id++) {
+    const frame = JSON.parse(incoming('group', id)) as { message: unknown[] }
+    frame.message.push({ type: 'text', data: { text: `连续群消息${id}` } })
+    f.socket.send(JSON.stringify(frame))
+  }
+  await expect.poll(() => f.sent.length).toBe(1)
+  expect(f.model.requests.filter(row => typeof row.system === 'string' && row.system.startsWith('Should the character reply'))).toHaveLength(1)
+  const binding = (await f.ctx.genesis.snapshot()).people!.conversations.find(row => row.kind === 'group')!
+  const records = groupRecords(f.ctx.agents.get(binding.sessionId)!.session)
+  expect(records.filter(row => row.kind === 'message')).toHaveLength(5)
+  expect(records.filter(row => row.kind === 'decision' && row.outcome === 'skip')).toHaveLength(4)
+  expect(records.filter(row => row.kind === 'decision' && row.outcome === 'reply')).toHaveLength(1)
+  const request = f.model.requests.find(row => row.model === 'chat')!
+  for (let id = 93010; id < 93015; id++) expect(modelText(request)).toContain(`连续群消息${id}`)
+})
+
+it('keeps a mention at the start of a manual group batch eligible for reply', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-qq-manual-batch-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const f = await boot(root, false, false, false, false, true)
+  for (let id = 93020; id < 93025; id++) {
+    const frame = JSON.parse(incoming('group', id)) as { message: Array<{ type: string }> }
+    if (id > 93020) frame.message = frame.message.filter(part => part.type !== 'at')
+    f.socket.send(JSON.stringify(frame))
+  }
+  await expect.poll(() => f.sent.length).toBe(1)
+  expect(f.model.requests.filter(row => row.model === 'chat')).toHaveLength(1)
 })

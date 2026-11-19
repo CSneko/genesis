@@ -26,6 +26,7 @@ export function genesisLaunch(argv: readonly string[], version: string, root: st
     'packages/experimental/genesis/cordis.life.patch.yml',
     'packages/experimental/genesis-bili-humanism/cordis.patch.yml',
     'packages/experimental/genesis-video/cordis.patch.yml',
+    'packages/experimental/genesis-see-now/cordis.patch.yml',
     'packages/experimental/client-ui-genesis/cordis.patch.yml',
     'config/genesis-computer.patch.yml',
     'config/genesis-web.patch.yml',

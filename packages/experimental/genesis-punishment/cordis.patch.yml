@@ -1,0 +1,4 @@
+# Built in to Genesis; activation and destination are set in Plugins → Punishment.
+- insert:
+    - id: genesis-punishment
+      name: '@deepseek-ai/dsh-genesis-punishment'

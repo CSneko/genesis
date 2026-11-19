@@ -71,6 +71,15 @@
     },
     {
       "path": "../ui-context-menu"
+    },
+    {
+      "path": "../ui-file-actions"
+    },
+    {
+      "path": "../../api/workspace-files/tsconfig.client.json"
+    },
+    {
+      "path": "../resources"
     }
   ]
 }

@@ -4,6 +4,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type { ZodType } from 'zod'
 import type { Config } from './config.ts'
+import { memoryBatchProjection } from './memory-batch.ts'
 import { manualMemoryProjection } from './manual-projection.ts'
 import { conversationMemoryProjection } from './conversation-memory.ts'
 import { temporaryProjection } from './temporary-projection.ts'
@@ -16,6 +17,7 @@ import { MAX_EMOTION_WINDOW_TURNS } from './emotion-state.ts'
 
 type State<D> = D extends { stateSchema: ZodType<infer S> } ? S : never
 interface EvidenceHandles {
+  memoryBatch: ProjectionHandle<State<typeof memoryBatchProjection>>
   manualMemory: ProjectionHandle<State<typeof manualMemoryProjection>>
   conversationMemory: ProjectionHandle<State<typeof conversationMemoryProjection>>
   temporary: ProjectionHandle<State<typeof temporaryProjection>>
@@ -45,6 +47,7 @@ export class GenesisSessionEvidence {
    * @returns Ready evidence owner; registration failures reject activation.
    */
   static async create(ctx: Context, config: Config): Promise<GenesisSessionEvidence> {
+    const memoryBatch = await ctx.sessionProjections.register(memoryBatchProjection)
     const manualMemory = await ctx.sessionProjections.register(manualMemoryProjection)
     const conversationMemory = await ctx.sessionProjections.register(conversationMemoryProjection)
     const temporary = await ctx.sessionProjections.register(temporaryProjection)
@@ -56,9 +59,13 @@ export class GenesisSessionEvidence {
       : await ctx.sessionProjections.register(emotionProjection(MAX_EMOTION_WINDOW_TURNS, config.memory.inputChars))
     const interest = config.interest === undefined || config.memory === undefined ? undefined
       : await ctx.sessionProjections.register(interestProjection(config.interest.windowTurns, config.memory.inputChars))
-    return new GenesisSessionEvidence({ manualMemory, conversationMemory, temporary, toolkits, task, initiative, emotion, interest })
+    return new GenesisSessionEvidence({
+      memoryBatch, manualMemory, conversationMemory, temporary, toolkits, task, initiative, emotion, interest,
+    })
   }
 
+  /** @param session - Prepared Session. @returns Last settled automatic memory sequence, or null before initialization. */
+  memoryBatchOf(session: Session) { return this.handles.memoryBatch.stateOf(session) }
   /** @param session - Prepared Session. @returns Explicit memory-review evidence. */
   manualMemoryOf(session: Session) { return this.handles.manualMemory.stateOf(session) }
   /** @param session - Prepared Session. @returns Attributed conversation text. */

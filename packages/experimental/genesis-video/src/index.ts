@@ -11,6 +11,7 @@ import { access } from 'node:fs/promises'
 import { z } from 'zod'
 import { VideoController, VideoError } from './controller.ts'
 import { videoGuide } from './guide.ts'
+import { installDrawai } from './drawai.ts'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-experimental-genesis'
 import type {} from '@deepseek-ai/dsh-jobs'
@@ -24,6 +25,8 @@ declare module '@deepseek-ai/dsh-jobs' {
 
 /** Trusted local deployment paths and finite editing/rendering budgets. */
 export interface Config {
+  /** Integrate installed DrawAI static canvas tools; independent DrawAI render/download operations are denied. */
+  drawai: boolean
   /** Absolute private project directory; this exact directory is granted to operator Life Sessions in workspace-write mode. */
   dataDir: string
   /** Only this composed preset can execute video operations. */
@@ -77,6 +80,7 @@ export interface Config {
 }
 /** Validate paths and budgets before tools become available. */
 export const Config: Schema<Config> = Schema.object({
+  drawai: Schema.boolean().default(false),
   dataDir: Schema.string().required(), lifePreset: Schema.string().default('life'),
   browserExecutable: Schema.string().default(''), ffprobeExecutable: Schema.string().default('ffprobe'),
   inputChars: Schema.natural().min(1024).max(1000000).default(100000),
@@ -123,6 +127,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   if (preset.broken !== undefined) throw new VideoError('configuration', 'The configured video Life preset is unavailable. Correct it before loading the plugin.')
   const controller = new VideoController(ctx, config)
   const directory = await controller.prepare()
+  const drawaiGuide = config.drawai ? installDrawai(ctx, config, agent => controller.participates(agent)) : undefined
   const alive = new AbortController()
   ctx.effect(() => () => { alive.abort() })
   ctx.effect(() => ctx.sandboxPolicy.registerWritableDirectory(directory, session => session !== undefined
@@ -166,7 +171,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         if (config.browserExecutable) {
           browserReady = await access(config.browserExecutable).then(() => true, () => false)
         }
-        value = { ...videoGuide, environment: { remotionVersion: '4.0.540', browserConfigured: config.browserExecutable !== '', browserPathExists: browserReady,
+        value = { ...videoGuide, ...(drawaiGuide === undefined ? {} : { drawai: drawaiGuide() }), environment: { remotionVersion: '4.0.540', browserConfigured: config.browserExecutable !== '', browserPathExists: browserReady,
           maxDurationSeconds: config.maxDurationSeconds, maxAssetBytes: config.maxAssetBytes, maxOutputBytes: config.maxOutputBytes,
           maxConcurrentRenders: config.maxConcurrentRenders, dataDir: directory,
           tested: 'Only a completed job receipt establishes a successful render; browser presence does not.' } }

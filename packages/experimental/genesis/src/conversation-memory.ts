@@ -1,25 +1,28 @@
 /** Whole-conversation text evidence and the exact memory versions admitted to manual review. @module */
 import { isHumanSource, personSource, personSourceSchema } from './people-model.ts'
 import { z } from 'zod'
+import { isCompactCheckpointSource } from '@deepseek-ai/dsh-compaction/checkpoint'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { LifeMemory, LifeState, MemoryId } from './model.ts'
 
-const schema = z.object({ messages: z.array(z.object({ role: z.enum(['user', 'assistant']),
+const schema = z.object({ afterSeq: z.number().int().min(-1), messages: z.array(z.object({ role: z.enum(['user', 'assistant']),
   seq: z.number().int().nonnegative(), timestamp: z.iso.datetime(), text: z.string(), participant: personSourceSchema.optional() })) })
 
 
-/** Explicit operator review includes text messages only, never tools, reasoning or injected context. */
+/** Operator review retains chat after the latest committed compaction checkpoint, excluding the checkpoint text itself. */
 export const conversationMemoryProjection: ProjectionDefinition<'genesisConversationMemory', z.infer<typeof schema>> = {
-  key: 'genesisConversationMemory', stateVersion: 1, stateSchema: schema,
-  init: () => ({ messages: [] }),
+  key: 'genesisConversationMemory', stateVersion: 2, stateSchema: schema,
+  init: () => ({ afterSeq: -1, messages: [] }),
   apply: (state, event) => {
+    if (event.type === 'user/message' && isCompactCheckpointSource(event.data.source) && typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace')
+      return { afterSeq: event.seq, messages: [] }
     const content = event.type === 'user/message' && isHumanSource(event.data.source) ? event.data.content
       : event.type === 'assistant/message' ? event.data.message.content : undefined
     if (content === undefined) return state
     const text = content.filter(block => block.type === 'text').map(block => block.text).join('\n')
     if (!text.trim()) return state
-    return { messages: [...state.messages, { role: event.type === 'user/message' ? 'user' : 'assistant',
+    return { ...state, messages: [...state.messages, { role: event.type === 'user/message' ? 'user' : 'assistant',
       ...(event.type === 'user/message' && personSource(event.data.source) !== undefined ? { participant: personSource(event.data.source) } : {}), seq: event.seq, timestamp: new Date(event.time).toISOString(), text }] }
   },
 }
@@ -27,6 +30,8 @@ export const conversationMemoryProjection: ProjectionDefinition<'genesisConversa
 /** Frozen source versions; additions, edits and removals all invalidate a pending overview. */
 export interface ConversationMemoryScope {
   sessionId: SessionId
+  /** Latest committed compaction checkpoint; absent includes the entire conversation. */
+  afterSeq?: number
   versions: Array<{ id: MemoryId; updatedAt: string }>
 }
 
@@ -34,13 +39,23 @@ export interface ConversationMemoryScope {
  * Select every current memory citing this conversation, including shared and inferred records.
  * @param state - Trusted life snapshot.
  * @param sessionId - Conversation selected by the operator.
- * @returns Complete matching records, without a search or preview limit.
+ * @param afterSeq - Committed compaction checkpoint; absent includes all conversation records, otherwise every source must be newer.
+ * @returns Matching records without search truncation; pre-checkpoint and mixed-source records are excluded when a checkpoint is supplied.
  */
-export function conversationMemories(state: LifeState, sessionId: SessionId): LifeMemory[] {
-  const evidence = new Set(state.events.filter(event => event.relatedSessionId === sessionId).map(event => event.id))
+export function conversationMemories(state: LifeState, sessionId: SessionId, afterSeq?: number): LifeMemory[] {
+  const evidence = new Set(state.events.filter((event) => {
+    if (event.relatedSessionId !== sessionId) return false
+    if (afterSeq === undefined) return true
+    const prefix = `session:${sessionId}:`
+    if (!event.dedupKey.startsWith(prefix)) return false
+    const seq = Number(event.dedupKey.slice(prefix.length))
+    return Number.isSafeInteger(seq) && seq > afterSeq
+  }).map(event => event.id))
+  if (afterSeq !== undefined) return state.memories.filter(memory => memory.sourceEventIds.every(id => evidence.has(id))
+    && (memory.history ?? []).every(version => version.sourceEventIds.every(id => evidence.has(id))))
   return state.memories.filter(memory => memory.experience?.sessionId === sessionId
     || memory.sourceEventIds.some(id => evidence.has(id)))
 }
 
 /** The writer chooses retention and mutations only within the supplied conversation evidence. */
-export const CONVERSATION_MEMORY_PROMPT = '这是操作者主动请求的整个会话总览整理。conversation 与 memories 存在时，包含完整聊天和全部会话关联记忆；overview 存在时，是逐段读完这些证据后的临时模型提要，sourceSeqs 和 memoryIds 是仍可引用的原始证据标识。summarized 为 true 时，只能将新写或改写的条目标为 declarative、model-inference，不能将临时提要当成用户原话或持久习惯。结合完整交流、记忆正文和以往认识，梳理主题、指代、事实变化及矛盾，避免逐条复述。自行决定保留、合并、更新、删除或新增：保留的条目不必写入 changes；合并时先通过 upsert 保存有用信息，再删除重复或已失效的来源；不要为凑数删除独有的经历或细节。只能修改或删除提供的记忆，不得波及无关会话。upsert 的 sourceSeqs 引用提供的聊天序号，memoryIds 引用提供的记忆 UUID；两者可分别为空，但必须至少有一项有效证据；每项变更只引用直接支撑结论的少量证据，不要复制提要中的全部引用。例如 {"action":"upsert","sourceSeqs":[],"memoryIds":["提供的记忆 UUID"],"memory":{"category":"semantic","content":"有归属的综合认识","summary":"简短摘要","importance":0.5,"confidence":0.5,"kind":"declarative","attribution":"model-inference"}}。引用记忆合成的内容必须标记 model-inference，不得变成用户原话；正文中的推测不能成为已确认事实。习惯不得凭一次总览获得额外支持，不得创建推断式行为习惯。仍然遵守 maxChanges；不需要变化时返回 {"changes":[]}。只返回完整 JSON，不输出分析过程。'
+export const CONVERSATION_MEMORY_PROMPT = '这是操作者主动请求的整个会话总览整理。conversation 与 memories 存在时，包含本次范围内的聊天和关联记忆；若会话已经压缩，范围仅限最近一次压缩之后，不回溯压缩前的记录或以往认识；overview 存在时，是逐段读完这些证据后的临时模型提要，sourceSeqs 和 memoryIds 是仍可引用的原始证据标识。summarized 为 true 时，只能将新写或改写的条目标为 declarative、model-inference，不能将临时提要当成用户原话或持久习惯。结合完整交流、记忆正文和以往认识，梳理主题、指代、事实变化及矛盾，避免逐条复述。自行决定保留、合并、更新、删除或新增：保留的条目不必写入 changes；合并时先通过 upsert 保存有用信息，再删除重复或已失效的来源；不要为凑数删除独有的经历或细节。只能修改或删除提供的记忆，不得波及无关会话。upsert 的 sourceSeqs 引用提供的聊天序号，memoryIds 引用提供的记忆 UUID；两者都按数组输出，没有对应引用时写 []，不要写 null、字符串或对象；省略某一数组等同于该数组为空，但必须至少有一项有效证据；每项变更只引用直接支撑结论的少量证据，不要复制提要中的全部引用。例如 {"action":"upsert","sourceSeqs":[],"memoryIds":["提供的记忆 UUID"],"memory":{"category":"semantic","content":"有归属的综合认识","summaries":{"brief":"简述","medium":"有归属的要点","detail":"已有条件和背景"},"importance":0.5,"confidence":0.5,"kind":"declarative","attribution":"model-inference"}}。引用记忆合成的内容必须标记 model-inference，不得变成用户原话；正文中的推测不能成为已确认事实。习惯不得凭一次总览获得额外支持，不得创建推断式行为习惯。仍然遵守 maxChanges；不需要变化时返回 {"changes":[]}。只返回完整 JSON，不输出分析过程。'

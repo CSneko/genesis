@@ -20,6 +20,10 @@ createInterface({ input: process.stdin }).on('line', line => {
     return
   }
   if (args.action === 'screenshot') {
+    if (!connected) {
+      emit({ id, result: { isError: true, content: [{ type: 'text', text: 'consent-required' }] } })
+      return
+    }
     emit({ id, result: { content: [{ type: 'text', text: JSON.stringify({ frameId: 'fixture', owner }) },
       { type: 'image', mimeType: 'image/png', data: png }] } })
     return

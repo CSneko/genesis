@@ -1,8 +1,10 @@
 /** QQ-only attachment reading and delivery, with current-conversation reference enforcement. @module */
+import { basename, isAbsolute } from 'node:path'
+import type {} from '@deepseek-ai/dsh-fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
-import { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import { AttachmentId, type FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
 import { GenesisError } from '@deepseek-ai/dsh-experimental-genesis'
@@ -36,11 +38,19 @@ const readResult = z.strictObject({
 export interface MediaSendRequest {
   kind: 'image' | 'sticker' | 'file' | 'video' | 'face' | 'reply'
   attachmentId?: string | undefined
+  /** Absolute local file path; only the current authenticated operator may use it with kind=file. */
+  filePath?: string | undefined
   /** Send a WAV file as a playable OneBot voice message instead of uploading a file. */
   asVoice?: boolean | undefined
   messageId?: string | undefined
   faceId?: string | undefined
   text?: string | undefined
+}
+/** Same-route acknowledgement with an immutable copy of an exported local file. */
+export interface MediaSendResult {
+  status: string
+  messageIds: string[]
+  attachment?: FileAttachmentRef
 }
 declare module '@deepseek-ai/dsh-session/types' {
   interface PluginRecordMap {
@@ -72,7 +82,7 @@ export function registerMediaTools(
   media: QqMedia,
   config: Config,
   authorize: (caller: Agent | undefined) => boolean,
-  send: (request: MediaSendRequest, callId: ToolCallId, signal: AbortSignal) => Promise<{ status: string; messageIds: string[] }>,
+  send: (request: MediaSendRequest, callId: ToolCallId, signal: AbortSignal) => Promise<MediaSendResult>,
 ): () => void {
   if (ctx.get('attachments') === undefined) return () => {}
   const removeRead = agent.ctx.tools.register(
@@ -132,16 +142,23 @@ export function registerMediaTools(
     defineTool({
       name: 'genesis_qq_send',
       description:
-        'Send an image, sticker image, video, file, QQ face emoji, or quoted text reply to this QQ conversation only. Files/images must use an attachmentId already received or produced here. For generated speech use kind=file, asVoice=true and the attachmentId returned by genesis_speech to send a playable QQ voice message. For reply use an observed numeric QQ messageId from genesis_qq_history and text. No host paths, arbitrary URLs, recipients or raw OneBot actions. Uncertain delivery must not be automatically retried.',
+        'Send an image, sticker image, video, file, QQ face emoji, or quoted text reply to this QQ conversation only. Use an attachmentId received or produced here. To send a local computer file, the current authenticated operator may instead supply an absolute filePath with kind=file; it is read through the filesystem provider under maxMediaBytes. For generated speech use kind=file, asVoice=true and the attachmentId returned by genesis_speech to send a playable QQ voice message. For reply use an observed numeric QQ messageId from genesis_qq_history and text. No arbitrary URLs, recipients or raw OneBot actions. Ordinary speakers cannot use filePath. Uncertain delivery must not be automatically retried.',
       parameters: {
         kind: { type: 'string', required: true, enum: ['image', 'sticker', 'file', 'video', 'face', 'reply'] },
         attachmentId: { type: 'string' },
+        filePath: { type: 'string', description: 'Absolute local file path, operator only; kind=file, mutually exclusive with attachmentId.' },
         asVoice: { type: 'boolean', description: 'With kind=file, send a WAV attachment as QQ voice.' },
         messageId: { type: 'string' },
         faceId: { type: 'string' },
         text: { type: 'string' },
       },
-      output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      output: { schema: { type: 'json' }, render: (_args, value): ContentBlock[] => {
+        const result = z.object({ attachment: file.optional() }).parse(value)
+        return [
+          { type: 'text', text: JSON.stringify(value) },
+          ...(result.attachment ? [{ type: 'file' as const, attachment: result.attachment }] : []),
+        ]
+      } },
       async execute(args, exec) {
         exec.signal.throwIfAborted()
         if (!authorize(exec.agent))
@@ -150,6 +167,7 @@ export function registerMediaTools(
           .strictObject({
             kind: z.enum(['image', 'sticker', 'file', 'video', 'face', 'reply']),
             attachmentId: z.string().min(1).max(512).optional(),
+            filePath: z.string().min(1).max(4096).optional(),
             asVoice: z.boolean().optional(),
             messageId: z.string().max(200).optional(),
             faceId: z
@@ -159,7 +177,12 @@ export function registerMediaTools(
             text: z.string().max(config.maxOutputChars).optional(),
           })
           .parse(args)
-        return send(request, exec.callId, exec.signal)
+        const result = await send(request, exec.callId, exec.signal)
+        return {
+          status: result.status,
+          messageIds: result.messageIds,
+          ...(result.attachment ? { attachment: { ...result.attachment } } : {}),
+        }
       },
     }),
   )
@@ -180,7 +203,7 @@ export function registerMediaTools(
  * @param callId - Current logged tool call, used for durable idempotency.
  * @param signal - Caller and transport cancellation.
  * @param action - Runtime-supplied same-route transport only.
- * @returns Actual acknowledgement state; upload ACK without message ID stays uncertain.
+ * @returns Actual acknowledgement state and the exported local file reference; upload ACK without message ID stays uncertain.
  */
 export async function sendMedia(
   ctx: Context,
@@ -195,12 +218,32 @@ export async function sendMedia(
     kind: 'segments' | 'file',
     payload: Array<{ type: string; data: Record<string, unknown> }> | { file: string; name: string },
   ) => Promise<unknown>,
-): Promise<{ status: string; messageIds: string[] }> {
+): Promise<MediaSendResult> {
   signal.throwIfAborted()
   const call = agent.session.ownEvents().findLast(event => event.type === 'tool/call' && event.data.callId === callId)
   if (!call) throw new GenesisError('invalid-source', 'QQ sending requires its original logged tool call.')
   if (request.asVoice && request.kind !== 'file')
     throw new GenesisError('invalid-source', 'QQ voice delivery requires kind=file and a WAV attachment from this conversation.')
+  let localFile: FileAttachmentRef | undefined
+  if (request.filePath !== undefined) {
+    if (request.kind !== 'file' || request.attachmentId !== undefined || request.asVoice)
+      throw new GenesisError('invalid-source', 'Use filePath only with kind=file, without attachmentId or asVoice.')
+    const speaker = agent.session.ownEvents().toReversed().find(event =>
+      event.type === 'turn/start' || (event.type === 'user/message' &&
+        (event.data.source.kind === 'genesis-person' || event.data.source.kind === 'user')))
+    if (speaker?.type !== 'user/message' || speaker.data.source.kind !== 'genesis-person' ||
+      !ctx.genesis.isOperatorPerson(speaker.data.source.personId))
+      throw new GenesisError('invalid-source', 'Sending local files requires the current authenticated QQ operator.')
+    if (!isAbsolute(request.filePath))
+      throw new GenesisError('invalid-source', 'filePath must be an absolute local file path.')
+    const fs = agent.ctx.get('fs')
+    const store = ctx.get('attachments')
+    if (!fs || !store)
+      throw new GenesisError('invalid-state', 'Local file delivery requires filesystem and attachment storage providers.')
+    const target = await fs.resolve(request.filePath, { signal })
+    const bytes = await fs.readBytes(target, signal, config.maxMediaBytes)
+    localFile = await store.saveFile({ data: bytes, name: basename(target.displayPath) })
+  }
   let parts: Array<Array<{ type: string; data: Record<string, unknown> }>> = []
   let upload: { file: string; name: string } | undefined
   if (request.kind === 'reply') {
@@ -215,8 +258,11 @@ export async function sendMedia(
     if (!request.faceId) throw new GenesisError('invalid-source', 'A QQ face emoji requires faceId.')
     parts = [[{ type: 'face', data: { id: request.faceId } }]]
   } else {
-    if (!request.attachmentId) throw new GenesisError('invalid-source', 'Select an attachmentId already present in this conversation.')
-    const ref = attachmentIn(agent.session, request.attachmentId)
+    const attachmentId = request.attachmentId
+    const ref = localFile ? { kind: 'file' as const, attachment: localFile }
+      : attachmentId ? attachmentIn(agent.session, attachmentId) : undefined
+    if (ref === undefined)
+      throw new GenesisError('invalid-source', 'Select an attachmentId already present in this conversation.')
     const bytes = await media.bytes(ref, signal)
     const encoded = `base64://${bytes.toString('base64')}`
     if (request.asVoice) {
@@ -244,7 +290,7 @@ export async function sendMedia(
   if (!(await ctx.genesis.reserveQqReply(agent.id, call.seq, upload ? 1 : parts.length)))
     return { status: 'already-reserved-do-not-retry', messageIds: [] }
   const reference = {
-    ...(request.attachmentId ? { attachmentId: request.attachmentId } : {}),
+    ...(localFile ? { attachmentId: localFile.attachmentId } : request.attachmentId ? { attachmentId: request.attachmentId } : {}),
     ...(request.messageId ? { messageId: request.messageId } : {}),
   }
   appendPluginRecord(agent.session, 'plugin:genesis-qq/send', {
@@ -278,7 +324,7 @@ export async function sendMedia(
       ...reference,
       messageIds: ids,
     })
-    return { status: confirmed ? 'confirmed' : 'accepted-unconfirmed-do-not-retry', messageIds: ids }
+    return { status: confirmed ? 'confirmed' : 'accepted-unconfirmed-do-not-retry', messageIds: ids, ...(localFile ? { attachment: localFile } : {}) }
   } catch (error) {
     await ctx.genesis.settleQqReply(agent.id, call.seq, 'uncertain', ids)
     appendPluginRecord(agent.session, 'plugin:genesis-qq/send', {

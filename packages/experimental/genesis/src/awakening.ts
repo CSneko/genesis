@@ -67,6 +67,7 @@ export function installLearning(
         exec.name !== 'genesis_search_contacts' &&
         exec.name !== 'genesis_thought' &&
         exec.name !== 'genesis_socialize' &&
+        exec.name !== 'genesis_workspace' &&
         exec.name !== 'genesis_plan' &&
         exec.name !== 'genesis_toolkit' &&
         !channelInnate(exec.agent, exec.name) &&

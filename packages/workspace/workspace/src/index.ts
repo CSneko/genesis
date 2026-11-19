@@ -796,10 +796,12 @@ export class WorkspaceRegistry extends Service {
   }
 
   private async indexHeaders(headers: readonly SessionHeader[]): Promise<void> {
-    for (const header of headers) await this.indexHeader(header)
+    const directories = new Map<string, string>()
+    for (const header of headers) await this.indexHeader(header, directories)
   }
 
-  private async indexHeader(header: SessionHeader): Promise<void> {
+  /** Successful directory probes are shared only by the current header batch; failures remain independently retryable. */
+  private async indexHeader(header: SessionHeader, directories: Map<string, string>): Promise<void> {
     this.headers.set(header.id, header)
     this.sessionPaths.delete(header.id)
     this.missingSessionPaths.delete(header.id)
@@ -808,10 +810,14 @@ export class WorkspaceRegistry extends Service {
       return
     }
     try {
-      const path = await realpathNormalize(header.cwd)
-      if (!(await stat(path)).isDirectory()) {
-        this.invalidSessionPaths.set(header.id, `cwd '${header.cwd}' is not a directory`)
-        return
+      let path = directories.get(header.cwd)
+      if (path === undefined) {
+        path = await realpathNormalize(header.cwd)
+        if (!(await stat(path)).isDirectory()) {
+          this.invalidSessionPaths.set(header.id, `cwd '${header.cwd}' is not a directory`)
+          return
+        }
+        directories.set(header.cwd, path)
       }
       this.sessionPaths.set(header.id, path)
       this.invalidSessionPaths.delete(header.id)

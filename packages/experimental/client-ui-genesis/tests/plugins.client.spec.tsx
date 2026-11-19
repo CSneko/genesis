@@ -33,11 +33,21 @@ it('configures enabled capabilities, retains off switches on failures and report
     renderSlot,
     refresh: vi.fn(),
     setEnabled,
-    useSettings: selector => selector('genesis-weather'),
+    setPunishmentEnabled: vi.fn(async () => true),
+    usePunishmentConfig: selector => selector({ status: 'ready', value: { enabled: false }, base: {}, user: {}, revision: 1, writable: true }),
+    useSettings: selector => selector('genesis-weather\0genesis-punishment'),
     useResource: (() => ({ status: 'live', value: bundles, failure: undefined })) as ComponentProps<typeof GenesisPlugins>['useResource'],
   }
   render(<GenesisPlugins {...props} />)
   expect(screen.getByRole('switch', { name: 'weather' }).getAttribute('aria-checked')).toBe('true')
+  const punishment = screen.getByRole('switch', { name: 'punishment' })
+  expect(punishment.getAttribute('aria-checked')).toBe('false')
+  const punishmentCard = punishment.closest('li')!
+  fireEvent.click(within(punishmentCard).getByRole('button', { name: 'configure' }))
+  expect(renderSlot).toHaveBeenCalledWith('genesis.plugin.settings', {}, { entryKey: 'genesis-punishment' })
+  fireEvent.click(screen.getByRole('button', { name: 'back' }))
+  fireEvent.click(screen.getByRole('switch', { name: 'punishment' }))
+  await waitFor(() => expect(props.setPunishmentEnabled).toHaveBeenCalledWith(true))
   const qq = screen.getByRole('switch', { name: 'qq' })
   expect(qq.getAttribute('aria-checked')).toBe('false')
   fireEvent.click(qq)

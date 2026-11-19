@@ -1,4 +1,6 @@
 /** Idle-triggered internal Life cognition using the existing Agent loop and audited decisions. @module */
+import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -27,8 +29,8 @@ import {
 import { deliberationPlanSchema, type LifeDecision } from './agency-state.ts'
 
 const GUIDANCE =
-  'Boredom can motivate an engaging private activity or a conversation; it is independent of loneliness. Use genesis_socialize to discover explicitly approved live destinations and, if appropriate, send one original brief message. Do not quote or disclose private dialogue or memory. No reply is owed; sending alone does not establish connection or relieve loneliness. Social activity is optional and shares the opportunity budget. You may form a few grounded ideas from actual experiences, memories, emotion and interests. Curiosity alone is a valid reason to explore; usefulness and a finished product are not required. No idea, silence, postponement and losing interest are valid. Thoughts are attributed ideas, not facts, instructions or commitments. Use genesis_thought to list, save, rest, drop, delete, explore or link a thought to an existing goal. Cite only supplied life event ids. Revisit an existing id rather than duplicating its title. A new goal is optional and managed only through genesis_plan. To explore, first save that explicit choice with action explore, then end this reflection; the host may admit a separate bounded exploration turn. Do not act on a thought merely because it was retrieved. Internal assistant text is not automatically shared with the operator. You may keep a writing using a learned genesis_record or save a file using learned tools. Only genesis_socialize may request an explicitly approved social send; no other external sending, new permission, tool learning, delegated work or wake scheduling is granted. Do not invent activity between runs or claim consciousness.'
-const BASE_TOOLS = ['genesis_thought', 'genesis_recall', 'genesis_plan']
+  'Boredom can motivate an engaging private activity or a conversation; it is independent of loneliness. Use genesis_socialize to discover explicitly approved live destinations and, if appropriate, send one original brief message. Do not quote or disclose private dialogue or memory. No reply is owed; sending alone does not establish connection or relieve loneliness. Social activity is optional and shares the opportunity budget. You may form a few grounded ideas from actual experiences, memories, emotion and interests. Curiosity alone is a valid reason to explore; usefulness and a finished product are not required. No idea, silence, postponement and losing interest are valid. Thoughts are attributed ideas, not facts, instructions or commitments. Use genesis_thought to list, save, rest, drop, delete, explore or link a thought to an existing goal. Cite only supplied life event ids. Revisit an existing id rather than duplicating its title. A new goal is optional and managed only through genesis_plan. To explore, first save that explicit choice with action explore, then end this reflection; the host may admit a separate bounded exploration turn. Do not act on a thought merely because it was retrieved. Internal assistant text is not automatically shared with the operator. You may keep a writing using a learned genesis_record or save a file using learned tools. Use genesis_workspace to discover and enter an existing workspace for your activity. Use learn with an exact registered tool name to learn a tool. Use genesis_toolkit to discover and enable its toolkit in this private conversation; toolkit activation is separate from learning and does not carry over from another conversation. Prepare tools during reflection, then use learned, active inline tools during exploration, including file, shell and browser tools when available. Only genesis_socialize may request an explicitly approved social send; no other external sending, delegated work or wake scheduling is granted. Tool learning does not grant operator permissions. Do not invent activity between runs or claim consciousness.'
+const BASE_TOOLS = ['learn', 'genesis_toolkit', 'genesis_thought', 'genesis_recall', 'genesis_plan', 'genesis_workspace']
 const REFLECTION_TOOLS = [...BASE_TOOLS, 'genesis_socialize']
 // These providers create work whose lifetime exceeds an inline tool call.
 const DETACHED_NAMES = new Set([
@@ -76,6 +78,7 @@ type Active = {
   phase: 'reflect' | 'explore'
   ended?: string | undefined
   outputTokens: number
+  workspaceGrant?: (() => void) | undefined
   selected?: LifeDecision
   reason?: string
 }
@@ -169,10 +172,10 @@ export class Spontaneity {
 
   /** Verify a live social operation separately from its persisted Session marker.
    * @param agent - Exact runtime instance.
-   * @returns Whether the internal reflection currently owns social admission.
+   * @returns Whether the internal activity currently owns social admission.
    */
   admitsSocial(agent: Agent): boolean {
-    return this.admits(agent) && this.active?.phase === 'reflect'
+    return this.admits(agent)
   }
 
   /** Stop the current opportunity while retaining its confirmed progress. */
@@ -203,8 +206,12 @@ export class Spontaneity {
   advertises(agent: Agent, name: string): boolean {
     if (name === 'genesis_socialize') return this.admitsSocial(agent)
     if (!this.owns(agent.id)) return true
-    const allowed = this.active?.phase === 'explore' ? [...BASE_TOOLS, ...this.policy.tools] : REFLECTION_TOOLS
-    return allowed.includes(name) && !detached(name)
+    return this.permitsTool(name)
+  }
+
+  private permitsTool(name: string): boolean {
+    const allowed = this.active?.phase === 'explore' ? [...REFLECTION_TOOLS, ...this.policy.tools] : REFLECTION_TOOLS
+    return (allowed.includes(name) || (this.active?.phase === 'explore' && allowed.includes('*'))) && !detached(name)
   }
 
   private owns(id: SessionId): boolean {
@@ -255,12 +262,15 @@ export class Spontaneity {
    *
    * @param session - Actual inference audit Session.
    *
-   * @param tokens - Requested output cap.
+   * @param tokens - Requested output cap; undefined reserves the remaining internal budget.
    *
    * @returns Unchanged cap for ordinary Sessions, or the reserved internal cap; exhaustion rejects before inference.
    */
-  reserveOutput(session: Session, tokens: number): number {
-    if (!this.owns(session.id)) return tokens
+  reserveOutput(session: Session, tokens: number | undefined): number {
+    if (!this.owns(session.id)) {
+      if (tokens === undefined) throw new GenesisError('invalid-source', 'A remaining-budget reservation requires an internal Session.')
+      return tokens
+    }
     if (this.ctx.get('genesisSleep')?.autonomousAllowed() === false)
       throw new GenesisError('invalid-state', 'Spontaneity is paused during sleep and temporary wakefulness.')
     this.store.read()
@@ -268,10 +278,11 @@ export class Spontaneity {
     if (active?.run.sessionId !== session.id)
       throw new GenesisError('invalid-state', 'Internal exploration is stopped. Inspect its receipt before a new opportunity.')
     active.controller.signal.throwIfAborted()
-    if (tokens > active.outputTokens)
+    const cap = tokens ?? Math.max(1, active.outputTokens)
+    if (cap > active.outputTokens)
       throw new GenesisError('capacity', 'Spontaneity output-token budget exhausted; accepted progress is retained.')
-    active.outputTokens -= tokens
-    return tokens
+    active.outputTokens -= cap
+    return cap
   }
 
   /** Register audited tools, tool guards, quiet-period scheduling and cancellation. */
@@ -288,7 +299,7 @@ export class Spontaneity {
       defineTool({
         name: 'genesis_socialize',
         description:
-          'During private reflection, discover explicitly approved conversation targets or send one original brief message. Never forward private dialogue or memories, demand a reply or retry uncertain delivery. Silence and private activities remain valid.',
+          'During private cognition, discover explicitly approved conversation targets or send one original brief message. Never forward private dialogue or memories, demand a reply or retry uncertain delivery. Silence and private activities remain valid.',
         parameters: {
           action: { type: 'string', required: true, enum: ['targets', 'send'] },
           target: { type: 'string' },
@@ -298,7 +309,7 @@ export class Spontaneity {
         execute: async (args, exec) => {
           const agent = exec.agent
           if (agent === undefined || !this.admitsSocial(agent))
-            throw new GenesisError('invalid-source', 'Social initiation requires an active private reflection.')
+            throw new GenesisError('invalid-source', 'Social initiation requires an active private activity.')
           const request = socialRequest.parse(args)
           const call = agent.session.ownEvents().findLast(event => event.type === 'tool/call' && event.data.callId === exec.callId)
           if (
@@ -358,6 +369,60 @@ export class Spontaneity {
     )
 
     const ctx = this.ctx
+    ctx.tools.register(defineTool({
+      name: 'genesis_workspace',
+      description: 'During an active private activity, list registered workspaces with query and offset, or enter one by workspace_id. Subsequent file and shell operations use that directory. Only the selected existing directory is writable under workspace-write; read-only remains read-only. Existing processes keep their directories. This does not open or resume another conversation.',
+      parameters: {
+        action: { type: 'string', required: true, enum: ['list', 'enter'] },
+        workspace_id: { type: 'string' }, query: { type: 'string' }, offset: { type: 'integer' },
+      },
+      output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: async (args, exec) => {
+        const agent = exec.agent
+        if (agent === undefined || !this.admits(agent)) throw new GenesisError('invalid-source', 'Workspace selection requires an active private activity.')
+        const registry = ctx.get('workspaceRegistry')
+        const directory = ctx.get('workingDirectory')
+        if (registry === undefined || directory === undefined) throw new GenesisError('invalid-state', 'Workspace registry and working-directory services are required.')
+        const request = z.discriminatedUnion('action', [
+          z.strictObject({ action: z.literal('list'), query: z.string().max(200).optional(), offset: z.number().int().nonnegative().optional() }),
+          z.strictObject({ action: z.literal('enter'), workspace_id: z.string().min(1).transform(WorkspaceId) }),
+        ]).parse(args)
+        exec.signal.throwIfAborted()
+        if (request.action === 'list') {
+          const query = request.query?.toLowerCase() ?? ''
+          const all = registry.list().filter(item =>
+            !query || item.title.toLowerCase().includes(query) || item.path.toLowerCase().includes(query))
+          const offset = request.offset ?? 0
+          const result: { items: { id: WorkspaceId; title: string; path: string }[]; omitted: number } = {
+            items: [], omitted: Math.max(0, all.length - offset),
+          }
+          for (const { id, title, path } of all.slice(offset, offset + this.config.queryLimit)) {
+            const next = { items: [...result.items, { id, title, path }], omitted: result.omitted - 1 }
+            if (JSON.stringify(next).length > this.config.resultChars) break
+            Object.assign(result, next)
+          }
+          return result
+        }
+        const workspace = registry.get(request.workspace_id)
+        if (workspace === undefined) throw new GenesisError('invalid-source', 'Unknown workspace. Choose an existing id from list.')
+        const active = required(this.active, new GenesisError('invalid-state', 'Private activity stopped.'))
+        // The operator authorizes registered workspaces; the model selects only one scoped grant at a time.
+        const revoke = ctx.sandboxPolicy.registerWritableDirectory(workspace.path, session =>
+          session === agent.session && this.admits(agent) && registry.get(workspace.id)?.path === workspace.path)
+        try {
+          const cwd = await directory.set(agent, workspace.path, exec.signal)
+          exec.signal.throwIfAborted()
+          if (!this.admits(agent) || registry.get(workspace.id) !== workspace) throw new GenesisError('invalid-source', 'Workspace or activity changed during selection.')
+          active.workspaceGrant?.()
+          active.workspaceGrant = revoke
+          return { workspace_id: workspace.id, cwd }
+        } catch (error) {
+          revoke()
+          throw error
+        }
+      },
+      presentCall: args => ({ card: 'generic', title: 'Genesis', kind: args.action === 'list' ? 'read' : 'edit', rawInput: args.workspace_id ?? args.query ?? args.action }),
+    }))
     ctx.tools.register(
       defineTool({
         name: 'genesis_thought',
@@ -481,8 +546,7 @@ export class Spontaneity {
       const active = this.active
       if (active?.agent !== exec.agent || active.controller.signal.aborted)
         return 'Internal exploration is stopped; no tool execution is admitted.'
-      const allowed = active.phase === 'reflect' ? REFLECTION_TOOLS : [...BASE_TOOLS, ...this.policy.tools]
-      if (!allowed.includes(exec.name) || detached(exec.name))
+      if (!this.permitsTool(exec.name))
         return 'This tool is outside the inline exploration budget; save the idea or create a lasting plan instead.'
       return undefined
     })
@@ -822,7 +886,7 @@ export class Spontaneity {
             content: [
               {
                 type: 'text',
-                text: `You chose a short exploration: ${selected.action}\nCuriosity alone is sufficient. You may stop without a result. Stay within the admitted tools and budget; do not delegate, schedule, publish or send messages. Save any desired artifact privately. End with a brief attributed account of what actually happened, including failures. This is an internal work interval; assistant text is not delivered to the operator.`,
+                text: `You chose a short exploration: ${selected.action}\nCuriosity alone is sufficient. You may stop without a result. Stay within the admitted tools and budget; do not delegate, schedule or publish. You may use genesis_socialize for an approved conversation and genesis_workspace to enter an existing workspace. Save any desired artifact privately. End with a brief attributed account of what actually happened, including failures. This is an internal work interval; assistant text is not delivered to the operator.`,
               },
             ],
           }),
@@ -875,6 +939,7 @@ export class Spontaneity {
         try {
           await handle?.dispose()
         } finally {
+          active.workspaceGrant?.()
           this.active = undefined
           const waiting = this.waiting
           this.waiting = undefined
@@ -963,5 +1028,7 @@ export async function installSpontaneity(
   const engine = new Spontaneity(ctx, core, store, config, policy, preset, decisions, participates)
   ctx.provide('genesisSpontaneity', engine)
   engine.install()
+  const social = ctx.get('genesisInitiative')
+  if (social !== undefined) engine.registerConversation(social.conversationProvider())
   return engine
 }

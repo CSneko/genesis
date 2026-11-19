@@ -15,6 +15,7 @@ it('retains disabled bundles across startup and rejects an incompatible defaults
     const manifest = readProfileManifest('dsh', dir)
     const bundles = manifest.dsh?.profile?.bundles ?? []
     expect(bundles).toContain('@deepseek-ai/dsh-genesis-weather')
+    expect(bundles).toContain('@deepseek-ai/dsh-genesis-punishment')
     for (const name of ['qq', 'mail', 'minecraft', 'wallet', 'companion']) {
       expect(bundles).not.toContain(`@deepseek-ai/dsh-experimental-genesis-${name}`)
     }

@@ -33,6 +33,8 @@ kind: "package-reference"
 
 服务没有配置项。提供方插件注入 `computerUse` 并调用 `ctx.computerUse.register(ComputerUseProviderName(name))`；该品牌类型从 `@deepseek-ai/dsh-computer-use/brand` 导出。返回的 effect 清理函数释放此次注册。
 
+只读提供方可通过 `ctx.computerUse.registerCapture({ name, capture })` 注册，与输入控制独立。`captureSources()` 列出名称；`capture(name, sessionId, signal)` 请求一张当前 PNG 及时间戳。回调每次调用都检查来源共享授权、转发取消，并在拒绝前等待自有工作结束。来源缺失时失败，不自动替换。注册及历史采集成功不代表当前授权。提供方须先停止并排空采集，再关闭资源。
+
 提供方先停止接收工具调用、关闭资源并等待自有工作结束，再释放注册。释放前，`ctx.computerUse.providerName` 始终报告已注册的名称。
 
 -----
@@ -43,7 +45,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-一个私有名称占用注册位置。Cordis effect 在插件卸载时移除贡献；重复调用清理函数不会移除后续注册。[源码](src/index.ts)不包含驱动对象、操作接口或提供方选择器。
+一个私有名称占用注册位置。Cordis effect 在插件卸载时移除贡献；重复调用清理函数不会移除后续注册。只读 PNG 采集来源使用独立的具名注册表，不占用输入提供方位置。
 
 </details>
 
@@ -64,7 +66,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为此注册表只记录提供方名称。
+无；此服务不添加模型可见内容。
 
 #### KV 缓存影响
 

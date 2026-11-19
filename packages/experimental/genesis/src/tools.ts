@@ -123,7 +123,7 @@ export function registerTools(
         type: { type: 'string', enum: ['knowledge', 'person', 'event', 'unclassified'] },
         path: { type: 'array', items: { type: 'string' } },
         person: { type: 'string' },
-        level: { type: 'string', enum: ['summary', 'full'] },
+        level: { type: 'string', enum: ['brief', 'summary', 'medium', 'detail', 'full'] },
         offset: { type: 'integer' },
         category: { type: 'string', enum: ['episodic', 'semantic', 'self', 'procedural'] },
       },
@@ -131,6 +131,7 @@ export function registerTools(
       async execute(args, exec) {
         exec.signal.throwIfAborted()
         const action = args.action ?? 'search'
+        const recallChars = Math.min(config.resultChars, config.memoryContextChars)
         const offset = args.offset ?? 0
         if (offset < 0 || !Number.isSafeInteger(offset))
           throw new GenesisError('capacity', 'Recall offset must be a nonnegative safe integer.')
@@ -168,7 +169,7 @@ export function registerTools(
           for (const node of nodes.slice(offset, offset + config.queryLimit)) {
             // Directory overviews are excerpts; the full source remains searchable by ID.
             const item = { ...node, overview: node.overview.slice(0, 1) }
-            if (JSON.stringify({ items: [...items, item], nextOffset: nextOffset + 1 }).length > config.resultChars) break
+            if (JSON.stringify({ items: [...items, item], nextOffset: nextOffset + 1 }).length > recallChars) break
             items.push(item)
             nextOffset++
           }
@@ -185,6 +186,7 @@ export function registerTools(
         const retained = exec.agent === undefined ? [] : retainedMemoryReadings(exec.agent.session)
         const result = {
           format: 'genesis-recall-v1',
+          action,
           entries: [] as ReturnType<typeof memoryReading>[],
           alreadyPresent: [] as string[],
           temporary: [] as string[],
@@ -199,7 +201,7 @@ export function registerTools(
             entries: present ? result.entries : [...result.entries, reading],
             alreadyPresent: present ? [...result.alreadyPresent, reading.id] : result.alreadyPresent,
           }
-          if (JSON.stringify(candidate).length > config.resultChars) break
+          if (JSON.stringify(candidate).length > recallChars) break
           Object.assign(result, candidate)
           consumed++
         }
@@ -220,7 +222,7 @@ export function registerTools(
           const short = await temporary.search(query.text, exec.agent.id)
           for (const text of short) {
             if (result.entries.length + result.temporary.length >= config.queryLimit) break
-            if (JSON.stringify({ ...result, temporary: [...result.temporary, text] }).length > config.resultChars) continue
+            if (JSON.stringify({ ...result, temporary: [...result.temporary, text] }).length > recallChars) continue
             result.temporary.push(text)
           }
         }

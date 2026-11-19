@@ -5,6 +5,11 @@ export const NS = 'deliverables'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'references.title': '附件',
+  'references.download': '下载',
+  'references.pending': '正在下载…',
+  'references.error': '下载失败，请检查文件是否存在及访问权限后重试',
+  'references.requested': '已请求下载',
   'presented.nativeUnavailable': '此文件没有可用的主机路径，请在侧边栏预览',
   'presented.revealError': '无法在文件管理器中显示，请重试',
   'presented.directoryError': '无法打开所在文件夹，请重试',
@@ -66,6 +71,11 @@ export const zh = {
 
 /** English dictionary (same key set). */
 export const en: Record<DeliverablesKey, string> = {
+  'references.title': 'Attachments',
+  'references.download': 'Download',
+  'references.pending': 'Downloading…',
+  'references.error': 'Download failed; check the file and access permissions, then retry',
+  'references.requested': 'Download requested',
   'presented.nativeUnavailable': 'This file has no available Host path. Preview it in the sidebar.',
   'presented.revealError': 'Could not show in file manager. Try again.',
   'presented.directoryError': 'Could not open containing folder. Try again.',
@@ -130,6 +140,11 @@ export type DeliverablesKey = keyof typeof zh
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'references.title': '添付ファイル',
+  'references.download': 'ダウンロード',
+  'references.pending': 'ダウンロード中…',
+  'references.error': 'ダウンロードできません。ファイルとアクセス権を確認して再試行してください',
+  'references.requested': 'ダウンロードを要求しました',
   'presented.nativeUnavailable': 'このファイルには利用可能なHostパスがありません。サイドバーでプレビューしてください。',
   'presented.revealError': 'ファイルマネージャーで表示できませんでした。再試行してください。',
   'presented.directoryError': '含まれるフォルダーを開けませんでした。再試行してください。',
@@ -191,6 +206,11 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'references.title': 'Archivos adjuntos',
+  'references.download': 'Descargar',
+  'references.pending': 'Descargando…',
+  'references.error': 'No se pudo descargar; comprueba el archivo y los permisos y reintenta',
+  'references.requested': 'Descarga solicitada',
   'presented.nativeUnavailable': 'Este archivo no tiene una ruta de host disponible. Vista previa en la barra lateral.',
   'presented.revealError': 'No se pudo mostrar en el administrador de archivos. Intentar otra vez.',
   'presented.directoryError': 'No se pudo abrir la carpeta que lo contiene. Intentar otra vez.',
@@ -252,6 +272,11 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'references.title': 'Pièces jointes',
+  'references.download': 'Télécharger',
+  'references.pending': 'Téléchargement…',
+  'references.error': 'Échec du téléchargement ; vérifiez le fichier et les droits, puis réessayez',
+  'references.requested': 'Téléchargement demandé',
   'presented.nativeUnavailable': "Ce fichier n'a pas de chemin d'hôte disponible. Prévisualisez-le dans la barre latérale.",
   'presented.revealError': "Impossible d'afficher dans le gestionnaire de fichiers. Essayer à nouveau.",
   'presented.directoryError': "Impossible d'ouvrir le dossier contenant. Essayer à nouveau.",
@@ -313,6 +338,11 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'references.title': 'Anhänge',
+  'references.download': 'Herunterladen',
+  'references.pending': 'Wird heruntergeladen…',
+  'references.error': 'Download fehlgeschlagen; Datei und Berechtigungen prüfen und erneut versuchen',
+  'references.requested': 'Download angefordert',
   'presented.nativeUnavailable': 'Für diese Datei ist kein Hostpfad verfügbar. Sehen Sie sich die Vorschau in der Seitenleiste an.',
   'presented.revealError': 'Konnte im Dateimanager nicht angezeigt werden. Versuchen Sie es erneut.',
   'presented.directoryError': 'Der enthaltende Ordner konnte nicht geöffnet werden. Versuchen Sie es erneut.',
@@ -374,6 +404,11 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'references.title': 'Вложения',
+  'references.download': 'Скачать',
+  'references.pending': 'Загрузка…',
+  'references.error': 'Не удалось скачать; проверьте файл и права доступа и повторите попытку',
+  'references.requested': 'Загрузка запрошена',
   'presented.nativeUnavailable': 'У этого файла нет доступного пути к хосту. Предварительный просмотр на боковой панели.',
   'presented.revealError': 'Не удалось отобразить в файловом менеджере. Попробуйте еще раз.',
   'presented.directoryError': 'Не удалось открыть содержащую папку. Попробуйте еще раз.',
@@ -435,6 +470,11 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'references.title': 'Anexos',
+  'references.download': 'Baixar',
+  'references.pending': 'Baixando…',
+  'references.error': 'Falha ao baixar; confira o arquivo e as permissões e tente novamente',
+  'references.requested': 'Download solicitado',
   'presented.nativeUnavailable': 'Este arquivo não possui caminho de host disponível. Visualize-o na barra lateral.',
   'presented.revealError': 'Não foi possível mostrar no gerenciador de arquivos. Tente novamente.',
   'presented.directoryError': 'Não foi possível abrir a pasta que contém. Tente novamente.',

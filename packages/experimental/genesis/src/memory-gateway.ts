@@ -62,11 +62,12 @@ export class GenesisMemoryGateway extends TypertRemoteService {
     })
   }
   /**
-   * Let the independent writer organize all chat text and memories associated with one open Life conversation.
+   * Let the independent writer organize chat and fully attributed memories after the latest compaction in one open Life conversation.
    * @param sessionId - Authorized source conversation; tool and injected output are excluded.
    * @param id - Stable operator request UUID, retained across failed or uncertain retries.
    * @param signal - Caller cancellation; admitted storage writes drain.
-   * @returns Whether valid entries changed memories after version checks; invalid entries are logged and deletions withheld; repeated committed requests are idempotent.
+   * @returns Whether valid entries changed memories after version checks. Invalid entries are logged and deletions withheld.
+   * Repeated committed requests are idempotent.
    */
   @Remote({ name: 'overview', resources: { session: (sessionId: SessionId) => sessionId } })
   overview(sessionId: SessionId, id: MemoryOrganizationId, signal: AbortSignal): Promise<boolean> {
@@ -131,6 +132,22 @@ export class GenesisMemoryGateway extends TypertRemoteService {
       return memory.summarize(id, updatedAt, owned)
     })
   }
+
+  /**
+   * Regenerate a summary and declarative classification through the saved independent writer.
+   * @param id - Existing memory identifier.
+   * @param updatedAt - Expected version, checked before inference and at commit.
+   * @param signal - Caller cancellation; admitted writes drain.
+   * @returns Memory with refreshed metadata; content and evidence stay unchanged, and stale or invalid output is refused.
+   */
+  @Remote('refreshMetadata')
+  refreshMetadata(id: MemoryId, updatedAt: string, signal: AbortSignal): Promise<LifeMemory> {
+    return this.operation(signal, (owned) => {
+      const memory = this.options.memory
+      if (memory === undefined) throw new GenesisError('invalid-state', 'Configure the memory writer before generating descriptions.')
+      return memory.refreshMetadata(id, updatedAt, owned)
+    })
+  }
   /**
    * Delete current memory content after checking the displayed version, without adding an edit event.
    * @param id - Memory to remove.
@@ -181,7 +198,8 @@ export class GenesisMemoryGateway extends TypertRemoteService {
    * Integrate explicitly selected memory versions into one or several new candidates.
    * @param request - Stable retry identity, selected versions and optional exact result count.
    * @param signal - Operator cancellation; admitted primary writes drain.
-   * @returns Sourced results without vectors, atomically replacing the selection. Inference failures retain originals; storage or cleanup failures require checking the stable request on retry.
+   * @returns Sourced results without vectors, atomically replacing the selection. Inference failures retain originals.
+   * Storage or cleanup failures require checking the stable request on retry.
    */
   @Remote('organize')
   organize(request: MemoryOrganizationRequest, signal: AbortSignal): Promise<LifeMemory[]> {

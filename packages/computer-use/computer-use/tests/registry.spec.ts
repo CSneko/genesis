@@ -1,5 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import ComputerUseRegistry from '../src/index.ts'
 import { ComputerUseProviderName } from '../src/brand.ts'
 
@@ -47,4 +48,23 @@ describe('computer-use provider registration', () => {
       await ctx.fiber.dispose()
     }
   })
+})
+
+it('withdraws an independent capture source and preserves caller identity and cancellation', async () => {
+  const ctx = new Context()
+  try {
+    await ctx.plugin(ComputerUseRegistry)
+    const owner = SessionId('capture-owner')
+    const signal = new AbortController().signal
+    const dispose = ctx.computerUse.registerCapture({ name: MCP, async capture(receivedOwner, receivedSignal) {
+      expect(receivedOwner).toBe(owner)
+      expect(receivedSignal).toBe(signal)
+      return { png: new Uint8Array([1]), capturedAt: '2026-11-15T00:00:00Z' }
+    } })
+    expect(ctx.computerUse.providerName).toBeUndefined()
+    expect(await ctx.computerUse.capture(MCP, owner, signal)).toMatchObject({ capturedAt: '2026-11-15T00:00:00Z' })
+    await dispose()
+    expect(ctx.computerUse.captureSources()).toEqual([])
+    await expect(ctx.computerUse.capture(MCP, owner, signal)).rejects.toMatchObject({ code: 'source-unavailable' })
+  } finally { await ctx.fiber.dispose() }
 })

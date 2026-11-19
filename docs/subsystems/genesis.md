@@ -4,6 +4,8 @@ English | [中文](genesis.zh.md)
 
 The optional [Genesis layer](../genesis/README.md) owns a persistent life, sourced memories and observed system growth. [Data records](../genesis/data-model.md) define identity continuity and evidence; [integration](../genesis/architecture.md) defines lifecycle and permission ownership.
 
+`StatusState` is a detached overview selection with complete counts, bounded memory/growth and emotion/interest history previews, chronological source references, and capability inventories for requested live Sessions. It excludes memory vectors and unrelated life projections; reads wait for previously accepted life writes. Full `LifeState` snapshots remain separate.
+
 `BoredomState` is the optional `EmotionState.boredom` value and stores online engagement mode, intensity and time scales. `EmotionUpdate.boredomDelta` is a cited, bounded appraisal; `SpontaneityRun.social` retains autonomous sending reservations and outcomes. `IdleConversationProvider` supplies approved live destinations and durable text delivery to the reflection-only tool. [Boredom](../genesis/emotion.md#boredom-and-engagement) and [idle opportunities](../genesis/spontaneity.md) own behavior and permissions.
 
 `ThoughtId` identifies a `LifeThought` independently of goals and Sessions. `SpontaneityRun` records one reserved internal interval and its actual settlement; the version-1 thought domain retains current projections and sourced edit receipts. Exploration decisions use `purpose: exploration`, while existing decisions remain readable. [Spontaneous cognition](../genesis/spontaneity.md) defines choices, private execution, budgets, deletion and recovery.
@@ -16,13 +18,13 @@ Optional version-3 `EmotionState` separates nine-field `EmotionCurrent`, two-fie
 
 `Config.memorySharing` selects life-wide memory access or source-conversation isolation for prompts, recall and auxiliary inference; the life overlay selects `life`, while standalone mounts default to `conversation`. The [memory guide](../genesis/memory.md) defines included records and independent permission checks.
 
-`LifeMemory.summary` and `MemoryRevision.summary` optionally retain a short description beside the full memory text. `GenesisMemoryGateway.saveSummary` and `summarize` update only that description under the displayed memory version. [Memory](../genesis/memory.md) defines multi-turn evidence, summary limits and recovery.
+`LifeMemory.summary` and `MemoryRevision.summary` optionally retain a short description beside the full memory text. `GenesisMemoryGateway.saveSummary` and `summarize` update only that description under the displayed memory version. `GenesisMemoryGateway.refreshMetadata` regenerates summary and declarative organization together under the expected version, preserving content and evidence. [Memory](../genesis/memory.md) defines multi-turn evidence, summary limits and recovery.
 
 [Bilibili reading](../../packages/experimental/genesis-bili-humanism/README.md) uses the shared writing store. `WritingImportId` names a trusted adapter receipt; migration retains original creation time, records the actual migration Session and call, and preserves edits and deletion across retries. It does not add life memories.
 
 `MemoryModelsSettings.maxRetries` optionally overrides the deployment retry count for shared auxiliary inference; absence inherits the deployment value. [Memory](../genesis/memory.md) defines retry eligibility, cancellation and audit behavior.
 
-`ConversationMemoryScope` identifies a Session and all of its selected memory versions. `LifeCore.reviewMemory` checks this scope atomically for `GenesisMemoryGateway.overview`; the private `genesisConversationMemory` projection supplies only actual user/assistant text. [Whole-conversation memory behavior](../genesis/memory.md) owns selection, budgets and recovery.
+`ConversationMemoryScope` identifies a Session, an optional post-compaction sequence cutoff and all selected memory versions. `LifeCore.reviewMemory` checks this scope atomically for `GenesisMemoryGateway.overview`; the private `genesisConversationMemory` projection supplies only actual user/assistant text. [Whole-conversation memory behavior](../genesis/memory.md) owns selection, budgets and recovery.
 
 `MemoryOrganizationRequest` carries a branded request ID, selected memory versions and an optional exact result count. `OrganizedMemory` is the validated, embedded interpretation accepted by `LifeCore.organizeMemories`; `GenesisMemoryGateway.organize` exposes explicit synthesis. [Selected memory organization](../genesis/memory.md#selected-memory-organization) owns limits and recovery.
 
@@ -51,6 +53,8 @@ Optional version-3 `EmotionState` separates nine-field `EmotionCurrent`, two-fie
 The optional [mail integration](../../packages/experimental/genesis-mail/README.md) owns life-bound mailbox storage, separate character attention and immutable SMTP reservations. `MailId` identifies local mail independently of provider UIDs and Message-ID headers; `MailStatus` exposes bounded metadata without credential values. `LifeCore.recordIntegrationState` records observed integration initialization and connectivity as system growth, independently of learned tools and execution permission.
 
 [The optional wallet](../../packages/experimental/genesis-wallet/README.md) owns life-bound CNY/USD balances, product snapshots, purchase requests and annotated movements. `WalletGateway` exposes operator-only settlement; the learned `wallet` tool reads current status without automatic confirmation notifications.
+
+Automatic long-term memory uses private Session projections for completed replies and a fixed-size settled cursor. Ignorable `plugin:genesis/memory-batch` receipts advance the cursor only after successful review; replay restores data without model calls. Runtime instances own timers, cancellation and concurrent operations outside projections. See [long-term memory](../genesis/memory.md) for batching, context and recovery semantics.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -100,11 +104,12 @@ deleteContact(personId: PersonId, evidence?: { sessionId: SessionId; eventId: st
 
 /**
  * Bind an authenticated platform route to one durable Session before accepting messages.
- * @param conversation - Exact route and reserved Session; reuse may not silently replace it.
+ * @param conversation - Exact route and reserved Session; earlier bindings remain as history.
  * @param operatorPersonId - Legacy deployment seed used only until Contacts owns operator selection.
+ * @param previousSessionId - Expected latest Session when the authenticated adapter rotates an archived route.
  * @returns After the route is durable; conflicting routes or operator identities are refused.
  */
-bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): Promise<void>
+bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId, previousSessionId?: SessionId): Promise<void>
 
 /**
  * Confirm successful Session publication before any external input can be reserved.
@@ -114,7 +119,8 @@ bindConversation(conversation: LifeConversation, operatorPersonId?: PersonId): P
 confirmConversationSession(sessionId: SessionId): Promise<void>
 
 /**
- * Delete a retained profile, its contact details, earlier account recognition and memories citing that person's messages, preserving audited Session evidence.
+ * Delete a retained profile, contact details, earlier account recognition and memories citing the person's messages.
+ * Audited Session evidence remains available.
  * @param personId - Explicit operator-selected identity; names cannot select a person.
  * @param updatedAt - Optional displayed profile version; changed or missing profiles refuse deletion.
  * @returns Whether a retained profile existed; raw Session logs require separate lifecycle deletion.
@@ -162,6 +168,12 @@ isOperatorSession(sessionId: SessionId): boolean
  * @returns Whether the Session belongs to the authenticated QQ adapter.
  */
 isQqSession(sessionId: SessionId): boolean
+
+/** Read the transport-bound QQ route independently of pending message admission.
+ * @param sessionId - Actual Session receiving the tool declarations.
+ * @returns A detached verified route, or undefined for non-QQ Sessions.
+ */
+qqConversationOf(sessionId: SessionId): LifeConversation | undefined
 
 /**
  * Match an authenticated account to the contact operator; names and relationships never qualify.
@@ -340,6 +352,13 @@ reviewInterest(sessionId: SessionId, current: InterestDialogue['turns'][number],
 async snapshot(): Promise<LifeState>
 
 /**
+ * Read overview counts and bounded previews after previously accepted writes settle.
+ * @param sessionIds - Live sessions whose capability inventories are needed.
+ * @returns Detached overview data without copying unrelated life history or memory vectors.
+ */
+async statusSnapshot(sessionIds: readonly SessionId[]): Promise<StatusState>
+
+/**
  * Commit an emotion appraisal and its deduplication marker atomically with cited life evidence.
  * @param sessionId - Source conversation, never another Session's text.
  * @param evidence - Current exchange and optional earlier complete exchanges.
@@ -369,6 +388,15 @@ setBoredomMode(mode: BoredomState['mode']): Promise<void>
  * @returns After the online-only anchor is durable; storage uncertainty stops dependent operations.
  */
 checkpointEmotion(): Promise<void>
+
+/**
+ * Save optional intimacy settings without replacing identity or manufacturing experiences.
+ * @param settings - Complete operator design settings; absent prior state starts at baseline.
+ * @param revision - Current emotion revision; concurrent appraisals reject stale edits.
+ * @param remove - Delete the current intimacy projection; historical audit events remain retained.
+ * @returns Committed emotion revision; uncertain storage stops dependent operations.
+ */
+configureIntimacy(settings: IntimacySettings, revision: number, remove: boolean = false): Promise<number>
 
 /**
  * Save operator emotion rules with revision fencing; recovery under the old rules precedes the change.
@@ -446,7 +474,7 @@ setPersonalDirectory(path: string): Promise<void>
  * @param changes - Validated wording-only replacements and refreshed embeddings.
  * @returns New identity revision; original interpretations remain in version history.
  */
-saveOperator(profile: OperatorIdentity, revision: number, versions: Array<{ id: MemoryId; updatedAt: string }>, changes: MemoryRelabel[]): Promise<number>
+saveOperator( profile: OperatorIdentity, revision: number, versions: Array<{ id: MemoryId; updatedAt: string }>, changes: MemoryRelabel[], ): Promise<number>
 
 /**
  * Append an attributed fact once, identified by Session plus durable sequence.
@@ -508,10 +536,9 @@ updateMemory(id: MemoryId, input: MemoryInput): Promise<LifeMemory | undefined>
  * @param id - Client-allocated UUID; retaining it makes retries of a new entry idempotent.
  * @param draft - Editable candidate fields, never caller-supplied source references.
  * @param updatedAt - Observed version, or null for a new entry.
- * @param maxImplicit - Non-declarative count budget.
  * @returns Committed candidate retaining its identity and earlier sources when edited.
  */
-editMemory(id: MemoryId, draft: MemoryDraft, updatedAt: string | null, maxImplicit: number): Promise<LifeMemory>
+editMemory(id: MemoryId, draft: MemoryDraft, updatedAt: string | null): Promise<LifeMemory>
 
 /**
  * Replace or remove only a memory's short description, preserving its evidence and behavioral metadata.
@@ -523,14 +550,22 @@ editMemory(id: MemoryId, draft: MemoryDraft, updatedAt: string | null, maxImplic
 setMemorySummary(id: MemoryId, summary: string | null, updatedAt: string): Promise<LifeMemory>
 
 /**
+ * Replace generated descriptions without changing the remembered evidence or its revisions.
+ * @param id - Existing memory.
+ * @param metadata - Validated summary and optional declarative organization.
+ * @param updatedAt - Expected current version; stale updates are refused.
+ * @returns Committed memory with its content, attribution, sources and confidence preserved.
+ */
+setMemoryMetadata(id: MemoryId, metadata: { summary: string; organization?: MemoryOrganization }, updatedAt: string): Promise<LifeMemory>
+
+/**
  * Change only the memory layer, retaining content, sources, identity and its embedding.
  * @param id - Existing memory.
  * @param kind - Explicit operator choice.
  * @param updatedAt - Version observed by the editor; stale conversions are refused.
- * @param maxImplicit - Whole-life non-declarative count budget.
  * @returns Converted memory; an idempotent same-layer request leaves history unchanged.
  */
-convertMemory(id: MemoryId, kind: 'declarative' | 'non-declarative', updatedAt: string, maxImplicit: number): Promise<LifeMemory>
+convertMemory(id: MemoryId, kind: 'declarative' | 'non-declarative', updatedAt: string): Promise<LifeMemory>
 
 /**
  * Delete current memory content; automatic deletion records a fact, while operator deletion creates no edit history.
@@ -558,13 +593,12 @@ async getMemory(id: MemoryId): Promise<LifeMemory | undefined>
  * Atomically apply an independent writer's changes and record a completed review once.
  * @param key - Stable source turn or explicit user-memory request key.
  * @param changes - Validated changes; all references must belong to this life.
- * @param maxImplicit - Whole-life non-declarative record limit.
  * @param experience - Optional remembered event; commits atomically with the derived entries.
  * @param evidence - Completed user exchange metadata for independent habit support and durable maintenance.
  * @param scope - Optional whole-conversation selection; every supplied version and mutation is checked atomically.
  * @returns After all changes and the replay marker commit, or no-op on replay.
  */
-reviewMemory(key: string, changes: MemoryChange[], maxImplicit: number, experience?: ExperienceChange, evidence?: ReviewEvidence, scope?: ConversationMemoryScope): Promise<void>
+reviewMemory( key: string, changes: MemoryChange[], experience?: ExperienceChange, evidence?: ReviewEvidence, scope?: ConversationMemoryScope, ): Promise<void>
 
 /**
  * Persist the operator's maintenance preference independently of deployment defaults.
@@ -582,10 +616,9 @@ requestConsolidation(): Promise<void>
 /**
  * Commit one bounded consolidation with an optimistic revision check and replay marker.
  * @param plan - Validated changes and the exact selected memory versions.
- * @param maxImplicit - Whole-life prompt memory limit.
  * @returns Whether the pass committed; concurrent edits leave work pending.
  */
-consolidate(plan: ConsolidationCommit, maxImplicit: number): Promise<boolean>
+consolidate(plan: ConsolidationCommit): Promise<boolean>
 
 /**
  * Atomically replace selected memories with their sourced synthesis.
@@ -625,7 +658,7 @@ async events(query: EventQuery): Promise<LifeEvent[]>
 close(): Promise<void>
 ```
 
-Types: [ConsolidationCommit](../genesis/memory.md) · [ConversationMemoryScope](../genesis/memory.md) · [DecisionId](../genesis/motivation.md) · [DeliberationCommit](../genesis/motivation.md) · [EventQuery](../genesis/data-model.md) · [ExperienceChange](../genesis/memory.md) · [InitiativeSettings](../genesis/social.md) · [InterestDialogue](../genesis/interest.md) · [InterestProposal](../genesis/interest.md) · [LifeConversation](../genesis/data-model.md) · [LifeDecision](../genesis/motivation.md) · [LifeEvent](../genesis/data-model.md) · [LifeEventId](../genesis/data-model.md) · [LifeGoalId](../genesis/motivation.md) · [LifeMemory](../genesis/data-model.md) · [LifeState](../genesis/data-model.md) · [MemoryChange](../genesis/memory.md) · [MemoryDraft](../genesis/memory.md) · [MemoryId](../genesis/data-model.md) · [MemoryInput](../genesis/data-model.md) · [MemoryOrganizationRequest](../genesis/memory.md) · [MemoryQuery](../genesis/data-model.md) · [MemoryRelabel](../genesis/memory.md) · [ObservedInteraction](../genesis/data-model.md) · [OperatorIdentity](../genesis/memory.md) · [OrganizedMemory](../genesis/memory.md) · [PersonId](../genesis/data-model.md) · [PersonSource](../genesis/data-model.md) · [PlanChange](../genesis/motivation.md) · [ReviewEvidence](../genesis/memory.md) · [ReviewFailure](../genesis/memory.md) · [SessionId](core.md) · [ToolCallId](core.md) · [ToolSchema](tools.md)
+Types: [ConsolidationCommit](../genesis/memory.md) · [ConversationMemoryScope](../genesis/memory.md) · [DecisionId](../genesis/motivation.md) · [DeliberationCommit](../genesis/motivation.md) · [EventQuery](../genesis/data-model.md) · [ExperienceChange](../genesis/memory.md) · [InitiativeSettings](../genesis/social.md) · [InterestDialogue](../genesis/interest.md) · [InterestProposal](../genesis/interest.md) · [IntimacySettings](../genesis/emotion.md) · [LifeConversation](../genesis/data-model.md) · [LifeDecision](../genesis/motivation.md) · [LifeEvent](../genesis/data-model.md) · [LifeEventId](../genesis/data-model.md) · [LifeGoalId](../genesis/motivation.md) · [LifeMemory](../genesis/data-model.md) · [LifeState](../genesis/data-model.md) · [MemoryChange](../genesis/memory.md) · [MemoryDraft](../genesis/memory.md) · [MemoryId](../genesis/data-model.md) · [MemoryInput](../genesis/data-model.md) · [MemoryOrganization](../genesis/memory.md) · [MemoryOrganizationRequest](../genesis/memory.md) · [MemoryQuery](../genesis/data-model.md) · [MemoryRelabel](../genesis/memory.md) · [ObservedInteraction](../genesis/data-model.md) · [OperatorIdentity](../genesis/memory.md) · [OrganizedMemory](../genesis/memory.md) · [PersonId](../genesis/data-model.md) · [PersonSource](../genesis/data-model.md) · [PlanChange](../genesis/motivation.md) · [ReviewEvidence](../genesis/memory.md) · [ReviewFailure](../genesis/memory.md) · [SessionId](core.md) · [ToolCallId](core.md) · [ToolSchema](tools.md)
 
 Source: [`packages/experimental/genesis/src/core.ts`](../../packages/experimental/genesis/src/core.ts)
 
@@ -831,6 +864,11 @@ One serialized, cancelable owner; pending delivery never implies successful deli
  * @returns After initialization, pending-receipt recovery and timer setup; startup creates no new opportunity. */
 async start(): Promise<void>
 
+/** Expose the existing Web outbox to the single private cognition opportunity.
+ * @returns Lifecycle-scoped provider; saved channel policy and delivery limits remain authoritative.
+ */
+conversationProvider(): IdleConversationProvider
+
 /** Read the current delivery schedule and failure state.
  * @returns Current runtime evidence; configuration and receipts remain core-owned. */
 status(): { working: boolean; nextCheckAt: string | null; failure: { code: string; message: string } | null }
@@ -890,6 +928,15 @@ Settings revisions are independent of background receipt commits.
  * @returns A complete bounded sample with truncation and omission counts; no delivery is implied by enqueueing.
  */
 @Remote('inspect') inspect(signal: AbortSignal): Promise<InitiativeStatus>
+
+/**
+ * Search delivery history before selecting a bounded page.
+ * @param query - Text, target, status or diagnostic substring.
+ * @param offset - Matching records to skip.
+ * @param signal - Caller cancellation.
+ * @returns Current policy and matching delivery records, with remaining count.
+ */
+@Remote('browse') browse(query: string, offset: number, signal: AbortSignal): Promise<InitiativeStatus>
 
 /**
  * Save policy for subsequent opportunities and admission; previously admitted assistant turns may finish.
@@ -986,7 +1033,7 @@ Explicit user memory controls; errors retain their actual stage and safe diagnos
 @Remote({ name: 'generate', resources: { session: (sessionId: SessionId) => sessionId } }) generate(sessionId: SessionId, messageId: MessageId, kind: MemoryKind, signal: AbortSignal): Promise<boolean>
 
 /**
- * Let the independent writer organize all chat text and memories associated with one open Life conversation.
+ * Let the independent writer organize chat and fully attributed memories after the latest compaction in one open Life conversation.
  * @param sessionId - Authorized source conversation; tool and injected output are excluded.
  * @param id - Stable operator request UUID, retained across failed or uncertain retries.
  * @param signal - Caller cancellation; admitted storage writes drain.
@@ -1022,6 +1069,15 @@ Explicit user memory controls; errors retain their actual stage and safe diagnos
  * @returns Memory with its new summary; failure leaves the selected version unchanged.
  */
 @Remote('summarize') summarize(id: MemoryId, updatedAt: string, signal: AbortSignal): Promise<LifeMemory>
+
+/**
+ * Regenerate a summary and declarative classification through the saved independent writer.
+ * @param id - Existing memory identifier.
+ * @param updatedAt - Expected version, checked before inference and at commit.
+ * @param signal - Caller cancellation; admitted writes drain.
+ * @returns Memory with refreshed metadata; content and evidence stay unchanged, and stale or invalid output is refused.
+ */
+@Remote('refreshMetadata') refreshMetadata(id: MemoryId, updatedAt: string, signal: AbortSignal): Promise<LifeMemory>
 
 /**
  * Delete current memory content after checking the displayed version, without adding an edit event.
@@ -1689,7 +1745,7 @@ registerConversation(provider: IdleConversationProvider): () => void
 
 /** Verify a live social operation separately from its persisted Session marker.
  * @param agent - Exact runtime instance.
- * @returns Whether the internal reflection currently owns social admission.
+ * @returns Whether the internal activity currently owns social admission.
  */
 admitsSocial(agent: Agent): boolean
 
@@ -1721,11 +1777,11 @@ inspect(): SpontaneityStatus
  *
  * @param session - Actual inference audit Session.
  *
- * @param tokens - Requested output cap.
+ * @param tokens - Requested output cap; undefined reserves the remaining internal budget.
  *
  * @returns Unchanged cap for ordinary Sessions, or the reserved internal cap; exhaustion rejects before inference.
  */
-reserveOutput(session: Session, tokens: number): number
+reserveOutput(session: Session, tokens: number | undefined): number
 
 /** Register audited tools, tool guards, quiet-period scheduling and cancellation. */
 install(): void
@@ -1756,6 +1812,37 @@ Source: [`packages/experimental/genesis/src/spontaneity.ts`](../../packages/expe
 Sample shared life state and initialize its name without changing its identity or permissions.
 
 ```ts cordis-catalog
+/**
+ * Inspect private operator settings without initializing an optional projection.
+ * @param signal - Operator cancellation.
+ * @returns Current sampled state and revision; unavailable profiles cannot enable it.
+ */
+@Remote('inspectIntimacy') inspectIntimacy(signal: AbortSignal): Promise<IntimacyStatus>
+
+/**
+ * Save the optional plugin policy or clear its current projection; history remains audited.
+ * @param settings - Complete JSON-validated design settings.
+ * @param revision - Last sampled emotion revision.
+ * @param remove - Explicitly clear current state, retaining historical audit records.
+ * @param signal - Caller cancellation; admitted commits drain on shutdown.
+ * @returns Fresh committed settings for the next request.
+ */
+@Remote('saveIntimacy') saveIntimacy(settings: IntimacySettings, revision: number, remove: boolean, signal: AbortSignal): Promise<IntimacyStatus>
+
+/** Read the saved action-guidance switch independently of startup overlays.
+ * @param signal - Operator cancellation.
+ * @returns Effective switch and optimistic revision.
+ */
+@Remote('inspectPurge') inspectPurge(signal: AbortSignal): Promise<PurgeSettings>
+
+/** Persist the switch without rewriting deployment configuration or life history.
+ * @param enabled - Requested action guidance.
+ * @param revision - Last displayed revision; stale edits are rejected.
+ * @param signal - Caller cancellation; admitted writes drain before teardown.
+ * @returns Saved switch and committed revision.
+ */
+@Remote('savePurge') savePurge(enabled: boolean, revision: number, signal: AbortSignal): Promise<PurgeSettings>
+
 /** Read the current auxiliary decision route without constructing a full status response.
  * @returns Detached operator route.
  */
@@ -1771,7 +1858,7 @@ decisionModel(): MemoryModelsSettings['decision']
  * @param route - Optional channel-only decision route; shared settings remain unchanged.
  * @returns Validated answer and genuine endpoint probability when supplied; failure authorizes no action.
  */
-async decide(session: Session, question: string, input: Record<string, unknown> & { participants: object }, criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision']): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }>
+async decide( session: Session, question: string, input: Record<string, unknown> & { participants: object }, criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision'], ): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }>
 
 /**
  * Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once.
@@ -1853,10 +1940,10 @@ async decide(session: Session, question: string, input: Record<string, unknown> 
 @Remote('adjustRelationship') async adjustRelationship(adjustment: RelationshipAdjustment, revision: number, signal: AbortSignal): Promise<number>
 
 /**
- * Retry the latest failed review while its live evidence remains available.
+ * Retry pending batches, or the latest failed per-turn review while its live evidence remains available.
  * @param sessionId - Conversation that owns the failed review.
  * @param signal - Caller cancellation; no new chat reply is generated.
- * @returns After the retry settles; restart or newer-turn evidence requires a new conversation turn.
+ * @returns After retry settles; batch evidence survives reopening, while per-turn mode requires retained live evidence.
  */
 @Remote('retryMemory') async retryMemory(sessionId: SessionId, signal: AbortSignal): Promise<void>
 
@@ -1894,6 +1981,17 @@ async decide(session: Session, question: string, input: Record<string, unknown> 
 @Remote('memories') async memories(query: string, kind: MemoryKind | 'all', offset: number, signal: AbortSignal): Promise<MemoryCatalog>
 
 /**
+ * Browse declarative categories, directory paths and person portraits across the complete life collection.
+ * @param query - Search text; blank lists records in the selected view.
+ * @param kind - Memory layer or all layers.
+ * @param offset - Record pagination offset.
+ * @param filter - Organization selection and independent navigation offset.
+ * @param signal - Caller cancellation before producing the page.
+ * @returns Bounded records and organization navigation.
+ */
+@Remote('memoryBrowser') memoryBrowser( query: string, kind: MemoryKind | 'all', offset: number, filter: MemoryBrowserFilter, signal: AbortSignal, ): Promise<MemoryBrowserCatalog>
+
+/**
  * Sample live tools, identity, counts and bounded memory/growth previews.
  * Historical scopes are excluded from current availability. Errors reject;
  * callers keep their previous sample visibly stale and offer retry.
@@ -1903,7 +2001,7 @@ async decide(session: Session, question: string, input: Record<string, unknown> 
 @Remote('inspect') async inspect(signal: AbortSignal): Promise<LifeStatus>
 ```
 
-Types: [EmbeddingSettings](../genesis/memory.md) · [LifeStatus](../genesis/data-model.md) · [MemoryCatalog](../genesis/memory.md) · [MemoryKind](../genesis/memory.md) · [MemoryModelsSettings](../genesis/memory.md) · [PersonalityStatus](../genesis/memory.md) · [Session](session.md) · [SessionId](core.md)
+Types: [EmbeddingSettings](../genesis/memory.md) · [IntimacySettings](../genesis/emotion.md) · [IntimacyStatus](../genesis/emotion.md) · [LifeStatus](../genesis/data-model.md) · [MemoryBrowserCatalog](../genesis/memory.md) · [MemoryBrowserFilter](../genesis/memory.md) · [MemoryCatalog](../genesis/memory.md) · [MemoryKind](../genesis/memory.md) · [MemoryModelsSettings](../genesis/memory.md) · [PersonalityStatus](../genesis/memory.md) · [Session](session.md) · [SessionId](core.md)
 
 Source: [`packages/experimental/genesis/src/status.ts`](../../packages/experimental/genesis/src/status.ts)
 
@@ -1938,6 +2036,15 @@ Operator controls never send a conversation message or change long-term memories
  * @returns Bounded operator sample.
  */
 @Remote('inspect') inspect(signal: AbortSignal): Promise<TemporaryStatus>
+
+/**
+ * Search all unexpired summaries and read one bounded page.
+ * @param query - Summary substring, empty for all summaries.
+ * @param offset - Number of matching records to skip.
+ * @param signal - Caller cancellation.
+ * @returns Matching count, page and remaining record count.
+ */
+@Remote('browse') browse(query: string, offset: number, signal: AbortSignal): Promise<TemporaryStatus>
 
 /**
  * Save independent summary model and quiet interval.
@@ -1984,6 +2091,13 @@ Source: [`packages/experimental/genesis/src/temporary-gateway.ts`](../../package
 Catalogue editing never teaches tools or grants execution permission.
 
 ```ts cordis-catalog
+/** Contribute automatically managed toolkits for the calling plugin's lifetime.
+ * @param owner - Unique provider name, independent of toolkit ids.
+ * @param entries - Live definitions; saved groups, learning and permissions remain independent.
+ * @returns Disposer withdrawing these groups without changing saved preferences or Session activations.
+ */
+registerManaged(owner: string, entries: () => ToolkitDefinition[]): () => void
+
 /**
  * Read the complete editable catalogue, including empty groups and unknown member rules.
  * @param signal - Caller cancellation.
@@ -1999,7 +2113,17 @@ Catalogue editing never teaches tools or grants execution permission.
  * @returns Committed revision; stale or invalid drafts do not replace confirmed settings.
  */
 @Remote('save') save(entries: ToolkitDefinition[], revision: number, signal: AbortSignal): Promise<number>
+
+/** Replace QQ tool permissions for people and groups.
+ * @param rules - Complete operator policy, including explicit denials.
+ * @param revision - Last displayed QQ permission revision.
+ * @param signal - Cancellation before admission; accepted writes drain on disposal.
+ * @returns Confirmed revision; unknown writes stop QQ authorization until reload.
+ */
+@Remote('savePermissions') savePermissions(rules: QqPermissionRule[], revision: number, signal: AbortSignal): Promise<number>
 ```
+
+Types: [QqPermissionRule](../genesis/qq.md)
 
 Source: [`packages/experimental/genesis/src/toolkit-gateway.ts`](../../packages/experimental/genesis/src/toolkit-gateway.ts)
 <!-- END GENERATED cordis-surface -->

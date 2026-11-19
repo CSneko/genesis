@@ -28,6 +28,8 @@ pnpm run build:check
 pnpm dsh
 ```
 
+工作区 Life 覆盖配置默认使用 `danger-full-access`：已接入的文件和 Shell 工具可修改当前工作区之外的文件，仍受操作系统权限限制。主动认知从来源对话继承此模式。可通过 `DSH_PERMISSION_MODE` 或后续 `sandbox-policy` 补丁收窄部署权限；会话中显式选择的沙箱模式仍优先。修改配置后需重启运行中的 profile。
+
 `pnpm dsh web`、`pnpm start:web` 和 `make web` 使用相同默认配置，开发模式也沿用它。默认 `DSH_HOME` 为 `~/.genesis-harness`；显式设置的 `DSH_HOME` 和 `--port` 优先，额外 `--patch` 在默认配置之后应用。无需再设置 `PNPM_MANAGE_PACKAGE_MANAGER_VERSIONS`。先配置 API 或登录，再在知识库完成嵌入配置，详见[首次唤醒](awakening.zh.md)。
 
 本机浏览器测试可运行 `pnpm dsh web --test-no-login`。打开启动时输出的已认证地址，启动令牌会换取浏览器 Cookie，无需填写密钥登录表单。此开关仅属于源码工作区，将测试补丁放在最后，即使指定 `--host` 也固定监听 `127.0.0.1`，并保留 `--port`。API 认证仍然开启，直接访问根地址仍须有效 Cookie。不加此参数即可恢复密钥登录。自动化测试使用独立的临时 `DSH_HOME`。
@@ -63,6 +65,8 @@ pnpm dsh web
 工作区 Genesis Web 在 GNOME Wayland 下加载[桌面 portal provider](../../packages/experimental/computer-use-portal/README.zh.md)。使用 `pnpm dsh` 重启，并教她准确工具名 `computer`。首次 `connect` 会打开 GNOME 屏幕共享和远程输入授权对话框。优先使用应用检查与语义控制：列出应用、选择一个应用实例，再读取控件、调用其动作或直接替换可编辑文本。无障碍支持不足时，工具还支持对一个共享显示器截图、指针输入、滚动和快捷键。坐标和键盘输入需要最近截图；按键作用于当前获得焦点的应用。工作区覆盖层已预先批准应用访问，不再逐应用询问；仍须完成 GNOME 系统共享授权。provider 使用 XDG portal 和 PipeWire，无需 Shell 扩展。
 
 使用 `GENESIS_COMPUTER_USE=0` 禁用桌面工具。provider 启动时检查所需 Python/GI 与 GStreamer 依赖；配置和恢复方式见其 README。授权是临时的，重启后须重新批准。GNOME 的停止共享控制可撤销访问。学习状态独立持久保存，不授予操作系统权限；截图需要支持图像输入的模型路由。
+
+工作区也加载[屏幕观察](../../packages/experimental/genesis-see-now/README.zh.md)：教授 `see_now`、启用 `vision` 工具包并选择支持图像的模型，即可有限观察当前宿主机屏幕。来源接口支持独立注册采集；远程 Web 访问不会共享客户端设备屏幕。
 
 ### 显式组合配置
 

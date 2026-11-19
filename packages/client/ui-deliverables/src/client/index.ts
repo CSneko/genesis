@@ -10,6 +10,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
  * surface; the owning view renders an empty list and inert prose at zero cost.
  */
 import './file-actions.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-file-actions/client'
+import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
+import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path'
+import { ReferencedFiles, type ReferencedFilesInjected } from './ReferencedFiles.tsx'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
@@ -30,7 +34,7 @@ import { CHANGES_REVIEW_ID, changesReviewDefinition } from './review-definition.
 import { createReviewStore } from './review-store.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type DeliverablesKey } from './locales.ts'
 import {
-  deliverablesDefinition, presentedForClosing, producedFileMentions, selectProducedFiles,
+  basename, deliverablesDefinition, presentedForClosing, producedFileMentions, selectProducedFiles,
 } from './turn-deliverables.ts'
 
 export type { PresentedOpenOutcome, PresentedOpenFailure } from './present-open.ts'
@@ -50,6 +54,26 @@ export const inject = ['slots', 'locale', 'uiConversation', 'remote', 'remote.se
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.inject(['fileActions', 'remote.workspaceFiles'], (child) => {
+    child.slots.inject('conversation.chat.turnTail', () => child.slots.register({
+      name: 'conversation.chat.turnTail',
+      id: '@deepseek-ai/dsh-client-ui-deliverables/references',
+      locale: NS,
+      inject: (): ReferencedFilesInjected => ({
+        downloadReference: async (sessionId, path) => {
+          await child.fileActions.save({
+            url: fileMediaUrl(document.baseURI, path) ?? path,
+            name: basename(path),
+            read: async (signal) => {
+              const result = await child.remote.workspaceFiles.readBytes(sessionId, path, {}, signal)
+              if (!result.ok) throw new Error('Referenced file unavailable')
+              return new Blob([new Uint8Array(result.value.data)])
+            },
+          }, 'download')
+        },
+      }),
+    }, ReferencedFiles))
+  })
   const opener = new PresentedOpenController()
   const summaries = new ChangesSummaryStore()
   const diffs = new ChangesDiffStore()

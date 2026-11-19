@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { PortalClient } from './client.ts'
 import { Config } from './config.ts'
 import { authorizeApplication } from './application-access.ts'
-import type {} from '@deepseek-ai/dsh-computer-use'
+import { ScreenCaptureError } from '@deepseek-ai/dsh-computer-use'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -80,9 +80,36 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       await client.close()
     }
     const child = ctx.plugin({
-      name: 'desktop-portal-tools', inject: ['tools', 'systemPrompt'],
+      name: 'desktop-portal-tools', inject: ['tools', 'systemPrompt', 'computerUse'],
       async apply(inner: Context) {
         await client.start()
+        inner.computerUse.registerCapture({
+          name: ComputerUseProviderName('host-desktop'),
+          async capture(owner, callerSignal) {
+            const signal = AbortSignal.any([callerSignal, lifetime.signal])
+            const operation = (async () => {
+              const result = z.object({
+                isError: z.boolean().optional(),
+                content: z.array(z.discriminatedUnion('type', [
+                  z.object({ type: z.literal('text'), text: z.string() }),
+                  z.object({ type: z.literal('image'), mimeType: z.literal('image/png'), data: z.string() }),
+                ])),
+              }).parse(await client.capture(owner, signal))
+              if (result.isError) throw new ScreenCaptureError('capture-failed',
+                'Desktop capture was refused. Check computer status and reconnect desktop sharing before observing again.')
+              const image = result.content.find(part => part.type === 'image')
+              if (image === undefined) throw new ScreenCaptureError('capture-failed', 'Desktop capture returned no image. Reconnect desktop sharing.')
+              return { png: Buffer.from(image.data, 'base64'), capturedAt: new Date().toISOString() }
+            })()
+            pending.add(operation)
+            try { return await operation }
+            catch (error) {
+              if (signal.aborted || error instanceof ScreenCaptureError) throw error
+              throw new ScreenCaptureError('capture-failed',
+                'Desktop capture failed. Check computer status and reconnect sharing before observing again.', { cause: error })
+            } finally { pending.delete(operation) }
+          },
+        })
         inner.on('agent/disposed', ({ agent }) => {
           void client.release(agent.session.id).catch((error: unknown) => {
             inner.logger.warn(`Desktop grant cleanup failed. Stop sharing in GNOME before further input: ${String(error)}`)

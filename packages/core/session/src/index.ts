@@ -15,8 +15,8 @@ import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
-import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
-import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
+import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceEvent, SurfaceIntent, SurfaceEventType } from './types.ts'
+import { isSurfaceEvent, SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
 import type { SessionSurface, SessionMessageProjection } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
 import { ToolHistoryProjection } from './tool-history.ts'
@@ -972,7 +972,7 @@ export class Session {
   }
 
   /** The derived-message cache: frozen projections, extended per unseen node. */
-  private derived: Message[] = []
+  private derived: Array<{ readonly event: SurfaceEvent; readonly message: Message }> = []
   /** Surface position (nodes projected) the cache has reached. */
   private derivedNodes = 0
   /** {@link SurfaceManager.contentGeneration} the cache was built under. */
@@ -997,6 +997,14 @@ export class Session {
    * @returns a fresh array of the shared, frozen derived history.
    */
   deriveMessages(): Message[] {
+    return this.deriveMessageEntries().map(entry => entry.message)
+  }
+
+  /**
+   * Pair each derived message with its current surface event for logged replacements.
+   * @returns A fresh ordered array of immutable event and message pairs.
+   */
+  deriveMessageEntries(): ReadonlyArray<{ readonly event: SurfaceEvent; readonly message: Message }> {
     const surface = this.surface
     const nodes = surface.nodes
     const generation = surface.contentGeneration
@@ -1009,11 +1017,14 @@ export class Session {
       // Surface sequences are built from this.log — seq is always a valid
       // index by construction. The non-null assertion expresses that invariant.
       // oxlint-disable-next-line typescript/no-non-null-assertion
-      const msg = this.deriveEventMessage(this.log[seq]!)
+      const event = this.log[seq]!
       // A surface node is one of the five message-producing types, but an
       // empty-content assistant/message (a max-tokens step that hosts only
       // usage) derives to null and must not enter the transcript.
-      if (msg) this.derived.push(msg)
+      if (isSurfaceEvent(event)) {
+        const message = this.deriveEventMessage(event)
+        if (message !== null) this.derived.push(Object.freeze({ event, message }))
+      }
     }
     this.derivedNodes = nodes.length
     return [...this.derived]

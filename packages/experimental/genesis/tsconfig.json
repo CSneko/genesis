@@ -45,6 +45,9 @@
       "path": "../../core/tools"
     },
     {
+      "path": "../../llm/token-meter"
+    },
+    {
       "path": "../../typert/protocol"
     },
     {
@@ -88,6 +91,9 @@
     },
     {
       "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../session/working-directory"
     }
   ]
 }

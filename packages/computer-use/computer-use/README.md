@@ -33,6 +33,8 @@ Mount the service once beside the chosen provider in a Cordis composition:
 
 The service has no configuration. Provider plugins inject `computerUse` and call `ctx.computerUse.register(ComputerUseProviderName(name))`; the brand is exported from `@deepseek-ai/dsh-computer-use/brand`. The returned effect disposer releases that registration.
 
+Read-only providers can register `ctx.computerUse.registerCapture({ name, capture })` independently of input control. `captureSources()` lists names; `capture(name, sessionId, signal)` requests one current PNG and timestamp. The callback enforces source sharing grants on every call, forwards cancellation, and settles owned work before rejecting. Missing sources fail without fallback. Registration and historical capture success do not establish current authorization. Providers must stop and drain captures before closing their resources.
+
 Providers stop admitting tool calls, close their resources, and await owned work before releasing the registration. `ctx.computerUse.providerName` reports the registered name until release.
 
 -----
@@ -43,7 +45,7 @@ Providers stop admitting tool calls, close their resources, and await owned work
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-One private name owns the slot. Cordis effects remove contributions when their plugin unloads; a repeated disposer cannot remove a later registration. The [source](src/index.ts) contains no driver object, operation interface, or provider selector.
+One private name owns the slot. Cordis effects remove contributions when their plugin unloads; a repeated disposer cannot remove a later registration. Read-only PNG capture sources have a separate named registry; they do not reserve the input-provider slot.
 
 </details>
 
@@ -64,7 +66,7 @@ One private name owns the slot. Cordis effects remove contributions when their p
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as this registry only records provider names.
+None; this service adds no model-visible content.
 
 #### KV Cache effect
 

@@ -13,6 +13,8 @@ kind: "package-library"
 
 提供 `labels.media` 时，`![说明](<路径>)` 嵌入内容使用原生播放器播放 MP3、WAV、OGG/OGA、M4A、AAC、FLAC、Opus 音频，以及 MP4、WebM、OGV、MOV、M4V 视频。嵌入文件保留下载链接，包括没有预览的文件和加载失败的媒体。播放器不会自动播放；编解码支持取决于浏览器。本地媒体在消息完成后使用现有路径解析器。远程下载仍受浏览器同源规则限制。
 
+`extractMarkdownFilePaths(text)` 使用渲染器的 GFM 语法提取解码后的本地文件目标和正文路径，移除行号选择器、去重，并忽略围栏代码、HTML、外部网址及未使用的链接定义；文件存在性检查、授权和下载由调用方负责。
+
 ## 目录
 
 - [使用本包](#use-this-package)

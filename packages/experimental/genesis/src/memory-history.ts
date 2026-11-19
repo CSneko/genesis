@@ -13,6 +13,7 @@ export function retainMemoryHistory(previous: LifeMemory | undefined, next: Life
     content: memory.content,
     category: memory.category,
     ...(memory.summary === undefined ? {} : { summary: memory.summary }),
+    ...(memory.summaries === undefined ? {} : { summaries: memory.summaries }),
     ...(memory.organization === undefined ? {} : { organization: memory.organization }),
     ...(memory.habit === undefined ? {} : { habit: memory.habit }),
     importance: memory.importance,

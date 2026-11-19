@@ -38,7 +38,6 @@ export const genesisWorkspaces = {
     pages: [
       { id: 'tasks', label: 'tasksTitle' },
       { id: 'agency', label: 'agencyTitle' },
-      { id: 'outbox', label: 'outboxTitle' },
     ],
   },
   people: {
@@ -145,7 +144,10 @@ export function GenesisPage({
               </Button>
             ))}
         </nav>
-        <div className={css.section}>{renderSlot('genesis.page', { close }, { entryKey: page })}</div>
+        <div className={css.section}>
+          {renderSlot('genesis.page', { close }, { entryKey: page })}
+          {page === 'thoughts' ? renderSlot('genesis.page', { close }, { entryKey: 'cognition-messages' }) : null}
+        </div>
       </div>
     </main>
   )

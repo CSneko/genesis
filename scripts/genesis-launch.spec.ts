@@ -17,6 +17,7 @@ it('starts Genesis Web without arguments and retains explicit Web options', () =
     resolve(root, 'packages/experimental/genesis/cordis.life.patch.yml'),
     resolve(root, 'packages/experimental/genesis-bili-humanism/cordis.patch.yml'),
     resolve(root, 'packages/experimental/genesis-video/cordis.patch.yml'),
+    resolve(root, 'packages/experimental/genesis-see-now/cordis.patch.yml'),
     resolve(root, 'packages/experimental/client-ui-genesis/cordis.patch.yml'),
     resolve(root, 'config/genesis-computer.patch.yml'),
     resolve(root, 'config/genesis-web.patch.yml'),
@@ -42,7 +43,7 @@ it('applies explicit copies of default patches once and keeps config dumps consi
     root,
   )
   expect(parseDshArgs(dump.args, 'test')).toMatchObject({ mode: 'dump-config', defaultOnly: false })
-  expect(dump.args.filter(arg => arg === '--patch')).toHaveLength(7)
+  expect(dump.args.filter(arg => arg === '--patch')).toHaveLength(8)
   const schema = genesisLaunch(['--profile', 'web', '--dump-config-schema'], 'test', root)
   expect(parseDshArgs(schema.args, 'test')).toMatchObject({ mode: 'dump-config-schema', profile: 'web' })
   const defaults = ['web', '--dump-default-config']

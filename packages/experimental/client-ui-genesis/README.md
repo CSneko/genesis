@@ -13,6 +13,8 @@ Optional adult character sexuality is off by default and configurable on Plugins
 
 ## Summary
 
+Genesis → Cognition and initiative combines thought controls, proactive Web channel policy and delivery receipts. The separate proactive settings seat and Actions delivery tab are omitted.
+
 Plugins → Genesis manages optional capabilities and their settings. MCP is built into the workspace composition and opens in Settings → MCP services. New workspace profiles enable weather, speech and browser support; QQ, mail, Minecraft, wallet and companion start disabled. Existing saved bundle selections are preserved. Later starts retain operator choices. Core life services remain enabled without individual plugin cards. Genesis-owned plugins identify their author as @CSNeko; package specifiers remain unchanged.
 
 Settings → MCP services provides public catalog discovery, service details, one-action installation with required credentials, custom connections and live connection controls through the optional [MCP bundle](../genesis-mcp/README.md).
@@ -21,9 +23,11 @@ Settings → Purge offers an optional Life action-guidance switch, off by defaul
 
 The left sidebar provides four workspaces beside Plugins and Scheduled tasks: Genesis for life information, emotion and thoughts; Memories for memories, personality and writings; Actions for delegated tasks, motivation and goals, and message deliveries; People and messages for contacts, relationships and mail. Each workspace retains its selected section when switching destinations. Knowledge Base, Toolkits and proactive sending policy remain in Settings; optional connections are configured under Plugins → Genesis. Keys use the existing credential store. Life conversations share one life and memory; ordinary presets remain isolated. Initialize life is a manual action on the new-conversation screen or Genesis overview; after naming it opens the first Life conversation. The button disappears after successful completion. Do not show again persistently suppresses automatic configuration reminders. No network listener is added.
 
-Settings → Sleep edits schedules and wake controls; Genesis → Thoughts manages private cognition. Life conversations display the current sleep state. See [sleep](../../../docs/genesis/sleep.md). Thought output budgets use M tokens, defaulting to 50M; per-request output, request-count and tool-call-count controls are absent.
+Settings → Sleep edits schedules and wake controls; Genesis → Cognition and initiative manages private cognition. Life conversations display the current sleep state. See [sleep](../../../docs/genesis/sleep.md). Thought output budgets use M tokens, defaulting to 50M; per-request output, request-count and tool-call-count controls are absent.
 
 The sleep banner uses the lightweight rhythm endpoint; it does not subscribe to full life inspection when opening conversations.
+
+**Plugins → Genesis → Punishment** controls the built-in, disabled-by-default [punishment webhook](../genesis-punishment/README.md). Set the webhook URL, tool description and level description in its settings; saved changes apply immediately and survive restart. Enabling or saving does not send a request. Its **Allow group chats** setting optionally permits QQ groups while retaining tool learning, toolkit activation and QQ permission checks.
 
 Plugins → Genesis → Speech configures the optional [CosyVoice tool](../genesis-speech/README.md), including its model, endpoint and custom voice ID.
 
@@ -41,6 +45,10 @@ Weather is available under **Plugins → Genesis → Weather**, with independent
 <a id="use"></a>
 ## Use
 
+In the 3D star map, search text across the stored collection, select a category hub or legend to filter before paging, or select a memory and choose Find related memories. Related results share actual source-event IDs or explicit experience references; the anchor remains included. Clear star map filters restores ordinary browsing. Browsing never reinforces character recall.
+
+Memories → Memories offers List and 3D star map views over the same bounded page and search filters. Drag the star map to rotate, scroll or use the zoom control, and select a star to inspect and edit its original memory. Category links show membership; node size shows importance, not confidence or verified truth. Keyboard selection and a memory picker provide alternatives to dragging. Automatic rotation pauses in hidden tabs and respects reduced-motion preferences. The map does not write memories or change recall rankings.
+
 Memories → Memories provides Knowledge, People, Events and Unclassified views. Browse knowledge paths, open source-grounded person portraits, or edit classification, directory paths and subject names in the memory editor. Changing organization preserves the original content, attribution and source references.
 
 Model configuration has three shared entries: LLM follows DSH by default, decisions inherit the knowledge decision route, and embeddings are optional. Feature-specific custom routes remain available; existing saved overrides are retained. Without embeddings, Markdown memory content uses bounded text retrieval and memory writes retain their source references. The model setup page offers cloud configuration and explicit local quick deployment. See [model configuration](../../../docs/genesis/memory.md) for local runtime support, download sources, lifecycle and limits.
@@ -57,7 +65,7 @@ Memories also owns the durable automatic-consolidation toggle, explicit pass, la
 
 Genesis → Emotion shows nine immediate reactions, two mood dimensions and independent psychological needs, event interpretations and bounded attributed history. People and messages → People and relationships manages five operator estimates, distinguishes inference confidence from explicit operator values, and provides reason-bearing revision-fenced edits. Its editors save explicit adjustments with reasons, pause automatic appraisal, and configure sensitivity shared by emotion, recovery and relationship changes. Edits are revision-fenced and persist across restart; failed writes retain drafts, while a shell toast survives successful modal dismissal. See [emotion management](../../../docs/genesis/emotion.md#operator-management). The emotion settings editor also saves stopped-time accounting and both immediate/mood coupling gains with localized behavior hints.
 
-Settings → Proactive message settings saves the enable switch, target conversation, timer and delivery limits through the owning authenticated Remote. Actions → Message deliveries shows sampled channel availability, the latest confirmed assistant message and bounded trigger/decision/receipt history, marking pending and uncertain outcomes. Failed setting saves retain drafts. See [proactive messages](../../../docs/genesis/social.md).
+Genesis → Cognition and initiative saves the enable switch, target conversation, timer and delivery limits through the owning authenticated Remote. The same page shows sampled channel availability, the latest confirmed assistant message and bounded trigger/decision/receipt history, marking pending and uncertain outcomes. Failed setting saves retain drafts. See [proactive messages](../../../docs/genesis/social.md).
 
 Actions → Delegated tasks reads bounded pages through the task owner’s authenticated read-only Remote. Delivery confirmation, current execution state, background activity and turn counts remain separate. Missing or unreadable evidence is visibly unavailable. Open conversation uses existing workspace navigation for results and operator execution controls; the page never creates, resumes or retries work. It does not poll or wake cold Agents. See [workspace tasks](../../../docs/genesis/tasks.md).
 
@@ -106,6 +114,8 @@ QQ settings stage an additional prompt and per-conversation context windows. Sav
 QQ settings independently configure the group decision model, endpoint and write-only credential. Bounded recent outcomes display genuine probability and threshold when available; boolean-only responses explicitly have no probability.
 
 <a id="model-experience"></a>
+The manual Whole conversation memory description states its post-compaction scope: only chat after the latest compaction and memories sourced entirely from that range; without compaction, the full conversation is used.
+
 ## Model Experience
 
 Optional plugin controls follow active Host inventory entries, including plugins without volatile Settings fields; generated Remote stubs alone do not establish availability. The page manages Genesis through bounded Host operations. QQ prompt edits affect subsequent logged QQ context; memory previews themselves are not sent to a chat model.

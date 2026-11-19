@@ -17,19 +17,20 @@ export async function ensureGenesisProfileBundles(home: string, installAnchor: s
     loadProfile('dsh', 'web', installAnchor, home)
     const manifest = readProfileManifest('dsh', dir)
     const bundles = manifest.dsh?.profile?.bundles ?? []
+    const builtins = ['@deepseek-ai/dsh-experimental-genesis-mcp', '@deepseek-ai/dsh-genesis-punishment']
     // The marker and selection share one manifest write; later launches preserve disabled bundles.
     if ('genesisProfileDefaults' in manifest) {
       if (manifest.genesisProfileDefaults !== 1) throw new Error('Unsupported Genesis profile defaults version')
-      const builtin = '@deepseek-ai/dsh-experimental-genesis-mcp'
-      if (!bundles.includes(builtin))
+      const missing = builtins.filter(bundle => !bundles.includes(bundle))
+      if (missing.length)
         writeProfileManifest(dir, {
           ...manifest,
-          dsh: { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...bundles, builtin] } },
+          dsh: { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...bundles, ...missing] } },
         })
       return
     }
     const required = [
-      '@deepseek-ai/dsh-experimental-genesis-mcp',
+      ...builtins,
       '@deepseek-ai/dsh-experimental-genesis-speech',
       '@deepseek-ai/dsh-genesis-weather',
       '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
