@@ -3,14 +3,12 @@
 # separate sequences with their own workflows and version lines.
 #
 # Pack and dependency-layout verification run without credentials on every pull
-# request and master push. Publication is a manual workflow_dispatch of
+# request and on manual dispatch. Publication is a manual workflow_dispatch of
 # release-publish.yml from a dsh-v* tag.
 name: Release (dsh)
 
 on:
   pull_request:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -34,11 +32,10 @@ jobs:
         || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
         && github.repository == 'deepseek-harness/deepseek-harness'
         && github.actor != 'dependabot[bot]'
-        && ((github.event_name == 'push' && github.ref == 'refs/heads/master')
-          || (github.event_name == 'pull_request'
-            && github.event.pull_request.head.repo.full_name == github.repository
-            && github.event.pull_request.head.repo.fork == false
-            && github.event.pull_request.user.login != 'dependabot[bot]'))
+        && github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && github.event.pull_request.head.repo.fork == false
+        && github.event.pull_request.user.login != 'dependabot[bot]'
         && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
         || 'ubuntu-24.04' }}
     steps:
@@ -103,11 +100,10 @@ jobs:
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
         && github.repository == 'deepseek-harness/deepseek-harness'
         && github.actor != 'dependabot[bot]'
-        && ((github.event_name == 'push' && github.ref == 'refs/heads/master')
-          || (github.event_name == 'pull_request'
-            && github.event.pull_request.head.repo.full_name == github.repository
-            && github.event.pull_request.head.repo.fork == false
-            && github.event.pull_request.user.login != 'dependabot[bot]'))
+        && github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && github.event.pull_request.head.repo.fork == false
+        && github.event.pull_request.user.login != 'dependabot[bot]'
         && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
         || 'ubuntu-24.04' }}
     steps:

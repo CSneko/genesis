@@ -1,4 +1,4 @@
-/** Scheduling policy for post-merge native runtime carriers and Wine. */
+/** Scheduling policy for manually dispatched native runtime carriers and Wine. */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { gatesForMode } from '../run-gates.ts'
 
 const root = resolve(import.meta.dirname, '../..')
-const masterPush = "github.event_name == 'push' && github.ref == 'refs/heads/master'"
+const platformDispatch = "github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-checks'"
 const runtimeBuilder = './.github/workflows/build-exe-for-python-sdk.yml'
 
 interface Job {
@@ -97,13 +97,12 @@ describe('master-only platform scheduling', () => {
     }
   })
 
-  it('runs all three deferred carriers on master pushes with fail-loud API credentials', () => {
+  it('runs all three deferred carriers on manual dispatch and requires API credentials', () => {
     const master = workflow('ci-master.yml')
-    expect(master.on.push).toEqual({ branches: ['master'] })
-    expect(Object.keys(master.on).sort()).toEqual(['push', 'workflow_dispatch'])
+    expect(Object.keys(master.on)).toEqual(['workflow_dispatch'])
     const runtime = master.jobs['python-runtime']!
     expect(runtime).toMatchObject({
-      if: masterPush,
+      if: platformDispatch,
       uses: runtimeBuilder,
       with: { ci: true, targets: 'node24-linux-arm64,node24-macos-arm64,node24-macos-x64' },
       secrets: { DEEPSEEK_API_KEY_EXTERNAL: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
@@ -123,11 +122,11 @@ describe('master-only platform scheduling', () => {
     expect(preflight.run).toContain('exit 1')
   })
 
-  it('runs Wine once on hosted master CI and seeds its own apt cache', () => {
+  it('runs Wine once on hosted manual CI and seeds its own apt cache', () => {
     const master = workflow('ci-master.yml')
     const wine = master.jobs.windows!
     expect(wine).toMatchObject({
-      if: "(github.event_name == 'push' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'wine')",
+      if: "github.event_name == 'workflow_dispatch' && (inputs.suite == 'platform-checks' || inputs.suite == 'wine')",
       'runs-on': 'ubuntu-latest',
     })
     expect(wine.needs).toBeUndefined()

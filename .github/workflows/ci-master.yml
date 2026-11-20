@@ -1,23 +1,21 @@
 name: CI master
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
       suite:
         description: Manual CI suite to run
         required: true
-        default: larger-runner-benchmark
+        default: platform-checks
         type: choice
         options:
+          - platform-checks
           - larger-runner-benchmark
           - consolidated-runner-benchmark
           - ssh-helper
           - wine
 
-# New master pushes and manual runs replace obsolete checks in this workflow/ref.
-# Standby drills share cancellation; use completed runs as readiness evidence.
+# A new dispatch supersedes the previous run on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -39,9 +37,9 @@ jobs:
     with:
       targets: node24-linux-x64,node24-linux-arm64,node24-macos-arm64,node24-macos-x64
 
-  # These native runtime carriers are post-merge checks; release keeps all targets.
+  # The manual platform suite covers the additional runtime carriers used for releases.
   python-runtime:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-checks'
     name: python runtime / macOS and Linux ARM64
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -50,9 +48,8 @@ jobs:
     secrets:
       DEEPSEEK_API_KEY_EXTERNAL: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
 
-  # Wine runs on master pushes or an explicit suite=wine dispatch, independently of native standbys.
   windows:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'wine')
+    if: github.event_name == 'workflow_dispatch' && (inputs.suite == 'platform-checks' || inputs.suite == 'wine')
     runs-on: ubuntu-latest
     name: windows node 24 / wine
     timeout-minutes: 15
@@ -129,25 +126,13 @@ jobs:
         if: always()
         run: wineserver -k 2>/dev/null || true
 
-  # Hot-standby drill for the in-house self-hosted pool: every master move
-  # re-runs the complete unsharded aggregate on the persistent 64-core VM,
-  # continuously proving that environment can take over a required lane if
-  # the hosted pools degrade (the switch is then setting the writer-manageable
-  # DSH_CI_FAILOVER_LINUX variable — see the failover runbook, no merge required).
-  # Push-triggered, so this lane always executes the base branch's own
-  # workflow definition. This workflow never listens to pull_request, so the
-  # drill does not appear in PR checks. No cache steps because the VM's
-  # persistent pnpm store and tool caches make them redundant (and saving here
-  # would poison the hosted cache namespace with self-hosted paths).
+  # The persistent Linux runner validates the self-hosted failover lane.
   serial-linux-selfhosted:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-checks'
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
     steps:
-      # DSH_ARCHIVE_BASE_REF below compares the frozen-archive gate against
-      # github.event.before, so full history is required: depth 2 would miss it
-      # on multi-commit or force pushes; full fetch is cheap here because
-      # checkout resolves against the VM's local mirror.
+      # The archive gate compares the selected commit with its first parent.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
@@ -182,7 +167,7 @@ jobs:
 
       - name: Run complete unsharded primary Node CI serially
         env:
-          DSH_ARCHIVE_BASE_REF: ${{ github.event.before }}
+          DSH_ARCHIVE_BASE_REF: 'HEAD^'
           DSH_COVERAGE_MAX_WORKERS: '1'
           DSH_E2E_MAX_WORKERS: '1'
           DSH_GATE_CONCURRENCY: '1'
@@ -222,19 +207,9 @@ jobs:
           DSH_SNAPSHOT_MAX_CONCURRENCY: '1'
         run: pnpm run check:ci
 
-  # Hot-standby drill for the in-house self-hosted Windows pool: every master
-  # move re-runs the complete unsharded Windows gate inventory on the persistent
-  # VM, continuously proving that environment can take over the required
-  # `windows` lane if the hosted pool degrades (the switch is setting the
-  # writer-manageable DSH_CI_FAILOVER_WINDOWS variable — see the failover
-  # runbook, no merge required). Push-triggered, so this lane always executes
-  # the base branch's own workflow definition. This workflow never listens to
-  # pull_request, so the drill does not appear in PR checks. No cache steps
-  # because the VM's persistent pnpm store and tool caches make them redundant
-  # (and saving here would poison the hosted cache namespace with self-hosted
-  # paths).
+  # The persistent Windows runner validates the self-hosted failover lane.
   serial-windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-checks'
     name: serial / windows (self-hosted standby)
     runs-on: [self-hosted, dsh-win-ci, windows]
     timeout-minutes: 120

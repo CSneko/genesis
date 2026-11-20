@@ -153,20 +153,19 @@ describe('CI workflow', () => {
     expect(scripts.scripts.typecheck).toBe('tsx scripts/build.ts --scope typecheck')
   })
 
-  it('selects artifact builds only for PR release and API rehearsals', () => {
+  it('selects artifact builds for PR release rehearsals', () => {
     const official = "${{ github.event_name == 'pull_request' && 'pnpm run build:artifacts --profile official' || 'pnpm run build:official' }}"
     const vendor = "${{ github.event_name == 'pull_request' && 'pnpm exec tsx scripts/compile-referenced-projects.ts host-libraries' || 'pnpm run build:lib:host' }}"
     for (const [file, jobName, expected] of [
       ['release.yml', 'pack', official],
       ['release-vendor.yml', 'pack', vendor],
-      ['e2e.yml', 'e2e', official],
     ] as const) {
       const job = workflowJob(loadWorkflow('.github/workflows/' + file), jobName)
       if (!Array.isArray(job.steps)) throw new TypeError(`${jobName} must define steps`)
       const step = job.steps.filter(isRecord).find(candidate => typeof candidate.run === 'string'
         && (candidate.run.includes('build:artifacts') || candidate.run.includes('host-libraries')))
       expect(step?.run).toBe(expected)
-      for (const event of ['pull_request', 'push', 'workflow_dispatch']) {
+      for (const event of ['pull_request', 'workflow_dispatch']) {
         const expression = expected.slice('${{ '.length, -' }}'.length)
         const selected: unknown = runInNewContext(expression, { github: { event_name: event } }, { timeout: 1000 })
         expect(selected).toBe(event === 'pull_request'
@@ -363,7 +362,7 @@ describe('CI workflow', () => {
     }
   })
 
-  it('keeps split native Windows PR jobs with failover in their own workflow, plus a master-only standby', () => {
+  it('keeps split native Windows PR jobs with failover in their own workflow, plus a manual standby', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const windowsWorkflow = loadWorkflow('.github/workflows/ci-windows.yml')
     const masterWorkflow = loadWorkflow('.github/workflows/ci-master.yml')
@@ -510,8 +509,7 @@ describe('CI workflow', () => {
     expect(report?.run).toContain('::warning::')
     expect(report?.run).toContain('Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append')
 
-    // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
-    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(serialWindows.if).toBe("github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-checks'")
     expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
     expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
     // Its store must share the ReFS workspace volume for clone; the install
@@ -771,20 +769,21 @@ describe('CI workflow', () => {
     expect(wineGates).toContain('  "$scratch/logs/client-references.log" \\')
   })
 
-  it('runs only Wine for its manual suite and retains master-push scheduling', () => {
+  it('runs only Wine for its manual suite and includes it in the platform suite', () => {
     const master = loadWorkflow('.github/workflows/ci-master.yml')
     if (!isRecord(master.on) || !isRecord(master.on.workflow_dispatch)
       || !isRecord(master.on.workflow_dispatch.inputs) || !isRecord(master.on.workflow_dispatch.inputs.suite)
       || !isRecord(master.jobs)) throw new TypeError('CI master must define manual suites and jobs')
     expect(master.on.workflow_dispatch.inputs.suite.options).toEqual([
-      'larger-runner-benchmark', 'consolidated-runner-benchmark', 'ssh-helper', 'wine',
+      'platform-checks', 'larger-runner-benchmark', 'consolidated-runner-benchmark', 'ssh-helper', 'wine',
     ])
     const wine = workflowJob(master, 'windows')
     if (typeof wine.if !== 'string') throw new TypeError('Wine must define a trigger condition')
     for (const [event, ref, suite, expected] of [
-      ['push', 'refs/heads/master', '', true],
+      ['push', 'refs/heads/master', 'platform-checks', false],
       ['push', 'refs/heads/topic', '', false],
       ['pull_request', 'refs/pull/42/merge', 'wine', false],
+      ['workflow_dispatch', 'refs/heads/master', 'platform-checks', true],
       ['workflow_dispatch', 'refs/heads/topic', 'wine', true],
       ['workflow_dispatch', 'refs/tags/dsh-v0.2.2-alpha.2', 'wine', true],
       ['workflow_dispatch', 'refs/heads/topic', 'ssh-helper', false],
@@ -802,7 +801,7 @@ describe('CI workflow', () => {
     expect(enabled).toEqual(['windows'])
   })
 
-  it('cancels superseded master runs without changing the post-merge job inventory', () => {
+  it('cancels superseded runs and exposes platform checks through manual dispatch', () => {
     const workflow = loadWorkflow('.github/workflows/ci-master.yml')
     const prWorkflow = loadWorkflow('.github/workflows/ci.yml')
     if (!isRecord(workflow.jobs) || !isRecord(workflow.concurrency)) {
@@ -818,14 +817,10 @@ describe('CI workflow', () => {
     })
     expect(prWorkflow.concurrency).toEqual(workflow.concurrency)
 
-    // The exact event sets are what keep master-only jobs out of the PR check
-    // panel: ci-master triggers only on push(master) + workflow_dispatch and
-    // never on pull_request; ci.yml is exactly pull_request-only. Assert the
-    // full sets so losing the wrong event, or gaining an extra one, fails.
     if (!isRecord(workflow.on) || !isRecord(prWorkflow.on)) {
       throw new TypeError('both CI workflows must define on')
     }
-    expect(Object.keys(workflow.on).sort()).toEqual(['push', 'workflow_dispatch'])
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
     expect(Object.keys(prWorkflow.on)).toEqual(['pull_request'])
     const windowsWorkflow = loadWorkflow('.github/workflows/ci-windows.yml')
     if (!isRecord(windowsWorkflow.on)) throw new TypeError('CI Windows workflow must define on')
@@ -845,27 +840,25 @@ describe('CI workflow', () => {
       const job = workflow.jobs[name]
       if (!isRecord(job)) throw new TypeError(`${name} must be defined`)
       expect(job.concurrency).toBeUndefined()
-      // Standby drills remain post-merge work, but share run cancellation.
-      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-checks'")
     }
 
-    // Pin the post-merge runtime, Wine, and standby inventory.
-    const NOT_PUSH_REACHABLE = new Set([
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'larger-runner-benchmark'",
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'consolidated-runner-benchmark'",
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'ssh-helper'",
-    ])
-    const pushReachable = Object.entries(workflow.jobs)
-      .filter(([, job]) => {
-        if (!isRecord(job)) return false
-        if (job.if === undefined) return true // unconditional: runs on every event
-        if (job.if === false) return false // `if: false` parses as a boolean
-        if (typeof job.if !== 'string') return true // unrecognized shape: surface it
-        return !NOT_PUSH_REACHABLE.has(job.if.trim())
-      })
-      .map(([name]) => name)
-      .sort()
-    expect(pushReachable).toEqual(['python-runtime', 'serial-linux-selfhosted', 'serial-windows', 'windows'])
+    const platformJobs = Object.entries(workflow.jobs).filter(([, job]) => {
+      if (!isRecord(job)) throw new TypeError('CI master jobs must be objects')
+      if (typeof job.if === 'boolean') return job.if
+      if (typeof job.if !== 'string') throw new TypeError('CI master jobs must define trigger conditions')
+      return runInNewContext(job.if, {
+        github: { event_name: 'workflow_dispatch' }, inputs: { suite: 'platform-checks' },
+      }, { timeout: 1000 }) === true
+    }).map(([name]) => name).sort()
+    expect(platformJobs).toEqual(['python-runtime', 'serial-linux-selfhosted', 'serial-windows', 'windows'])
+
+    for (const file of ['sandbox.yml', 'e2e.yml', 'node-addon-system.yml', 'release.yml', 'release-vendor.yml']) {
+      const triggers = loadWorkflow(`.github/workflows/${file}`).on
+      if (!isRecord(triggers)) throw new TypeError(`${file} must define triggers`)
+      const expected = ['sandbox.yml', 'e2e.yml'].includes(file) ? ['workflow_dispatch'] : ['pull_request', 'workflow_dispatch']
+      expect(Object.keys(triggers).sort(), file).toEqual(expected)
+    }
 
     // Manual benchmarks retain their bounded fan-out.
     for (const name of ['larger-runner-benchmark', 'consolidated-runner-benchmark']) {
@@ -1624,7 +1617,6 @@ describe('npm release workflows', () => {
   })
 
   it('keeps publication dispatch-only and pack in the PR workflow', () => {
-    // pack stays in the PR/master release workflows so a PR proves the set packs.
     for (const file of ['release.yml', 'release-vendor.yml']) {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.jobs)) throw new TypeError(`${file} must define jobs`)
@@ -1653,7 +1645,7 @@ describe('npm release workflows', () => {
     const commands = dependencies.steps.flatMap(step =>
       isRecord(step) && typeof step.run === 'string' ? [step.run] : [])
 
-    expect(Object.keys(workflow.on).sort()).toEqual(['pull_request', 'push', 'workflow_dispatch'])
+    expect(Object.keys(workflow.on).sort()).toEqual(['pull_request', 'workflow_dispatch'])
     // Both verifications run from one step so the lane pays their longer half.
     const combined = commands.find(command => command.includes('verify-package-dependencies'))
     expect(combined).toContain('verify-npm-install-layout')
