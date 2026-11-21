@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Save plugin configuration in the active profile’s patch and apply it immediately. Writes validate the complete candidate before touching disk and serialize with profile changes and HMR. Invalid values and higher-layer overrides leave the file unchanged.
+Save plugin configuration in its owning patch and apply it immediately. Writes validate the complete candidate before touching disk and serialize with profile changes and HMR. Invalid values and higher-layer overrides leave the file unchanged.
 
 ## Table of Contents
 
@@ -64,7 +64,7 @@ Consumers that change request prefixes determine cache effects.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Edits target the active profile patch. Home patches and command-line overlays are read for precedence but are not write targets.
+- Edits default to the active profile patch. When the launcher declares shared configuration, selected entries write to that document under a second file lock. Home patches and command-line overlays can override both edited layers.
 - A complete config override preserves ordinary fields but pins their current raw values at the profile layer.
 - Only uniquely addressed entries owned by the profile’s root Include are editable.
 

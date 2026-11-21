@@ -1,4 +1,4 @@
-/** Profile-owned configuration edits, serialized with Loader hot reload. */
+/** Profile and shared configuration edits, serialized with Loader hot reload. */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
@@ -7,7 +7,9 @@ import { entryListSchema, type PatchOptions } from '@deepseek-ai/cordis-plugin-i
 import yaml from 'js-yaml'
 import type { Entry, EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-hmr'
-import { composeEntries, loadProfileDirectory, readProfilePatches, reconcileProfilePatches } from '@deepseek-ai/dsh-app-boot'
+import {
+  composeEntries, loadProfileDirectory, profileLocalConfigPatches, readProfilePatches, readSharedConfigPatches, reconcileProfilePatches,
+} from '@deepseek-ai/dsh-app-boot'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { isMap, isSeq, parseDocument, Scalar, visit } from 'yaml'
 
@@ -47,8 +49,7 @@ export class ConfigEditor extends Service {
    * @returns Detached layer values alongside their Loader entries.
    */
   configuration(): Array<{ entry: Entry; inherited: Record<string, unknown>; override: Record<string, unknown> }> {
-    const profile = this.ownerContext.profileContext
-    const loaded = loadProfileDirectory('dsh', profile.dir, profile.installAnchor)
+    const loaded = this.editableProfile()
     const entries = this.entries()
     // An own config key can replace inherited config even when its value is undefined.
     const overridden = new Set(loaded.patches.filter(patch => patch.insert === undefined && Object.hasOwn(patch, 'config')).map(patch => patch.id))
@@ -67,6 +68,15 @@ export class ConfigEditor extends Service {
         row => row.id === entry.options.id && row.config !== undefined,
       )?.config ?? {}) as Record<string, unknown>),
     }))
+  }
+
+  private editableProfile(): ReturnType<typeof loadProfileDirectory> {
+    const profile = this.ownerContext.profileContext
+    const loaded = loadProfileDirectory('dsh', profile.dir, profile.installAnchor)
+    return { ...loaded, patches: [
+      ...profileLocalConfigPatches(profile.sharedConfig, loaded.patches),
+      ...readSharedConfigPatches('dsh', profile.sharedConfig),
+    ] }
   }
 
   private inherited(entry: Entry, loaded: ReturnType<typeof loadProfileDirectory>): Record<string, unknown> {
@@ -88,66 +98,73 @@ export class ConfigEditor extends Service {
     entry: Entry,
     change: (current: Record<string, unknown>, inherited: Record<string, unknown>) => Record<string, unknown>,
   ): Promise<void> {
-    const run = async (): Promise<void> => {
-      const path = this.documentPath
-      await withFileLock(join(this.ownerContext.profileContext.dir, 'package.json'), async () => {
-        if (!this.entries().includes(entry) || entry.fiber === undefined) throw new Error('Configuration entry is no longer available')
-        const beforePatches = readProfilePatches('dsh', this.ownerContext.profileContext)
-        await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
-        if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
-        const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
-        const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
-        const next = change(current, inherited)
-        const fiber = entry.fiber
-        if (fiber.state !== FiberState.ACTIVE) throw new Error('Configuration plugin is no longer active')
-        fiber.resolveConfig(next)
-        let before: string
-        try { before = await readFile(path, 'utf8') }
-        catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-          before = '[]\n'
-        }
-        const document = parseDocument(before, {
-          customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }],
-        })
-        if (document.errors[0] !== undefined) throw document.errors[0]
-        if (!isSeq(document.contents)) throw new Error('Profile patch must be a YAML sequence')
-        document.contents.flow = false
-        const index = document.contents.items.findLastIndex((item, index) => isMap(item)
-          && document.getIn([index, 'id']) === entry.options.id && !item.has('insert')
-          && (!item.has('name') || document.getIn([index, 'name']) === entry.options.name))
-        if (isDeepStrictEqual(next, inherited)) {
-          for (let index = document.contents.items.length - 1; index >= 0; index--) {
-            const row = document.contents.items[index]
-            if (!isMap(row) || document.getIn([index, 'id']) !== entry.options.id || row.has('insert')) continue
-            row.delete('config')
-            if (row.items.length === Number(row.has('id')) + Number(row.has('name'))) document.delete(index)
-          }
-        } else if (index < 0) document.add(document.createNode({ id: entry.options.id, name: entry.options.name, config: next }))
-        else document.setIn([index, 'config'], document.createNode(next))
-        visit(document, { Map(_key, node) {
-          if (node.items.length !== 1 || typeof node.get('__jsExpr') !== 'string') return
-          const expression = new Scalar(node.get('__jsExpr'))
-          expression.tag = 'tag:yaml.org,2002:js'
-          return expression
-        } })
-        const profile = this.ownerContext.profileContext
-        const loaded = loadProfileDirectory('dsh', profile.dir, profile.installAnchor)
-        const patches = readProfilePatches('dsh', profile, { ...loaded, patches: yaml.load(String(document), { schema: entryListSchema }) as PatchOptions[] })
-        const effective = flatten(composeEntries([patches])).find(row => row.id === entry.options.id)
-        if (!isDeepStrictEqual(effective?.config ?? {}, next)) {
-          throw new Error(`Configuration for "${entry.options.id}" is overridden by a home patch or command-line overlay`)
-        }
-        await writeFileAtomic(path, String(document), { mode: 0o600 })
-        try {
-          await reconcileProfilePatches(this.ownerContext.root, patches, 'dsh', [entry.options.id])
-        } catch (error) {
-          await writeFileAtomic(path, before, { mode: 0o600 })
-          await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
-          throw error
-        }
+    const profile = this.ownerContext.profileContext
+    const shared = profile.sharedConfig
+    const sharedPath = shared !== undefined && shared.entryIds.includes(entry.options.id) ? shared.path : undefined
+    const path = sharedPath ?? this.documentPath
+    const commit = async (): Promise<void> => {
+      if (!this.entries().includes(entry) || entry.fiber === undefined) throw new Error('Configuration entry is no longer available')
+      const beforePatches = readProfilePatches('dsh', this.ownerContext.profileContext)
+      await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
+      if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
+      const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
+      const inherited = this.inherited(entry, this.editableProfile())
+      const next = change(current, inherited)
+      const fiber = entry.fiber
+      if (fiber.state !== FiberState.ACTIVE) throw new Error('Configuration plugin is no longer active')
+      fiber.resolveConfig(next)
+      let before: string
+      try { before = await readFile(path, 'utf8') }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        before = '[]\n'
+      }
+      const document = parseDocument(before, {
+        customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }],
       })
+      if (document.errors[0] !== undefined) throw document.errors[0]
+      if (!isSeq(document.contents)) throw new Error('Profile patch must be a YAML sequence')
+      document.contents.flow = false
+      const index = document.contents.items.findLastIndex((item, index) => isMap(item)
+        && document.getIn([index, 'id']) === entry.options.id && !item.has('insert')
+        && (!item.has('name') || document.getIn([index, 'name']) === entry.options.name))
+      if (isDeepStrictEqual(next, inherited)) {
+        for (let index = document.contents.items.length - 1; index >= 0; index--) {
+          const row = document.contents.items[index]
+          if (!isMap(row) || document.getIn([index, 'id']) !== entry.options.id || row.has('insert')) continue
+          row.delete('config')
+          if (row.items.length === Number(row.has('id')) + Number(row.has('name'))) document.delete(index)
+        }
+      } else if (index < 0) document.add(document.createNode({
+        id: entry.options.id, ...sharedPath === undefined ? { name: entry.options.name } : {}, config: next,
+      }))
+      else document.setIn([index, 'config'], document.createNode(next))
+      visit(document, { Map(_key, node) {
+        if (node.items.length !== 1 || typeof node.get('__jsExpr') !== 'string') return
+        const expression = new Scalar(node.get('__jsExpr'))
+        expression.tag = 'tag:yaml.org,2002:js'
+        return expression
+      } })
+      const loaded = loadProfileDirectory('dsh', profile.dir, profile.installAnchor)
+      const edits = yaml.load(String(document), { schema: entryListSchema }) as PatchOptions[]
+      const patches = sharedPath === undefined
+        ? readProfilePatches('dsh', profile, { ...loaded, patches: edits })
+        : readProfilePatches('dsh', profile, loaded, edits)
+      const effective = flatten(composeEntries([patches])).find(row => row.id === entry.options.id)
+      if (!isDeepStrictEqual(effective?.config ?? {}, next)) {
+        throw new Error(`Configuration for "${entry.options.id}" is overridden by a home patch or command-line overlay`)
+      }
+      await writeFileAtomic(path, String(document), { mode: 0o600 })
+      try {
+        await reconcileProfilePatches(this.ownerContext.root, patches, 'dsh', [entry.options.id])
+      } catch (error) {
+        await writeFileAtomic(path, before, { mode: 0o600 })
+        await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
+        throw error
+      }
     }
+    const run = (): Promise<void> => withFileLock(join(profile.dir, 'package.json'),
+      () => sharedPath === undefined ? commit() : withFileLock(sharedPath, commit))
     const hmr = this.ownerContext.get('hmr')
     await (hmr === undefined ? run() : hmr.runExclusive(run))
   }

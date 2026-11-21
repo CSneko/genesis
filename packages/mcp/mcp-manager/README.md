@@ -69,6 +69,7 @@ A profile’s `cordis.patch.yml` replaces the entry’s complete `servers` map. 
 | `transport` | required | `stdio` or `streamable-http` |
 | `command` / `args` / `env` / `cwd` | — | stdio: executable, arguments, extra child env, working directory |
 | `url` / `headers` | — | streamable-http: endpoint URL and extra request headers |
+| `includeServerInstructions` | `true` | Include the server instructions in the system prompt |
 | `enabled` | `true` | Durable intent: `false` unmounts the instance and keeps the entry |
 | `startupTimeoutMs` | `30,000` | Budget for template resolution, negotiation, connection, and initial tool discovery |
 | `toolCallTimeoutMs` / `closeTimeoutMs` / `reconnect` | mcp-client defaults | Per-server overrides |

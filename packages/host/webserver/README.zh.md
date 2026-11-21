@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-把 webserver 组合为面向浏览器宿主的 HTTP 传输，然后让功能插件认领各自的路由。激活即开始监听；注册顺序不影响请求处理，因为具名路由组合起来互不相交。添加 `tls` 即可让同一批路由以 HTTPS 而非明文 HTTP 提供。
+把 webserver 组合为面向浏览器宿主的 HTTP 传输，然后让功能插件认领各自的路由。激活即开始监听；注册顺序不影响请求处理，因为具名路由组合起来互不相交。添加 `tls` 即可让同一批路由以 HTTPS 而非明文 HTTP 提供。 设置 `requireAdmission: true` 后，应用通过 `registerAdmission` 在路由分派前检查 HTTP 请求和 WebSocket 升级。未注册检查时，监听器拒绝网络请求。
 
 ### 最小配置
 

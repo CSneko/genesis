@@ -13,7 +13,7 @@ Open **Settings → MCP services** to browse the official MCP Registry, open a s
 
 ## Table of Contents
 
-[Use](#use) · [Configuration and recovery](#configuration-and-recovery) · [Model experience](#model-experience) · [Limitations](#limitations)
+[Use](#use) · [Connect Numen](#connect-numen) · [Configuration and recovery](#configuration-and-recovery) · [Model experience](#model-experience) · [Limitations](#limitations)
 
 <a id="use"></a>
 ## Use
@@ -25,6 +25,17 @@ Discover lists publisher-provided descriptions and supported connection choices.
 Added services shows actual connection state and currently registered tool names. Connecting is distinct from connected. Operator-configured entries can be disabled, reconnected or removed; plugin-owned entries remain managed by their plugins. Removing an inherited entry restores its inherited configuration; disable it to keep it off. Custom remote services accept a URL, optional bearer token and advanced headers. Local services accept a program, a JSON argument array and a JSON environment mapping. These custom entries are additions; replace an existing service by removing and re-adding it.
 
 Each enabled service automatically contributes a read-only toolkit under Settings → Toolkits. Membership follows its MCP namespace as tools change. Disabling or removing a service withdraws its group after tool cleanup; re-enabling uses the same group id. Manual groups are preserved. Installation does not teach or activate tools and does not grant QQ access.
+
+<a id="connect-numen"></a>
+## Connect Numen
+
+1. In the [Numen mod](https://numen.dwinovo.cn/), enable **External brain**, summon a companion, and read the MCP address and brain token in the mod's connection settings.
+2. Start Genesis with `pnpm dsh web` using your existing `DSH_HOME`. Open **Settings → MCP services → Add custom** and select **Minecraft · Numen**. Enter the mod's MCP address and brain token, then add the service. The suggested loopback address is reachable only when the mod and Genesis Host share that network. For a remote Host, enter an endpoint it can reach over a protected connection.
+3. When the service shows **Connected**, ask Genesis in a Life conversation to learn the advertised Numen tools and enable the Numen toolkit. Start by asking her to list companions, check for messages, and say something in Minecraft. For the service named `numen`, the tools are `mcp__numen__list_companions`, `mcp__numen__get_events`, and `mcp__numen__say`.
+
+The Numen preset stores the token in Genesis credentials and omits the MCP server's instructions from the system prompt. The mod supplies game data and actions. Genesis keeps its existing identity, memories, and other life data. Tool results and game messages received through `get_events` are recorded as tool results in the active Session. A game message is external data. Use Numen's `guide` output as an API reference if needed.
+
+Genesis checks game messages when a Life turn invokes the tool. An idle Genesis does not wake on game chat. After a disconnect or a timed-out action, check the companion's current state before issuing another action. Stop the current game action in Numen and disable the MCP entry in Genesis to detach the tools. If discovery fails, check the endpoint and brain token in the mod, then reconnect the entry.
 
 <a id="configuration-and-recovery"></a>
 ## Configuration and recovery

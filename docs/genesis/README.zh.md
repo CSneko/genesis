@@ -34,7 +34,9 @@ pnpm dsh
 
 本机浏览器测试可运行 `pnpm dsh web --test-no-login`。打开启动时输出的已认证地址，启动令牌会换取浏览器 Cookie，无需填写密钥登录表单。此开关仅属于源码工作区，将测试补丁放在最后，即使指定 `--host` 也固定监听 `127.0.0.1`，并保留 `--port`。API 认证仍然开启，直接访问根地址仍须有效 Cookie。不加此参数即可恢复密钥登录。自动化测试使用独立的临时 `DSH_HOME`。
 
-需要普通 Harness Web 时使用 `pnpm dsh --no-genesis web`。此开关只属于工作区启动层；已发布的 `dsh` CLI、其他配置和桌面应用保留原有默认行为。下面是显式启用部分 Genesis 功能的示例。
+需要普通 Harness Web 时使用 `pnpm dsh --no-genesis web`。此开关属于工作区 Web 启动器。[桌面端](../../README.zh.md#desktop)使用独立的 `desktop` profile 及默认配置。下面是显式启用部分 Genesis 功能的示例。
+
+Genesis Web 和 Desktop 使用同一个 `DSH_HOME` 时共享供应商和模型列表。**设置 → 模型**中的改动会保存到 `$DSH_HOME/genesis-models.patch.yml`，API 密钥仍从共享凭证库解析。已有 profile 详见[供应商设置迁移](../upgrade-guide/v0.2.2-rc.1/genesis-provider-settings/guide.zh.md)。
 
 ### B 站经历
 

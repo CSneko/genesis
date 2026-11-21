@@ -123,11 +123,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Routes messages through registered channels with explicit caller authority.',
   },
   {
-    key: 'genesisMinecraft', pkg: 'experimental-genesis-minecraft', title: 'Genesis Minecraft connection', mode: 'core',
-    consumers: ['experimental-genesis-minecraft'],
-    note: 'Owns the shared game connection and operation controls.',
-  },
-  {
     key: 'genesisPeople', pkg: 'experimental-genesis', title: 'Genesis participants', mode: 'core',
     consumers: ['experimental-genesis'],
     note: 'Exposes attributed participants, relationship evidence and deletion controls.',

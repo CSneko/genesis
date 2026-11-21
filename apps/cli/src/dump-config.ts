@@ -11,11 +11,15 @@ import { join, resolve } from 'node:path'
 import {
   loadOptionalPatches,
   loadOverlayPatches,
+  profileLocalConfigPatches,
+  readSharedConfigPatches,
   renderConfigDump,
   type ConfigDumpLayer,
   type Profile,
 } from '@deepseek-ai/dsh-app-boot'
 import { homePatchPath, prepareProfile, PROFILE_ROOT_FILENAME } from './profile-boot.ts'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { genesisModelSettings, legacyGenesisModelPatches } from './genesis-model-settings.ts'
 
 const NAME = 'dsh'
 
@@ -42,9 +46,9 @@ export function runDumpConfig(
 }
 
 /**
- * Read dump layers in bundle, profile, home, then argv order without composing them.
+ * Read dump layers in bundle, profile, shared, home, then argv order.
  * @param loaded - prepared profile and parsed bundle and profile patches.
- * @param defaultOnly - omit profile, home, and argv layers without reading their files.
+ * @param defaultOnly - omit user layers without reading their files.
  * @param patches - overlay paths relative to the invoking directory, in argv order.
  * @returns the labeled layers shared by YAML and schema dumps.
  */
@@ -58,18 +62,25 @@ export function collectConfigDumpLayers(
     patches: layer.patches,
   }))
   if (!defaultOnly) {
-    if (existsSync(loaded.patchPath)) {
-      layers.push({ label: loaded.patchPath, patches: loaded.patches })
-    }
+    const home = resolveDshHome()
     const homePatchFile = homePatchPath()
     const homePatches = loadOptionalPatches(NAME, homePatchFile)
+    const overlays = patches.map((file) => {
+      const absolute = resolve(file)
+      return { label: absolute, patches: loadOverlayPatches(NAME, absolute) }
+    })
+    const shared = genesisModelSettings(loaded, home, [homePatches ?? [], ...overlays.map(layer => layer.patches)])
+    if (existsSync(loaded.patchPath)) {
+      layers.push({ label: loaded.patchPath, patches: profileLocalConfigPatches(shared, loaded.patches) })
+    }
+    if (shared !== undefined) {
+      layers.push({ label: shared.path, patches: existsSync(shared.path)
+        ? readSharedConfigPatches(NAME, shared) : legacyGenesisModelPatches(home) })
+    }
     if (homePatches !== undefined) {
       layers.push({ label: homePatchFile, patches: homePatches })
     }
-    for (const file of patches) {
-      const absolute = resolve(file)
-      layers.push({ label: absolute, patches: loadOverlayPatches(NAME, absolute) })
-    }
+    layers.push(...overlays)
   }
   return layers
 }

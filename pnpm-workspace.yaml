@@ -122,3 +122,4 @@ patchedDependencies:
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
 
   dsh-qq-onebot-bridge@0.8.2: patches/dsh-qq-onebot-bridge-0.8.2.patch
+  dsh-pet-lite@0.2.6: patches/dsh-pet-lite-0.2.6.patch

@@ -15,6 +15,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Config } from './config.ts'
 import type { MemoryModelsSettings } from './status-types.ts'
 import type { LifeCore } from './core.ts'
+import { lifeReads } from './memory-access.ts'
 import { auxiliaryCall } from './auxiliary-call.ts'
 import { participants } from './participants.ts'
 import { isHumanSource } from './people-model.ts'
@@ -707,10 +708,10 @@ export class TemporaryMemoryEngine {
     if (!this.lifeMode(this.ctx.agents.get(sessionId))) return []
     const state = this.store.read()
     if (!state.settings.enabled) return []
-    const life = await this.core.snapshot()
+    const audience = await this.core[lifeReads].conversationAudience(sessionId)
     const eligible = state.memories
       .toReversed()
-      .filter(memory => memory.expiresAt > Date.now() && temporaryVisible(memory, life, this.config.memorySharing, sessionId))
+      .filter(memory => memory.expiresAt > Date.now() && temporaryVisible(memory, audience, this.config.memorySharing))
     return searchText(
       query,
       eligible.map(memory => ({ value: memory, fields: [{ text: memory.summary, weight: 1 }] })),
@@ -729,12 +730,12 @@ export class TemporaryMemoryEngine {
   async context(agent: Agent) {
     if (!this.lifeMode(agent)) return
     const state = this.store.read()
-    const life = await this.core.snapshot()
+    const audience = await this.core[lifeReads].conversationAudience(agent.id)
     const selected: TemporaryMemory[] = []
     let chars = 0
     for (const memory of state.settings.enabled ? state.memories.toReversed() : []) {
       if (memory.sessionId === agent.session.id) continue
-      if (memory.expiresAt <= Date.now() || !temporaryVisible(memory, life, this.config.memorySharing, agent.session.id)) continue
+      if (memory.expiresAt <= Date.now() || !temporaryVisible(memory, audience, this.config.memorySharing)) continue
       const size = JSON.stringify(memory).length
       if (selected.length >= this.config.temporaryMemory.injectLimit || chars + size > this.config.temporaryMemory.injectChars) break
       selected.push(memory)

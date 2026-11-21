@@ -1,8 +1,7 @@
 /** Independent post-turn memory review, bounded semantic recall and atomic updates. @module */
-import { accessibleMemories, memoryAccessibility, memoryContentKey } from './memory-dynamics.ts'
+import { memoryContentKey } from './memory-dynamics.ts'
 import { memoryReading } from './memory-delivery.ts'
-import { CLASSIFICATION_GUIDANCE, memoryOrganizationSchema, organizationMatches } from './memory-organization.ts'
-import { searchText, memoryDocument } from './search.ts'
+import { CLASSIFICATION_GUIDANCE, memoryOrganizationSchema } from './memory-organization.ts'
 import { isHumanSource, personSource, type PersonSource } from './people-model.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
@@ -31,14 +30,14 @@ import type { Config, MemoryConfig } from './config.ts'
 import type { LifeCore, MemoryChange, MemoryQuery, ExperienceChange } from './core.ts'
 import { reviewFailure } from './status-error.ts'
 import { GenesisError } from './error.ts'
-import { cosine, optionalEmbeddings, embeddingSettings } from './embedding.ts'
+import { optionalEmbeddings, embeddingSettings } from './embedding.ts'
 import { memoryInputSchema, type LifeMemory, type MemoryEmbedding, type MemoryId, type LifeEventId } from './model.ts'
 import { DECLARATIVE_SUMMARY_PROMPT, memorySummariesSchema, memorySummarySchema, MEMORY_SUMMARY_GUIDANCE, SUMMARY_PROMPT } from './memory-summary.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { memoryVisible, memoryViewFor, memoryFromSession } from './memory-access.ts'
+import { lifeReads, memoryView, memoryViewFor } from './memory-access.ts'
 import { participants, dialogueForModel, hasRoleReferences, RELABEL_PROMPT, relabelPlan, type MemoryRelabel } from './participants.ts'
 import { operatorIdentitySchema, type OperatorIdentity } from './model.ts'
-import { memoryTimeText, readMemory } from './memory-time.ts'
+import { memoryTimeText } from './memory-time.ts'
 import { isImplicit, isNonDeclarative, BEHAVIOR_LEARNING_GUIDANCE } from './personality.ts'
 
 const writerInput = memoryInputSchema
@@ -97,15 +96,7 @@ export const WRITER_PROMPT =
   '只返回有新证据依据的变更，保持不变的条目省略。仍待履行的明确承诺应保留承诺人、内容和条件，记录为最高重要程度。' +
   ` ${BEHAVIOR_LEARNING_GUIDANCE} ${CLASSIFICATION_GUIDANCE}`
 
-/**
- * Remove provider vector caches before exposing memory as prompt/tool data.
- * @param memory - Stored memory.
- * @returns Detached memory metadata and text without the vector.
- */
-export function memoryView(memory: LifeMemory): LifeMemory {
-  const { embedding: _embedding, contentChangedAt: _contentChangedAt, ...view } = memory
-  return view
-}
+export { memoryView } from './memory-access.ts'
 
 /** One shared life memory owner; the FIFO serializes reviews across otherwise isolated Sessions. */
 export class LifeMemoryEngine {
@@ -227,7 +218,7 @@ export class LifeMemoryEngine {
    */
   async associate(text: string, signal: AbortSignal, sessionId?: SessionId): Promise<string> {
     if (!text.trim() || this.config.associationLimit === 0) return ''
-    if (!(await this.core.snapshot()).memories.some(memory => !isNonDeclarative(memory))) return ''
+    if (!(await this.core[lifeReads].hasDeclarativeMemories())) return ''
     try {
       const memories = await this.trackSearch(
         this.search(
@@ -290,87 +281,20 @@ export class LifeMemoryEngine {
     if (!query.text.trim() || query.text.length > this.config.inputChars) {
       throw new GenesisError('capacity', 'Recall query is empty or exceeds memory.inputChars. Narrow the query.')
     }
-    const state = await this.core.snapshot()
-    const eligible = state.memories.filter(
-      memory =>
-        memoryVisible(state, memory, this.limits.memorySharing, query.sessionId) &&
-        (!automatic || query.sessionId === undefined || !memoryFromSession(state, memory, query.sessionId)) &&
-        organizationMatches(memory, query) &&
-        (query.category === undefined || memory.category === query.category) &&
-        (query.after === undefined || memory.createdAt >= query.after) &&
-        (query.before === undefined || memory.createdAt <= query.before),
-    )
-    if (!eligible.length) return []
-    if (eligible.some(memory => memory.id === query.text.trim())) return this.core.retrieve(query)
-    const lexical = searchText(query.text, eligible.map(memoryDocument))
-    const semantic: Array<{ memory: LifeMemory; score: number }> = []
-    const ids = new Set(state.memories.map(memory => memory.id))
-    for (const id of this.cache.keys()) if (!ids.has(id)) this.cache.delete(id)
-    try {
-      const provider = embeddings === undefined ? optionalEmbeddings(this.ctx, this.config, this.readEmbedding()) : embeddings
-      if (provider != null) {
-        const needle = await provider.embed(query.text, signal)
-        for (const memory of eligible) {
-          signal.throwIfAborted()
-          let embedding = memory.embedding
-          if (embedding?.space !== provider.space || embedding.vector.length !== needle.vector.length) {
-            const cached = this.cache.get(memory.id)
-            if (cached?.content === memory.content && cached.embedding.space === provider.space) embedding = cached.embedding
-            else if (automatic) continue
-            else embedding = await provider.embed(memory.content, signal)
-            this.cache.set(memory.id, { content: memory.content, embedding })
-          }
-          const score = cosine(needle, embedding)
-          if (score >= this.config.minSimilarity) semantic.push({ memory, score })
-        }
-      }
-    } catch (error) {
-      caller?.throwIfAborted()
-      this.lifetime.signal.throwIfAborted()
-      if (!lexical.length) throw error
-      semantic.length = 0
-      const failure = reviewFailure('retrieval', error)
-      this.ctx.logger.warn(`Genesis semantic recall failed; returning keyword matches only. ${failure.message}`)
-    }
-    semantic.sort((a, b) => b.score - a.score || b.memory.importance - a.memory.importance || a.memory.id.localeCompare(b.memory.id))
-    // Reciprocal rank fusion combines independent score scales without replacing either retriever.
-    const fused = new Map<MemoryId, { memory: LifeMemory; score: number }>()
-    for (const list of [lexical.map(match => match.value), semantic.map(match => match.memory)]) {
-      for (const [index, memory] of list.entries()) {
-        const previous = fused.get(memory.id)?.score ?? 0
-        fused.set(memory.id, { memory: memoryView(memory), score: previous + 1 / (60 + index + 1) })
-      }
-    }
-    const ranked = accessibleMemories([...fused.values()].map(({ memory, score }) => ({ value: memory, score })),
-      memoryAccessibility(eligible, state.events, this.limits.memoryDynamics, new Date()), query.text)
-    const result: LifeMemory[] = []
-    const chars = Math.max(0, query.chars)
-    const now = new Date()
-    const associated = ranked.flatMap(memory => [
-      memory,
-      ...(memory.experience === undefined ? [] : state.memories.filter(item => item.experienceIds?.includes(memory.id)).map(memoryView)),
-    ])
-    for (const memory of associated) {
-      if (
-        !memoryVisible(state, memory, this.limits.memorySharing, query.sessionId) ||
-        (automatic && query.sessionId !== undefined && memoryFromSession(state, memory, query.sessionId))
-      )
-        continue
-      if (result.some(item => item.id === memory.id)) continue
-      if (
-        (query.category !== undefined && memory.category !== query.category) ||
-        (query.after !== undefined && memory.createdAt < query.after) ||
-        (query.before !== undefined && memory.createdAt > query.before)
-      )
-        continue
-      if (result.length >= Math.max(0, Math.min(query.limit, this.limits.queryLimit))) break
-      const next = [...result, memory]
-      if (
-        JSON.stringify(query.contentOnly ? next.map(item => readMemory(item, now, this.limits.timeZone).content) : next).length <= chars
-      )
-        result.push(memory)
-    }
-    return result
+    return this.core[lifeReads].searchMemories(query, {
+      automatic,
+      signal,
+      minSimilarity: this.config.minSimilarity,
+      cache: this.cache,
+      embeddings: () => embeddings === undefined ? optionalEmbeddings(this.ctx, this.config, this.readEmbedding()) : embeddings,
+      onEmbeddingFailure: (error, hasLexicalMatches) => {
+        caller?.throwIfAborted()
+        this.lifetime.signal.throwIfAborted()
+        if (!hasLexicalMatches) throw error
+        const failure = reviewFailure('retrieval', error)
+        this.ctx.logger.warn(`Genesis semantic recall failed; returning keyword matches only. ${failure.message}`)
+      },
+    })
   }
 
   /**

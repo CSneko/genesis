@@ -1,0 +1,4 @@
+# Genesis profiles include the controls. Operators enable the effect separately.
+- insert:
+    - id: genesis-shock
+      name: '@deepseek-ai/dsh-genesis-shock'

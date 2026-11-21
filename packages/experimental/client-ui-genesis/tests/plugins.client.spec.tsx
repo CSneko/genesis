@@ -33,6 +33,8 @@ it('configures enabled capabilities, retains off switches on failures and report
     renderSlot,
     refresh: vi.fn(),
     setEnabled,
+    setShockEnabled: vi.fn(async () => true),
+    useShockConfig: selector => selector({ status: 'ready', value: { enabled: false }, base: {}, user: {}, revision: 1, writable: true }),
     setPunishmentEnabled: vi.fn(async () => true),
     usePunishmentConfig: selector => selector({ status: 'ready', value: { enabled: false }, base: {}, user: {}, revision: 1, writable: true }),
     useSettings: selector => selector('genesis-weather\0genesis-punishment'),
@@ -40,6 +42,9 @@ it('configures enabled capabilities, retains off switches on failures and report
   }
   render(<GenesisPlugins {...props} />)
   expect(screen.getByRole('switch', { name: 'weather' }).getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(screen.getByRole('switch', { name: 'shock' }))
+  await waitFor(() => expect(props.setShockEnabled).toHaveBeenCalledWith(true))
+  await waitFor(() => expect((screen.getByRole('switch', { name: 'shock' }) as HTMLButtonElement).disabled).toBe(false))
   const punishment = screen.getByRole('switch', { name: 'punishment' })
   expect(punishment.getAttribute('aria-checked')).toBe('false')
   const punishmentCard = punishment.closest('li')!

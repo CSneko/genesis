@@ -79,10 +79,31 @@ export function FirstConversation({ t, startConversation, done }: PropsLocale<'g
 
 /** Shared automatic-reminder preference; manual life initialization remains available. */
 export interface AwakeningActions extends StatusActions {
+  startModelSetup(this: void): Promise<boolean>
   dismissSetup(this: void): Promise<boolean>
   hooks: { onboardingPreference: ConfigForm<Record<string, unknown>> }
 }
 type AwakeningProps = PropsRuntime<'settings.onboarding'> & PropsLocale<'genesis'> & InjectFace<AwakeningActions>
+
+/**
+ * Open the temporary model setup conversation and keep the current screen available on failure.
+ * @param props - Setup action, localized labels, and optional completion callback.
+ * @returns A setup action with pending and retry feedback.
+ */
+export function ModelSetupEntry({ t, startModelSetup, done }: PropsLocale<'genesis'> & Pick<AwakeningActions, 'startModelSetup'>
+  & { done?: (() => void) | undefined }) {
+  const [pending, setPending] = useState(false)
+  const [failed, setFailed] = useState(false)
+  return <>
+    <Button variant="outline" disabled={pending} onClick={() => {
+      setPending(true)
+      setFailed(false)
+      void startModelSetup().then((ok) => { if (ok) done?.(); else setFailed(true) })
+        .catch(() => { setFailed(true) }).finally(() => { setPending(false) })
+    }}>{t(pending ? 'openingModelSetup' : 'openModelSetup')}</Button>
+    {failed ? <p role="alert">{t('modelSetupOpenFailed')}</p> : null}
+  </>
+}
 
 function ConfigurationReminder(props: AwakeningProps) {
   const [pending, setPending] = useState(false)
@@ -103,8 +124,12 @@ function ConfigurationReminder(props: AwakeningProps) {
     </div>
     <div className={css.editor}>
       <h3>{props.t('decisionTitle')}</h3>
-      <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('cloudDecision')}</Button>
-      <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('deployLocalDecision')}</Button>
+      <div className={css.actions}>
+        <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('cloudDecision')}</Button>
+        <Button variant="outline" onClick={() => { props.openSection('genesis-knowledge'); props.complete() }}>{props.t('deployLocalDecision')}</Button>
+        <ModelSetupEntry t={props.t} startModelSetup={props.startModelSetup} done={props.complete} />
+      </div>
+      <p>{props.t('modelSetupDescription')}</p>
     </div>
     <div className={css.editor}>
       <h3>{props.t('embeddingTitle')}</h3><p>{props.t('embeddingDescription')}</p>
@@ -137,6 +162,7 @@ export function Awakening(props: AwakeningProps) {
 
 type SetupButtonProps = PropsLocale<'genesis'> & StatusActions & {
   setup: LifeStatus['setup']
+  startModelSetup?: AwakeningActions['startModelSetup']
   done?: (() => void) | undefined
 }
 
@@ -152,7 +178,11 @@ export function LifeSetupButton(props: SetupButtonProps) {
   return <>
     <Button onClick={() => { setOpen(true) }}>{props.t(props.setup.phase === 'conversation' ? 'enterFirstConversation' : 'initializeLife')}</Button>
     <Modal open={open} onClose={() => { setOpen(false) }} title={props.t('lifeSetupTitle')} closeLabel={props.t('close')} className={css.dialog as string}>
-      {props.setup.phase === 'credentials' ? <p>{props.t('configureFirst')}</p>
+      {props.setup.phase === 'credentials' ? <div className={css.naming}>
+        <p>{props.t('configureFirst')}</p>
+        {props.startModelSetup === undefined ? null :
+          <ModelSetupEntry t={props.t} startModelSetup={props.startModelSetup} done={done} />}
+      </div>
         : props.setup.phase === 'naming' ? <NamingForm {...props} done={done} />
           : <FirstConversation t={props.t} startConversation={props.startConversation} done={done} />}
     </Modal>
@@ -164,8 +194,29 @@ export function LifeSetupButton(props: SetupButtonProps) {
  * @param props - Shared readiness resource and initialization actions.
  * @returns The pending life-setup button, absent after the first conversation completes.
  */
-export function LifeSetupHero(props: PropsRuntime<'conversation.hero.options'> & PropsLocale<'genesis'> & InjectFace<StatusActions>) {
+export function LifeSetupHero(props: PropsRuntime<'conversation.hero.options'> & PropsLocale<'genesis'>
+  & InjectFace<StatusActions & Pick<AwakeningActions, 'startModelSetup'>>) {
   const resource = props.useResource<'genesis'>('dsh-resource://genesis/status')
   return <LifeSetupButton t={props.t} setup={resource.value?.setup} initialize={props.initialize}
-    startConversation={props.startConversation} refresh={props.refresh} />
+    startConversation={props.startConversation} refresh={props.refresh} startModelSetup={props.startModelSetup} />
+}
+
+/**
+ * Offer naming in a setup conversation only after the Host verifies its decision route.
+ * @param props - Current Session and shared life initialization actions.
+ * @returns The handoff action for the verified setup Session.
+ */
+export function ModelSetupHandoff(props: PropsRuntime<'conversation.session.header.actions'> & PropsLocale<'genesis'> & InjectFace<StatusActions>) {
+  const isSetup = props.useSessions(state => state.byId[props.sessionId]?.projectionValues?.agentPreset === 'genesis-model-setup')
+  return isSetup ? <VerifiedModelSetupHandoff {...props} /> : null
+}
+
+function VerifiedModelSetupHandoff(props: PropsRuntime<'conversation.session.header.actions'> & PropsLocale<'genesis'> & InjectFace<StatusActions>) {
+  const { value } = props.useResource<'genesis'>('dsh-resource://genesis/status')
+  const setup = value?.setup
+  return setup?.verifiedSetupSessionId === props.sessionId
+    ? <LifeSetupButton
+      t={props.t} setup={setup} initialize={props.initialize} startConversation={props.startConversation} refresh={props.refresh}
+    />
+    : null
 }

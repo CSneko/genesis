@@ -43,6 +43,30 @@ afterEach(() => {
 })
 
 describe('desktop external plugin profile', () => {
+  it('selects the Genesis Desktop bundle and keeps recovery selections across restart', async () => {
+    const { manager } = setup()
+    const manifest = join(manager.paths.profile, 'package.json')
+    await manager.applyRelease()
+    const fresh = JSON.parse(readFileSync(manifest, 'utf8')) as {
+      genesisShockDefault?: boolean
+      dsh: { profile: { bundles: string[] } }
+    }
+    const shock = '@deepseek-ai/dsh-genesis-shock'
+    expect(fresh.dsh.profile.bundles).toEqual(expect.arrayContaining([
+      '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-desktop-host', '@deepseek-ai/dsh-genesis-weather', 'dsh-any-background', shock,
+    ]))
+    delete fresh.genesisShockDefault
+    fresh.dsh.profile.bundles = fresh.dsh.profile.bundles.filter(bundle => bundle !== shock)
+    writeFileSync(manifest, JSON.stringify(fresh))
+    await manager.applyRelease()
+    const upgraded = JSON.parse(readFileSync(manifest, 'utf8')) as typeof fresh
+    expect(upgraded.dsh.profile.bundles).toEqual([...fresh.dsh.profile.bundles, shock])
+    await manager.disableAllPlugins()
+    await manager.applyRelease()
+    const recovered = JSON.parse(readFileSync(manifest, 'utf8')) as typeof fresh
+    expect(recovered.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
+  })
+
   it('preserves installed packages, profile state, and the lockfile when preparing a launch', async () => {
     const { manager } = setup()
     await manager.applyRelease()

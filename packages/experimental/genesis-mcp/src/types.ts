@@ -57,6 +57,8 @@ export interface McpInstall {
 }
 /** Custom connection, separate from catalog-driven installation. */
 export interface McpCustom {
+  /** Whether to include the server instructions in the system prompt. */
+  includeServerInstructions?: boolean
   name: string
   transport: 'streamable-http' | 'stdio'
   url: string

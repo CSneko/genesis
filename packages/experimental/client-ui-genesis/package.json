@@ -76,7 +76,6 @@
     "@deepseek-ai/dsh-client-ui-chat": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-util-crypto": "workspace:*",
-    "@deepseek-ai/dsh-experimental-genesis-minecraft": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:*",
     "@deepseek-ai/dsh-experimental-genesis-qq": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-documentpreview": "workspace:*",
@@ -86,7 +85,9 @@
     "@deepseek-ai/dsh-experimental-genesis-mail": "workspace:*",
     "@deepseek-ai/dsh-experimental-genesis-wallet": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
-    "@deepseek-ai/dsh-experimental-genesis-mcp": "workspace:*"
+    "@deepseek-ai/dsh-experimental-genesis-mcp": "workspace:*",
+    "@deepseek-ai/dsh-genesis-shock": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-conversation": "workspace:*"
   },
   "files": [
     "lib/index.js",

@@ -8,7 +8,9 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { MemoryId } from '../src/model.ts'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { memoryReading, memoryReadingSections, readingPresent, retainedMemoryReadings } from '../src/memory-delivery.ts'
+import {
+  memoryReading, memoryReadingSections, readingPresent, renderLifeContext, retainedMemoryReadings, trimMemoryContext,
+} from '../src/memory-delivery.ts'
 import { memoryOrganization } from '../src/memory-organization.ts'
 import { lifeContextUpdate } from '../src/context-update.ts'
 import { memoryBrowserPage } from '../src/memory-browser.ts'
@@ -94,7 +96,7 @@ it('suppresses retained summaries, permits full reads and restores compacted con
   const source = (await core.snapshot()).events[0]!
   const memory = await core.remember({
     category: 'semantic', kind: 'declarative', content: '数据库事务中的操作要么全部提交，要么全部回滚。',
-    summary: '事务的原子性', importance: 0.5, confidence: 0.4, sourceEventIds: [source.id],
+    summary: '事务的原子性', importance: 0.5, confidence: 0.4, attribution: 'model-inference', sourceEventIds: [source.id],
   })
   const session = Session.create(SessionId('memory-reading-retention'))
   const now = new Date('2026-11-10T00:00:00.000Z')
@@ -102,19 +104,26 @@ it('suppresses retained summaries, permits full reads and restores compacted con
   const full = memoryReading(memory, 'full', now, 'UTC')
   const sections = memoryReadingSections([summary], session, 20000)
   const update = lifeContextUpdate(session, sections)!
-  const first = session.append('user/message', update, { surfaceOp: 'append' })
+  const legacy = renderLifeContext(sections, true)
+  const first = session.append('user/message', { ...update, content: [{ type: 'text', text: legacy }] }, { surfaceOp: 'append' })
+  expect(retainedMemoryReadings(session)).toEqual([summary])
+  const singleBudget = renderLifeContext(sections).length
+  trimMemoryContext(session, singleBudget, undefined, new Map([[memory.id, memory]]), now, 'UTC')
+  expect(session.deriveMessages()[0]?.content).toEqual(update.content)
+  expect(session.ownEvents()[0]).toEqual(first)
+  expect(retainedMemoryReadings(session)).toEqual([summary])
   expect(memoryReadingSections([summary], session, 20000)).toEqual([])
   const lower = memoryReading({ ...memory, id: sourceMemoryId() }, 'summary', now, 'UTC')
-  const singleBudget = JSON.stringify(sections).length
   expect(memoryReadingSections([summary, lower], session, singleBudget)).toEqual([])
   expect(readingPresent(full, retainedMemoryReadings(session))).toBe(false)
   // A summary edit invalidates the fingerprint even if a producer retained the same update timestamp.
   const revised = memoryReading({ ...memory, summary: '新的简述' }, 'summary', now, 'UTC')
   expect(readingPresent(revised, retainedMemoryReadings(session))).toBe(false)
   const replacement = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'An unrelated compressed summary.' }] })
+  const latest = session.deriveMessageEntries()[0]!.event.seq
   session.append('user/message', replacement, {
-    surfaceOp: { op: 'replace', startSeq: first.seq, endSeq: first.seq },
-    sourceEventSeqs: [first.seq],
+    surfaceOp: { op: 'replace', startSeq: latest, endSeq: latest },
+    sourceEventSeqs: [latest],
   })
   expect(memoryReadingSections([summary], session, 20000)).toHaveLength(1)
   expect(memoryReadingSections([summary], session, 1)).toEqual([])

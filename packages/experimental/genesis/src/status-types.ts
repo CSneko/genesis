@@ -244,7 +244,12 @@ export interface LifeStatus {
   /** Effective configuration and credential presence, without the secret. */
   embedding?: EmbeddingSettings & { revision: number; keyConfigured: boolean; keyWritable: boolean }
   /** Absent in foundation-only mode; credentials must be configured before the naming step. */
-  setup?: { phase: 'credentials' | 'naming' | 'conversation' | 'ready'; firstSessionId?: SessionId }
+  setup?: {
+    phase: 'credentials' | 'naming' | 'conversation' | 'ready'
+    firstSessionId?: SessionId
+    /** Live setup Session whose decision route passed verification at the current settings revision. */
+    verifiedSetupSessionId?: SessionId
+  }
   identity: LifeIdentity
   sampledAt: string
   runtime: { platform: string; node: string; liveSessions: number }

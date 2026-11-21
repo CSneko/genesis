@@ -40,8 +40,6 @@
 
 `genesis-state` 在既有用户消息信封上标记有界的命名生命模块快照。列出的模块仅替换各自旧值，空文本清空该模块，未列出的模块继续有效。适配层比较保留的消息投影，不维护未记录的发送状态。[包上下文行为](../../packages/experimental/genesis/README.zh.md#model-experience)定义模块选择与恢复。
 
-[Minecraft](../../packages/experimental/genesis-minecraft/README.zh.md)负责可选的 Java 版游戏连接、有界技能、独立 Jev 监测与操作者设置。游戏观察作为带来源消息进入生命 Session；连接状态不会恢复为活动技能。
-
 [视频制作](../../packages/experimental/genesis-video/README.zh.md)拥有带生命归属的 Remotion 工程、不可变修订、导入素材与沙箱渲染任务。工具学习、执行权限和渲染成功分别记录；缺少终态回执的任务在重启后显示中断，不自动重跑。
 
 `PersonId` 标识鉴权的 QQ 人物，不依赖名称或 Session。`ConversationId` 和 `LifeConversation` 将群聊及私聊路由绑定到持久化 Session；`PersonSource` 是记录在日志中的 `genesis-person` 归属。可选的版本 1 `LifeState.people` 只保留有意义的 `LifePerson` 关系档案、显式操作者绑定和对话路由。`QqController` 管理独立持久化的 `QqConnection`、凭据和传输切换；`QqRuntime` 负责传输就绪与输入准入，控制器提供持久发送回执；Genesis 负责关系学习和记忆场景检查。[QQ 对话](../genesis/qq.zh.md)定义部署、保留、失败和权限语义。
@@ -1167,61 +1165,6 @@ Types: [Agent](core.zh.md)
 
 Source: [`packages/experimental/genesis/src/message-routing.ts`](../../packages/experimental/genesis/src/message-routing.ts)
 
-<a id="ctxgenesisminecraft--minecraftgateway"></a>
-
-### `ctx.genesisMinecraft` — `MinecraftGateway`
-
-Operator access does not teach or enable any model tool.
-
-```ts cordis-catalog
-/**
- * Read settings and sampled status without a connection side effect.
- * @param signal - Caller cancellation.
- * @returns Current nonsecret status.
- */
-@Remote('inspect') inspect(signal: AbortSignal): Promise<MinecraftStatus>
-
-/**
- * Persist settings, stopping the existing game before changes.
- * @param settings - Complete operator draft.
- * @param revision - Displayed revision.
- * @param signal - Caller cancellation before admission.
- * @returns Committed revision.
- */
-@Remote('save') save(settings: MinecraftSettings, revision: number, signal: AbortSignal): Promise<number>
-
-/**
- * Connect with explicit server choices in a connection-owned Life conversation.
- * @param connection - Server, offline player name and protocol selection.
- * @param signal - Cancels setup.
- * @returns After real spawn and camera readiness.
- */
-@Remote('connect') connect(connection: MinecraftConnection, signal: AbortSignal): Promise<void>
-
-/**
- * Stop skills immediately without waiting for Jev or a chat response.
- * @param signal - Caller cancellation before admission.
- * @returns After controls are cleared.
- */
-@Remote('stop') stop(signal: AbortSignal): Promise<void>
-
-/**
- * Disconnect without automatic reconnection.
- * @param signal - Caller cancellation before admission.
- * @returns After all game resources close.
- */
-@Remote('disconnect') disconnect(signal: AbortSignal): Promise<void>
-
-/**
- * Stream bounded sampled status while this settings resource is open.
- * @param signal - Ends the subscription.
- * @returns Current snapshots; cancellation creates no additional work.
- */
-@Remote({ mode: 'stream' }) async *watch(signal: AbortSignal): AsyncIterable<MinecraftStatus>
-```
-
-Source: [`packages/experimental/genesis-minecraft/src/gateway.ts`](../../packages/experimental/genesis-minecraft/src/gateway.ts)
-
 <a id="ctxgenesispeople--genesispeoplegateway"></a>
 
 ### `ctx.genesisPeople` — `GenesisPeopleGateway`
@@ -1859,6 +1802,14 @@ decisionModel(): MemoryModelsSettings['decision']
  * @returns Validated answer and genuine endpoint probability when supplied; failure authorizes no action.
  */
 async decide( session: Session, question: string, input: Record<string, unknown> & { participants: object }, criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision'], ): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }>
+
+/**
+ * Admit a blank setup Session for the local operator. The grant expires on Agent disposal or naming.
+ * @param sessionId - Newly created setup Session.
+ * @param signal - Caller cancellation before admission.
+ * @returns Once the current dialogue model is resolved and the Session is authorized for setup.
+ */
+@Remote('beginModelSetup') beginModelSetup(sessionId: SessionId, signal: AbortSignal): Promise<void>
 
 /**
  * Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once.

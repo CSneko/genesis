@@ -29,6 +29,8 @@
     // under its own tsconfig boundary.
     "paths": {
       "@deepseek-ai/dsh-genesis-punishment": ["./packages/experimental/genesis-punishment/src/index.ts"],
+      "@deepseek-ai/dsh-genesis-shock": ["./packages/experimental/genesis-shock/src/index.ts"],
+      "@deepseek-ai/dsh-genesis-shock/types": ["./packages/experimental/genesis-shock/src/types.ts"],
       "@deepseek-ai/dsh-genesis-see-now": ["./packages/experimental/genesis-see-now/src/index.ts"],
       "@deepseek-ai/dsh-genesis-weather": ["./packages/experimental/genesis-weather/src/index.ts"],
       "@deepseek-ai/dsh-experimental-client-ui-genesis": ["./packages/experimental/client-ui-genesis/src/index.ts"],
@@ -45,10 +47,8 @@
       "@deepseek-ai/dsh-experimental-genesis-companion/types": ["./packages/experimental/genesis-companion/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-qq/types": ["./packages/experimental/genesis-qq/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-qq": ["./packages/experimental/genesis-qq/src/index.ts"],
-      "@deepseek-ai/dsh-experimental-genesis-minecraft": ["./packages/experimental/genesis-minecraft/src/index.ts"],
       "@deepseek-ai/dsh-experimental-genesis-speech": ["./packages/experimental/genesis-speech/src"],
       "@deepseek-ai/dsh-experimental-genesis-video": ["./packages/experimental/genesis-video/src"],
-      "@deepseek-ai/dsh-experimental-genesis-minecraft/types": ["./packages/experimental/genesis-minecraft/src/types.ts"],
       "@deepseek-ai/dsh-experimental-genesis-bili-humanism": ["./packages/experimental/genesis-bili-humanism/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-file-actions": ["./packages/client/ui-file-actions/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-file-actions/client": ["./packages/client/ui-file-actions/src/client/index.ts"],

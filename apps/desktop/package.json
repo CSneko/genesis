@@ -4,6 +4,7 @@
   "version": "0.2.2-rc.1",
   "private": true,
   "license": "MIT",
+  "homepage": "https://github.com/CSneko/genesis",
   "author": {
     "name": "Hangzhou DeepSeek Artificial Intelligence Co., Ltd."
   },

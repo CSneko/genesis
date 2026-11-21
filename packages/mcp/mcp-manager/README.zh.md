@@ -69,6 +69,7 @@ profile 的 `cordis.patch.yml` 会替换条目的完整 `servers` 映射。需�
 | `transport` | 必填 | `stdio` 或 `streamable-http` |
 | `command` / `args` / `env` / `cwd` | — | stdio：可执行文件、参数、附加子进程环境、工作目录 |
 | `url` / `headers` | — | streamable-http：端点 URL 与附加请求头 |
+| `includeServerInstructions` | `true` | 将服务端说明加入系统提示 |
 | `enabled` | `true` | 持久意图：`false` 卸载实例但保留条目 |
 | `startupTimeoutMs` | `30,000` | 模板解析、协商、连接与初次工具发现的预算 |
 | `toolCallTimeoutMs` / `closeTimeoutMs` / `reconnect` | mcp-client 默认值 | 逐服务器覆盖 |

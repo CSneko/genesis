@@ -16,3 +16,5 @@ docs/persistence-changes/historical-formats/*.schema.json linguist-generated=tru
 
 # Unified patch blank context lines require their leading space.
 patches/*.patch whitespace=-blank-at-eol
+# Tab-indented upstream context lines also retain their diff prefix.
+patches/dsh-pet-lite-0.2.6.patch whitespace=-blank-at-eol,-space-before-tab

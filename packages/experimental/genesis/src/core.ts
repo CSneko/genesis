@@ -16,7 +16,8 @@ import { z } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { ToolSchema, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ToolSchema, ToolCallId, ContextSnapshotSection } from '@deepseek-ai/dsh-llm'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MemoryDraft, ReviewFailure } from './status-types.ts'
 import type { Config } from './config.ts'
 import { operatorIdentitySchema, type OperatorIdentity } from './model.ts'
@@ -59,7 +60,9 @@ import { memorySummariesSchema, memorySummarySchema } from './memory-summary.ts'
 import { contactInputSchema, type ContactInput, type ContactCatalog, type LifeContact } from './contacts-model.ts'
 import { qqPersonId } from './people-model.ts'
 import { applyPeople } from './people.ts'
-import { memoryVisible } from './memory-access.ts'
+import { indexMemories, lifeReads, memoryAccess, type MemoryAudience, type MemoryIndex } from './memory-access.ts'
+import { rankMemories, type MemorySearchOptions } from './memory-search.ts'
+import { renderSelfContextSections } from './context.ts'
 import {
   conversationSchema,
   peopleStateSchema,
@@ -135,6 +138,65 @@ export interface ObservedInteraction {
   success?: boolean
   /** Newly delivered entries from a committed successful genesis_recall result; never automatic context. */
   readings?: readonly MemoryReading[]
+}
+
+/** Internal queries for one ready life. */
+interface LifeReads {
+  /**
+   * Identify the committed life for startup of independent storage domains.
+   * @returns The persistent life ID after accepted writes settle.
+   */
+  lifeId(): Promise<LifeId>
+
+  /**
+   * Read a durable initialization or lifecycle receipt by its stable key.
+   * @param key - Unique deduplication key within the life.
+   * @returns Detached receipt, or undefined when no receipt has committed.
+   */
+  eventByKey(key: string): Promise<LifeEvent | undefined>
+
+  /**
+   * Read whether the operator's intimacy guidance can be assembled.
+   * @returns The current setting after accepted writes settle.
+   */
+  intimacyEnabled(): Promise<boolean>
+
+  /**
+   * Read the current audience binding for temporary memory.
+   * @param sessionId - Actual conversation requesting a summary.
+   * @returns Detached transport binding and operator ID after accepted writes settle.
+   */
+  conversationAudience(sessionId: SessionId): Promise<MemoryAudience>
+
+  /**
+   * Read the records used when rendering current life goals.
+   * @returns Detached motivations and goals, or undefined when agency is absent.
+   */
+  agencyContextState(): Promise<Pick<NonNullable<LifeState['agency']>, 'version' | 'revision' | 'motivations' | 'goals'> | undefined>
+
+  /**
+   * Render bounded sections from one committed revision for the next model request.
+   * @param agent - Actual conversation used for memory sharing and retained readings.
+   * @param lifeMode - Whether to render the Life preset's capabilities and identity.
+   * @param associated - Serialized cues found by automatic recall.
+   * @param config - Resolved rendering budgets.
+   * @returns Detached sections suitable for admission to the Session log.
+   */
+  contextSections(agent: Agent, lifeMode: boolean, associated: string, config: Config): Promise<ContextSnapshotSection[]>
+
+  /**
+   * Check for declarative memories before attempting automatic recall.
+   * @returns Whether the readable life has any declarative memories.
+   */
+  hasDeclarativeMemories(): Promise<boolean>
+
+  /**
+   * Search one committed revision without copying its event log or embedding vectors.
+   * @param query - Audience, filters and result bounds.
+   * @param options - Retrieval policy and the optional embedding engine.
+   * @returns Detached matches. Embedding failures follow the caller's fallback policy.
+   */
+  searchMemories(query: MemoryQuery, options: MemorySearchOptions): Promise<LifeMemory[]>
 }
 
 function fact(
@@ -754,6 +816,7 @@ export class LifeCore {
     })
   }
   private committed: LifeState | undefined
+  private indexedMemories: MemoryIndex | undefined
   private backedUp: LifeRecordReference[] | undefined
   private readonly encodedHistory = new WeakMap<LifeEvent | GrowthRecord, LifeRecord>()
   private readonly checkedRecordSizes = new WeakSet<object>()
@@ -2104,10 +2167,12 @@ export class LifeCore {
           && observation.tool === 'genesis_recall' && observation.success && observation.readings?.length) {
           const user = state.events.findLast(item => item.relatedSessionId === observation.sessionId
             && item.type === 'interaction.observed' && item.source === 'user' && item.payload['kind'] === 'user-message')
+          const index = this.memoryIndex(this.state())
+          const access = memoryAccess(state.people, index, this.config.memorySharing, observation.sessionId)
           if (user !== undefined) for (const reading of observation.readings) {
-            const memory = state.memories.find(item => item.id === reading.id)
+            const memory = index.memories.get(reading.id)
             if (memory === undefined || isNonDeclarative(memory)) continue
-            if (!memoryVisible(state, memory, this.config.memorySharing, observation.sessionId)) continue
+            if (!access.visible(memory)) continue
             const current = memoryReading(memory, reading.level, new Date(observation.timestamp), this.config.timeZone)
             if (current.version !== reading.version) continue
             const contentHash = memoryContentKey(memory)
@@ -2693,7 +2758,9 @@ export class LifeCore {
   async memoriesForContext(sessionId: SessionId, ids: ReadonlySet<MemoryId>): Promise<Map<MemoryId, LifeMemory>> {
     if (ids.size === 0) return new Map()
     const state = await this.readState()
-    return new Map(state.memories.filter(memory => ids.has(memory.id) && memoryVisible(state, memory, this.config.memorySharing, sessionId))
+    const index = this.memoryIndex(state)
+    const { visible } = memoryAccess(state.people, index, this.config.memorySharing, sessionId)
+    return new Map(state.memories.filter(memory => ids.has(memory.id) && visible(memory))
       .map(({ embedding: _embedding, history: _history, ...memory }) => [memory.id, structuredClone(memory)]))
   }
 
@@ -2972,17 +3039,15 @@ export class LifeCore {
    */
   async retrieve(query: MemoryQuery): Promise<LifeMemory[]> {
     const state = await this.readState()
+    const access = memoryAccess(state.people, this.memoryIndex(state), this.config.memorySharing, query.sessionId)
+    return this.retrieveFrom(state, query, access)
+  }
+
+  private retrieveFrom(state: LifeState, query: MemoryQuery, access: ReturnType<typeof memoryAccess>): LifeMemory[] {
     const chars = Math.max(0, query.chars)
     const now = new Date()
     const result: LifeMemory[] = []
-    const eligible = state.memories.filter(
-      memory =>
-        memoryVisible(state, memory, this.config.memorySharing, query.sessionId) &&
-        organizationMatches(memory, query) &&
-        (query.category === undefined || memory.category === query.category) &&
-        (query.after === undefined || memory.createdAt >= query.after) &&
-        (query.before === undefined || memory.createdAt <= query.before),
-    )
+    const eligible = matchingMemories(state.memories, query, access)
     const matches = query.text.trim() ? searchText(query.text, eligible.map(memoryDocument)) : undefined
     const ranked = matches === undefined
       ? eligible.sort((a, b) => b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt))
@@ -3047,12 +3112,60 @@ export class LifeCore {
     return this.closing
   }
 
+  /** Package-owned reads for recall and prompt assembly. */
+  readonly [lifeReads]: LifeReads = {
+    lifeId: async () => (await this.readState()).identity.id,
+
+    eventByKey: async key => structuredClone((await this.readState()).events.find(event => event.dedupKey === key)),
+
+    intimacyEnabled: async () => {
+      return (await this.readState()).emotion?.intimacy?.settings.enabled === true
+    },
+
+    conversationAudience: async (sessionId) => {
+      const { people } = await this.readState()
+      const conversation = people?.conversations.find(item => item.sessionId === sessionId)
+      return { conversation: conversation === undefined ? undefined : { ...conversation }, operatorPersonId: people?.operatorPersonId }
+    },
+
+    agencyContextState: async () => {
+      const agency = (await this.readState()).agency
+      if (agency === undefined) return undefined
+      const { version, revision, motivations, goals } = agency
+      return structuredClone({ version, revision, motivations, goals })
+    },
+
+    contextSections: async (agent, lifeMode, associated, config) => {
+      const state = await this.readState()
+      return renderSelfContextSections(this, state, this.memoryIndex(state), agent, config, lifeMode, associated)
+    },
+
+    hasDeclarativeMemories: async () => {
+      return (await this.readState()).memories.some(memory => !isNonDeclarative(memory))
+    },
+
+    searchMemories: async (query, options) => {
+      const state = await this.readState()
+      const index = this.memoryIndex(state)
+      const access = memoryAccess(state.people, index, this.config.memorySharing, query.sessionId)
+      const eligible = matchingMemories(state.memories, query, access, options.automatic)
+      if (!eligible.length) return []
+      if (eligible.some(memory => memory.id === query.text.trim())) return this.retrieveFrom(state, query, access)
+      return rankMemories(query, state, index, eligible, access, this.config, options)
+    },
+  }
+
   /** Borrow the committed state inside the core; callers detach only their selected results. */
   private async readState(): Promise<LifeState> {
     await this.chain
     this.assertUsable()
     await this.expireMemories()
     return this.state()
+  }
+
+  private memoryIndex(state: LifeState): MemoryIndex {
+    if (state !== this.committed) return indexMemories(state)
+    return this.indexedMemories ??= indexMemories(state)
   }
 
   private async expireMemories(): Promise<void> {
@@ -3211,6 +3324,7 @@ export class LifeCore {
         }
       }
       this.committed = state
+      this.indexedMemories = undefined
       this.publishLearning(state)
     } catch (error) {
       this.failure = new GenesisError(
@@ -3221,6 +3335,18 @@ export class LifeCore {
       throw this.failure
     }
   }
+}
+
+function matchingMemories(
+  memories: LifeMemory[], query: MemoryQuery, access: ReturnType<typeof memoryAccess>, automatic = false,
+): LifeMemory[] {
+  return memories.filter(memory =>
+    access.visible(memory) &&
+    (!automatic || !access.fromSession(memory)) &&
+    organizationMatches(memory, query) &&
+    (query.category === undefined || memory.category === query.category) &&
+    (query.after === undefined || memory.createdAt >= query.after) &&
+    (query.before === undefined || memory.createdAt <= query.before))
 }
 
 function memoryTime(previous?: LifeMemory): string {

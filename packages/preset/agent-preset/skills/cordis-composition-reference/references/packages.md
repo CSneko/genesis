@@ -219,7 +219,6 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-experimental-forge-session` | yes | Binds change requests to the Session that created, pushed, or tracked them |
 | `@deepseek-ai/dsh-experimental-genesis` | yes | Persistent life identity, sourced memories and observed capability history for Genesis. |
 | `@deepseek-ai/dsh-experimental-genesis-bili-humanism` | yes | Bilibili reading and shared Genesis viewing notes with explicit legacy migration. |
-| `@deepseek-ai/dsh-experimental-genesis-minecraft` | yes | Minecraft Java play and bounded Jev environment monitoring for Genesis. |
 | `@deepseek-ai/dsh-experimental-genesis-qq` | yes | QQ group and private conversations for one Genesis life with authenticated participants. |
 | `@deepseek-ai/dsh-experimental-genesis-video` | yes | Persistent Remotion video projects and sandboxed local rendering for Genesis. |
 | `@deepseek-ai/dsh-experimental-inspector` | yes | Experimental cross-realm CDP hub for Host debugging and Client Runtime inspection |

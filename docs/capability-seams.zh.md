@@ -9,7 +9,21 @@
 
 ```mermaid
 flowchart LR
+  pkg_experimental_genesis_companion["experimental-genesis-companion"]
+  svc_genesisCompanion["ctx.genesisCompanion<br/>Genesis companion conversations"]
   pkg_experimental_genesis["experimental-genesis"]
+  svc_genesisInitiativeStatus["ctx.genesisInitiativeStatus<br/>Genesis proactive status"]
+  svc_genesisMessaging["ctx.genesisMessaging<br/>Genesis message routing"]
+  svc_genesisPeople["ctx.genesisPeople<br/>Genesis participants"]
+  pkg_experimental_genesis_qq["experimental-genesis-qq"]
+  svc_genesisQq["ctx.genesisQq<br/>Genesis QQ connection"]
+  svc_genesisQqSettings["ctx.genesisQqSettings<br/>Genesis QQ settings"]
+  svc_genesisRhythm["ctx.genesisRhythm<br/>Genesis sleep controls"]
+  svc_genesisSleep["ctx.genesisSleep<br/>Genesis sleep"]
+  svc_genesisSpontaneity["ctx.genesisSpontaneity<br/>Genesis spontaneous cognition"]
+  svc_genesisTasks["ctx.genesisTasks<br/>Genesis workspace tasks"]
+  svc_genesisTemporary["ctx.genesisTemporary<br/>Genesis temporary memory"]
+  svc_genesisToolkits["ctx.genesisToolkits<br/>Genesis toolkits"]
   svc_genesisAgency["ctx.genesisAgency<br/>Genesis agency controls"]
   svc_genesisDeliberation["ctx.genesisDeliberation<br/>Genesis deliberation"]
   svc_genesisInitiative["ctx.genesisInitiative<br/>Genesis proactive interaction"]
@@ -380,16 +394,28 @@ flowchart LR
   pkg_experimental_client_ui_forge --> svc_forgePanel
   pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_experimental_computer_use_cua_driver_native --> svc_computerUse
+  pkg_experimental_forge --> svc_forge
+  pkg_experimental_forge_github --> svc_forge
+  pkg_experimental_forge_session --> svc_forgeSession
   pkg_experimental_genesis --> svc_genesis
   pkg_experimental_genesis --> svc_genesisAgency
   pkg_experimental_genesis --> svc_genesisDeliberation
   pkg_experimental_genesis --> svc_genesisInitiative
+  pkg_experimental_genesis --> svc_genesisInitiativeStatus
   pkg_experimental_genesis --> svc_genesisMemory
+  pkg_experimental_genesis --> svc_genesisMessaging
+  pkg_experimental_genesis --> svc_genesisPeople
   pkg_experimental_genesis --> svc_genesisRecords
+  pkg_experimental_genesis --> svc_genesisRhythm
+  pkg_experimental_genesis --> svc_genesisSleep
+  pkg_experimental_genesis --> svc_genesisSpontaneity
   pkg_experimental_genesis --> svc_genesisStatus
-  pkg_experimental_forge --> svc_forge
-  pkg_experimental_forge_github --> svc_forge
-  pkg_experimental_forge_session --> svc_forgeSession
+  pkg_experimental_genesis --> svc_genesisTasks
+  pkg_experimental_genesis --> svc_genesisTemporary
+  pkg_experimental_genesis --> svc_genesisToolkits
+  pkg_experimental_genesis_companion --> svc_genesisCompanion
+  pkg_experimental_genesis_qq --> svc_genesisQq
+  pkg_experimental_genesis_qq --> svc_genesisQqSettings
   pkg_experimental_liveshare --> svc_liveshareShares
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
   pkg_experimental_speech_to_text --> svc_speechToText
@@ -546,11 +572,23 @@ flowchart LR
   svc_fs --> pkg_tool_fs
   svc_genesis --> pkg_experimental_genesis
   svc_genesisAgency --> pkg_experimental_genesis
+  svc_genesisCompanion --> pkg_experimental_genesis_companion
   svc_genesisDeliberation --> pkg_experimental_genesis
   svc_genesisInitiative --> pkg_experimental_genesis
+  svc_genesisInitiativeStatus --> pkg_experimental_genesis
   svc_genesisMemory --> pkg_experimental_genesis
+  svc_genesisMessaging --> pkg_experimental_genesis
+  svc_genesisPeople --> pkg_experimental_genesis
+  svc_genesisQq --> pkg_experimental_genesis_qq
+  svc_genesisQqSettings --> pkg_experimental_genesis_qq
   svc_genesisRecords --> pkg_experimental_genesis
+  svc_genesisRhythm --> pkg_experimental_genesis
+  svc_genesisSleep --> pkg_experimental_genesis
+  svc_genesisSpontaneity --> pkg_experimental_genesis
   svc_genesisStatus --> pkg_experimental_client_ui_genesis
+  svc_genesisTasks --> pkg_experimental_genesis
+  svc_genesisTemporary --> pkg_experimental_genesis
+  svc_genesisToolkits --> pkg_experimental_genesis
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
   svc_jobs --> pkg_api_job_controller
@@ -674,6 +712,18 @@ flowchart LR
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.genesisCompanion` | `core` | [`experimental-genesis-companion`](../packages/experimental/genesis-companion) | - | [`experimental-genesis-companion`](../packages/experimental/genesis-companion) | - | 管理有界的伴侣交流及其持久化回执。 |
+| `ctx.genesisInitiativeStatus` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供主动投递状态和操作者控制。 |
+| `ctx.genesisMessaging` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 通过已注册渠道路由消息，并应用调用方的显式权限。 |
+| `ctx.genesisPeople` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供可归属的参与者信息、关系证据和删除操作。 |
+| `ctx.genesisQq` | `core` | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | 管理经过认证的 QQ 对话和投递回执。 |
+| `ctx.genesisQqSettings` | `core` | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | 提供带修订版本的 QQ 连接和准入设置。 |
+| `ctx.genesisRhythm` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供睡眠设置、当前节律和恢复操作。 |
+| `ctx.genesisSleep` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 管理睡眠状态转换和持久化的记忆整理周期。 |
+| `ctx.genesisSpontaneity` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 管理有界的空闲反思和私下探索。 |
+| `ctx.genesisTasks` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供工作区任务分派和持久化任务控制。 |
+| `ctx.genesisTemporary` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供带来源的临时记忆和过期控制。 |
+| `ctx.genesisToolkits` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供带修订版本的工具组及其渠道权限。 |
 | `ctx.genesisAgency` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 提供有界动机和目标查询，以及操作者显式暂停、恢复和放弃目标的操作。 |
 | `ctx.genesisDeliberation` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 记录带来源的生命选择，并通过现有 Agent 执行路径准入已核实接受的任务。 |
 | `ctx.genesisInitiative` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | 安排有界的发言或等待机会，并根据持久化回执协调投递。 |

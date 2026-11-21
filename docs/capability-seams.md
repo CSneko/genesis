@@ -12,8 +12,6 @@ flowchart LR
   pkg_experimental_genesis["experimental-genesis"]
   svc_genesisInitiativeStatus["ctx.genesisInitiativeStatus<br/>Genesis proactive status"]
   svc_genesisMessaging["ctx.genesisMessaging<br/>Genesis message routing"]
-  pkg_experimental_genesis_minecraft["experimental-genesis-minecraft"]
-  svc_genesisMinecraft["ctx.genesisMinecraft<br/>Genesis Minecraft connection"]
   svc_genesisPeople["ctx.genesisPeople<br/>Genesis participants"]
   pkg_experimental_genesis_qq["experimental-genesis-qq"]
   svc_genesisQq["ctx.genesisQq<br/>Genesis QQ connection"]
@@ -414,7 +412,6 @@ flowchart LR
   pkg_experimental_genesis --> svc_genesisTemporary
   pkg_experimental_genesis --> svc_genesisToolkits
   pkg_experimental_genesis_companion --> svc_genesisCompanion
-  pkg_experimental_genesis_minecraft --> svc_genesisMinecraft
   pkg_experimental_genesis_qq --> svc_genesisQq
   pkg_experimental_genesis_qq --> svc_genesisQqSettings
   pkg_experimental_liveshare --> svc_liveshareShares
@@ -579,7 +576,6 @@ flowchart LR
   svc_genesisInitiativeStatus --> pkg_experimental_genesis
   svc_genesisMemory --> pkg_experimental_genesis
   svc_genesisMessaging --> pkg_experimental_genesis
-  svc_genesisMinecraft --> pkg_experimental_genesis_minecraft
   svc_genesisPeople --> pkg_experimental_genesis
   svc_genesisQq --> pkg_experimental_genesis_qq
   svc_genesisQqSettings --> pkg_experimental_genesis_qq
@@ -717,7 +713,6 @@ flowchart LR
 | `ctx.genesisCompanion` | `core` | [`experimental-genesis-companion`](../packages/experimental/genesis-companion) | - | [`experimental-genesis-companion`](../packages/experimental/genesis-companion) | - | Owns bounded partner exchanges and their persistent receipts. |
 | `ctx.genesisInitiativeStatus` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | Exposes proactive delivery state and operator controls. |
 | `ctx.genesisMessaging` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | Routes messages through registered channels with explicit caller authority. |
-| `ctx.genesisMinecraft` | `core` | [`experimental-genesis-minecraft`](../packages/experimental/genesis-minecraft) | - | [`experimental-genesis-minecraft`](../packages/experimental/genesis-minecraft) | - | Owns the shared game connection and operation controls. |
 | `ctx.genesisPeople` | `core` | [`experimental-genesis`](../packages/experimental/genesis) | - | [`experimental-genesis`](../packages/experimental/genesis) | - | Exposes attributed participants, relationship evidence and deletion controls. |
 | `ctx.genesisQq` | `core` | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | Owns authenticated QQ conversations and delivery receipts. |
 | `ctx.genesisQqSettings` | `core` | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | - | Exposes revisioned QQ connection and admission settings. |

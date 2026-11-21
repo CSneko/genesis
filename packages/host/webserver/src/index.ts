@@ -116,6 +116,8 @@ export interface Config {
   host: string
   /** Explicitly permit wildcard binding for deployments with configured authentication. Default: false. */
   allowWildcardHost?: boolean
+  /** Reject socket traffic until the application registers its admission gate. */
+  requireAdmission?: boolean
   /** Listen port; zero requests an OS-assigned port. */
   port: number
   /**
@@ -306,6 +308,7 @@ const webServerConfig: z<Config> = z.object({
     return value
   }).required(),
   allowWildcardHost: z.boolean().default(false),
+  requireAdmission: z.boolean().default(false),
   port: z.natural().max(65535).required(),
   // An omitted object must not become `{}` and fail the required pair fields.
   tls: z.object({
@@ -409,6 +412,7 @@ export class WebServer extends Service {
   private listenedPort: number | undefined
   private readonly gzip: NodeMiddleware | undefined
   private readonly tlsConfig: TlsConfig | undefined
+  private readonly admission: { check?: (request: IncomingMessage, pathname: string, upgrade: boolean) => 401 | 403 | undefined } = {}
 
   constructor(ctx: Context, private config: Config) {
     super(ctx, 'webServer')
@@ -416,6 +420,23 @@ export class WebServer extends Service {
     // Schemastery passes an explicit `tls: null` through; only a real object serves TLS.
     this.tlsConfig = resolved.tls ?? undefined
     this.gzip = resolved.compression === 'gzip' ? createGzipMiddleware(resolved) : undefined
+  }
+
+  /**
+   * Control socket admission before dispatch. In-process resource calls retain their admitted peer.
+   * @param admit - Return an HTTP rejection code or undefined to dispatch the request.
+   * @returns Disposer that restores the configured startup behavior.
+   */
+  registerAdmission(admit: NonNullable<WebServer['admission']['check']>): () => void {
+    const slot = this.admission
+    if (slot.check !== undefined) throw new Error('webserver: request admission already registered')
+    slot.check = admit
+    return () => { if (slot.check === admit) delete slot.check }
+  }
+
+  private requestRejection(request: IncomingMessage, pathname: string, upgrade: boolean): 401 | 403 | undefined {
+    if (this.admission.check !== undefined) return this.admission.check(request, pathname, upgrade)
+    return this.config.requireAdmission ? 403 : undefined
   }
 
   /** The listening port (the OS-assigned value when config.port is 0), or `undefined` before `listen` binds. */
@@ -546,6 +567,13 @@ export class WebServer extends Service {
       /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
       requests; the field is only optional on the client-side IncomingMessage type */
       const target = new URL(req.url ?? '/', 'http://x')
+      const rejection = this.requestRejection(req, target.pathname, false)
+      if (rejection !== undefined) {
+        req.resume()
+        res.writeHead(rejection, { 'cache-control': 'no-store' })
+        res.end()
+        return
+      }
       const responder = this.responderFor(target.pathname)
       if (responder === undefined) {
         res.writeHead(404)
@@ -610,7 +638,8 @@ export class WebServer extends Service {
         let route: WebUpgradeRoute | undefined
         try {
           /* v8 ignore next -- node:http always sets url on server requests. */
-          route = this.upgrades.get(new URL(req.url ?? '/', 'http://x').pathname)
+          const pathname = new URL(req.url ?? '/', 'http://x').pathname
+          if (this.requestRejection(req, pathname, true) === undefined) route = this.upgrades.get(pathname)
         } catch (error) {
           this.ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
           socket.destroy()

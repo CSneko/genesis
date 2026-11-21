@@ -98,6 +98,8 @@ export interface StdioConfig {
   expandTemplates: boolean
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
+  /** Whether to include the server instructions in the system prompt. Omission includes them. */
+  includeServerInstructions?: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -130,6 +132,8 @@ export interface StreamableHttpConfig {
   expandTemplates: boolean
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
+  /** Whether to include the server instructions in the system prompt. Omission includes them. */
+  includeServerInstructions?: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -175,6 +179,7 @@ export const Config = z.union([
     closeTimeoutMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_CLOSE_TIMEOUT_MS),
     expandTemplates: z.boolean().default(false),
     failOnStartupError: z.boolean().default(false),
+    includeServerInstructions: z.boolean(),
     maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
     reconnect: ReconnectSchema,
     shutdownTool: z.string().pattern(/\S/u),
@@ -189,6 +194,7 @@ export const Config = z.union([
     closeTimeoutMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_CLOSE_TIMEOUT_MS),
     expandTemplates: z.boolean().default(false),
     failOnStartupError: z.boolean().default(false),
+    includeServerInstructions: z.boolean(),
     maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
     reconnect: ReconnectSchema,
     shutdownTool: z.string().pattern(/\S/u),

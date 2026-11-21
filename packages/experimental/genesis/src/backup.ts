@@ -52,16 +52,25 @@ export async function writeBackup(path: string, snapshot: { manifest: LifeManife
   const { manifest, records } = snapshot
   const root = `${path}.d`
   const verified = new Set(previous?.map(record => `${record.table}/${record.key}.json`))
-  for (const { table, key, value } of records) {
-    if (verified.has(`${table}/${key}.json`)) continue
-    const destination = join(root, table, `${key}.json`)
-    const text = JSON.stringify(value) + '\n'
-    let existing: string | undefined
-    try { existing = await readFile(destination, 'utf8') } catch (error) {
-      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
+  const unverified = records.filter(record => !verified.has(`${record.table}/${record.key}.json`))
+  // Bound open file descriptors and wait for all in-flight reads before a recovery failure escapes.
+  const readBatch = 32
+  for (let offset = 0; offset < unverified.length; offset += readBatch) {
+    const results = await Promise.allSettled(unverified.slice(offset, offset + readBatch).map(async ({ table, key, value }) => {
+      const destination = join(root, table, `${key}.json`)
+      const text = JSON.stringify(value) + '\n'
+      let existing: string
+      try { existing = await readFile(destination, 'utf8') } catch (error) {
+        if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
+        return { destination, text }
+      }
+      if (existing !== text) throw new GenesisError('storage', 'Genesis backup contains a damaged life record. Restore a verified backup before retrying.')
+      return undefined
+    }))
+    for (const result of results) {
+      if (result.status === 'rejected') throw result.reason
+      if (result.value !== undefined) await writeAtomicText(result.value.destination, result.value.text)
     }
-    if (existing === undefined) await writeAtomicText(destination, text)
-    else if (existing !== text) throw new GenesisError('storage', 'Genesis backup contains a damaged life record. Restore a verified backup before retrying.')
   }
   await writeAtomicText(path, JSON.stringify(manifest) + '\n')
   const retained = new Set(records.map(record => `${record.table}/${record.key}.json`))

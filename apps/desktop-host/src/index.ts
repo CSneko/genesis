@@ -2,9 +2,10 @@
 
 import { delimiter, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import type { IncomingMessage } from 'node:http'
 import type { PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
 import { formatFatalDiagnostic } from './fatal-diagnostic.ts'
-import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
+import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles, StartupError } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -28,12 +29,16 @@ async function main(): Promise<void> {
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
+  const sharedPort = process.env.DSH_DESKTOP_WEB_ACCESS_PORT
+  const keyFile = process.env.DSH_DESKTOP_WEB_ACCESS_KEY_FILE
+  if (sharedPort !== undefined && (keyFile === undefined || !/^\d{1,5}$/u.test(sharedPort)
+    || Number(sharedPort) < 1 || Number(sharedPort) > 65535)) throw new Error('Invalid Desktop Web access startup settings')
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
-    patchFiles: [],
-    args: ['--no-open', '--host', '127.0.0.1', '--port', '0'],
+    patchFiles: sharedPort === undefined ? [] : [join(import.meta.dirname, 'genesis', 'web-access.patch.yml')],
+    args: ['--no-open', '--host', sharedPort === undefined ? '127.0.0.1' : '0.0.0.0', '--port', sharedPort ?? '0'],
     ...(process.argv[5] === undefined ? {} : {
       packageManager: {
         command: process.execPath,
@@ -128,6 +133,18 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const { ctx } = await application
+  if (sharedPort !== undefined) {
+    await ctx.effect(() => ctx.webServer.registerAdmission((request: IncomingMessage, pathname: string, upgrade: boolean) => {
+      if (!upgrade && (
+        ((request.method === 'GET' || request.method === 'HEAD') && pathname === '/')
+        || pathname === '/auth/login'
+        // The pet route validates its per-process capability before handling the request.
+        || (request.socket.remoteAddress === '127.0.0.1' && pathname.startsWith('/dsh-pet-lite/')
+          && typeof request.headers['x-genesis-pet-helper'] === 'string')
+      )) return undefined
+      return ctx.connection.requestRejection(request)
+    }), 'desktop: Web access admission')
+  }
   installOperationDiagnostics(ctx, record => send({ type: 'plugin-operation', record }), 32, runId)
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
@@ -145,7 +162,9 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
+    const life = error instanceof StartupError ? error.entries.find(entry => entry.id === 'genesis' && entry.required) : undefined
+    const lifeFailure = life?.outcome.kind === 'failed' ? life.outcome.error : undefined
+    const message = lifeFailure instanceof Error ? lifeFailure.message : error instanceof Error ? error.message : String(error)
     // The shell receives the complete inspected error here, not through stderr:
     // stderr bytes and this IPC message race, and the shell reports the first
     // failure it sees.

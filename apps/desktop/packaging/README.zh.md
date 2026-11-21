@@ -30,6 +30,8 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 
 ## 选择打包方式
 
+[Genesis Desktop 工作流](../../../.github/workflows/genesis-desktop.yml)在 GitHub 托管 runner 上构建独立安装包，由主分支源码变更、版本标签或手动操作触发。独立打包使用当前源码版本，无自动更新源。
+
 安装锁定依赖后，从仓库根目录运行本地命令。本地构建使用平台命令，已注册的自托管 runner 使用对应平台的 Actions。test/production 部署与 signed/unsigned 模式分别选择。任何 Windows 签名构建或共享 runner 使用前，先阅读 [Windows 签名与 runner 运维](../windows-signing/README.zh.md#trust-and-isolation)。安装与打包分开进行；[发布](../publishing/README.zh.md)还需要单独的显式操作。
 
 将 `DSH_DESKTOP_PACKAGE_CACHE_DIR` 设为绝对构建缓存目录以跨 checkout 复用；详见[缓存配置与生命周期](#desktop-runtime-preparation)。
@@ -97,7 +99,7 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux 不是受支持的 Desktop 发布目标。
+macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux x64 支持独立打包。在装有 RPM 工具的 Linux x64 主机上运行 `pnpm run package:desktop:linux:x64`，在 `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts` 下生成 DEB、RPM 和 AppImage。运行 AppImage 的主机需要支持 Chromium 沙箱。
 
 macOS 正式发布和本地未签名 DMG 都通过 [electron-builder 配置](../scripts/electron-builder-config.mjs)中的 `dmg.format: 'ULMO'` 使用 LZMA 压缩。[构建时补丁](../../../patches/app-builder-lib@26.17.0.patch)为固定版本 builder 的校验规则和 TypeScript 声明添加此格式。
 

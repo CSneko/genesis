@@ -12,7 +12,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { openCore } from './harness.ts'
 import { personSourceSchema, qqPersonId, conversationIdSchema } from '../src/people-model.ts'
 import { emotionUpdateSchema } from '../src/emotion-state.ts'
-import { memoryVisible } from '../src/memory-access.ts'
+import { indexMemories, memoryAccess } from '../src/memory-access.ts'
 import { GenesisPeopleGateway } from '../src/people-gateway.ts'
 import type { RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
 import { stateSchema } from '../src/model.ts'
@@ -161,13 +161,17 @@ it('filters private, group and legacy memory before lexical recall, including mi
   expect(await find(otherDm)).toEqual([])
   expect(await find(group, privateMemory.id)).toEqual([])
   expect((await find(web)).map(item => item.id)).toEqual([legacyMemory.id])
-  expect(memoryVisible(await core.snapshot(), mixed, 'conversation', group)).toBe(false)
-  expect(memoryVisible(await core.snapshot(), mixed, 'life', group)).toBe(true)
-  expect(memoryVisible(await core.snapshot(), privateMemory, 'life', otherGroup)).toBe(true)
-  expect(memoryVisible(await core.snapshot(), { ...groupMemory, history: [{ category: privateMemory.category,
+  const state = await core.snapshot()
+  const index = indexMemories(state)
+  const groupAccess = memoryAccess(state.people, index, 'conversation', group)
+  expect(groupAccess.visible(mixed)).toBe(false)
+  expect(memoryAccess(state.people, index, 'life', group).visible(mixed)).toBe(true)
+  expect(memoryAccess(state.people, index, 'life', otherGroup).visible(privateMemory)).toBe(true)
+  expect(groupAccess.visible({ ...groupMemory, history: [{ category: privateMemory.category,
     content: privateMemory.content, importance: privateMemory.importance, confidence: privateMemory.confidence,
-    sourceEventIds: privateMemory.sourceEventIds, recordedAt: privateMemory.createdAt, supersededAt: groupMemory.updatedAt }] }, 'conversation', group)).toBe(false)
-  expect(memoryVisible(await core.snapshot(), privateMemory, 'conversation')).toBe(true)
+    sourceEventIds: privateMemory.sourceEventIds, recordedAt: privateMemory.createdAt, supersededAt: groupMemory.updatedAt,
+  }] })).toBe(false)
+  expect(memoryAccess(state.people, index, 'conversation').visible(privateMemory)).toBe(true)
   await core.forgetPerson(qqPersonId('12345'))
   const retained = (await core.snapshot()).memories.map(memory => memory.id)
   expect(retained).toContain(legacyMemory.id)

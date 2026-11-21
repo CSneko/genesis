@@ -19,7 +19,10 @@ import Include, { applyEntryPatches, entryListSchema, type PatchOptions } from '
 import Group from '@deepseek-ai/cordis-plugin-group'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
-export { readBundlePatches, readProfilePatches, resolveTelemetryPatch, type ProfileContext, type ProfilePnpmInvocation } from './profile-context.ts'
+export {
+  profileLocalConfigPatches, readBundlePatches, readProfilePatches, readSharedConfigPatches, resolveTelemetryPatch,
+  type ProfileContext, type ProfilePnpmInvocation,
+} from './profile-context.ts'
 export { sanitizeProfile } from './profile-sanitize.ts'
 export { getDshRuntimeVersion, evaluatePluginCompatibility, pluginCompatibilityWarning, type PluginCompatibility } from './plugin-compatibility.ts'
 export {
@@ -941,10 +944,12 @@ const FIBER_DISPOSED = 4 as FiberState.DISPOSED
  *
  * The list is global rather than profile metadata. Missing or disabled ids do
  * not affect startup; an enabled listed entry must activate. The list covers
- * shared Agent execution, application endpoints, and Web bootstrap/transport.
+ * shared Agent execution, application endpoints, Web bootstrap/transport,
+ * and the configured persistent life.
  */
 const requiredStartupEntryIds = new Set<string>([
   'agent-loop',
+  'genesis',
   'tool-executor-native',
   'tool-executor-ptc',
   'webserver',

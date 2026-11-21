@@ -12,7 +12,8 @@ import { emotionAt, emotionContext, resolveEmotion } from './emotion-state.ts'
 import { behaviorMemories, isNonDeclarative } from './personality.ts'
 import { readMemory } from './memory-time.ts'
 import { boundedMemoryText } from './memory-summary.ts'
-import { memoryViewFor, memoryFromSession } from './memory-access.ts'
+import { lifeReads, memoryAccess, type MemoryIndex } from './memory-access.ts'
+import type { LifeState } from './model.ts'
 import { participants } from './participants.ts'
 import { required } from './required.ts'
 
@@ -54,24 +55,48 @@ export async function selfContext(
 }
 
 /**
- * Prepare independently replaceable life modules using the existing per-section budgets.
+ * Read the independently replaceable life modules for a conversation.
  * @param core - Ready life owner.
  * @param agent - Actual Agent and Session scope.
  * @param config - Resolved per-section budgets.
  * @param lifeMode - Whether to use the newborn self-description.
  * @param associated - Bounded serialized cues selected for the current accepted input.
- * @returns Named current modules, including empty text for absent optional state.
+ * @returns Named current sections suitable for the Session log.
  */
-export async function selfContextSections(
+export function selfContextSections(
   core: LifeCore,
   agent: Agent,
   config: Config,
   lifeMode = config.awakening !== undefined,
   associated = '',
 ): Promise<ContextSnapshotSection[]> {
-  const state = memoryViewFor(await core.snapshot(), agent.id, config.memorySharing)
+  return core[lifeReads].contextSections(agent, lifeMode, associated, config)
+}
+
+/**
+ * Prepare independently replaceable life modules using the existing per-section budgets.
+ * @param core - Ready life owner for current conversation and learning policy.
+ * @param state - Stable committed life revision.
+ * @param index - Memory and source lookups for that revision.
+ * @param agent - Actual Agent and Session scope.
+ * @param config - Resolved per-section budgets.
+ * @param lifeMode - Whether to use the newborn self-description.
+ * @param associated - Bounded serialized cues selected for the current accepted input.
+ * @returns Named current modules, including empty text for absent optional state.
+ */
+export function renderSelfContextSections(
+  core: LifeCore,
+  state: LifeState,
+  index: MemoryIndex,
+  agent: Agent,
+  config: Config,
+  lifeMode = config.awakening !== undefined,
+  associated = '',
+): ContextSnapshotSection[] {
+  const access = memoryAccess(state.people, index, config.memorySharing, agent.id)
+  const visible = state.memories.filter(access.visible)
   const now = new Date()
-  const promptState = { ...state, memories: state.memories.filter(memory => !memoryFromSession(state, memory, agent.id)) }
+  const promptState = { ...state, memories: visible.filter(memory => !access.fromSession(memory)) }
   const memories = behaviorMemories(promptState, config, now).map(memory => readMemory(memory, now, config.timeZone).content)
   const declarative = promptState.memories
     .filter(memory => !isNonDeclarative(memory))
@@ -92,14 +117,13 @@ export async function selfContextSections(
     )
     .map(memory => memoryReading(memory, 'medium', now, config.timeZone))
   const associatedReadings: MemoryReading[] = associated.startsWith('[') ? JSON.parse(associated) : []
-  const current = new Map(state.memories.map(memory => [memory.id, memory]))
   const memorySections = memoryReadingSections(
     [...associatedReadings, ...cues],
     agent.session,
     config.memoryChars,
     (id) => {
-      const memory = current.get(id)
-      return memory === undefined ? undefined : memoryReading(memory, 'medium', now, config.timeZone)
+      const memory = index.memories.get(id)
+      return memory === undefined || !access.visible(memory) ? undefined : memoryReading(memory, 'medium', now, config.timeZone)
     },
   )
   const emotion =

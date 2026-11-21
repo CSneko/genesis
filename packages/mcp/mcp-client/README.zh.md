@@ -63,6 +63,7 @@ kind: "package-reference"
 | `closeTimeoutMs` | `5,000` | 传输关闭与待处理本地工作完全结算的预算 |
 | `expandTemplates` | `false` | 在运行时解析传输字符串中的 `${credential:REF}`，并在诊断中替换已解析的值 |
 | `shutdownTool` | 省略 | 关闭已建立的连接前，以空参数调用的上游工具 |
+| `includeServerInstructions` | `true` | 将服务端说明加入系统提示 |
 | `maxInstructionBytes` | `32,768` | 包括服务器归属信息在内的服务器指令 UTF-8 字节上限；超出时连接失败 |
 | `failOnStartupError` | `false` | 初始连接或工具同步失败时拒绝插件激活 |
 | `reconnect.enabled` | `true` | 连接丢失后自动重新连接 |

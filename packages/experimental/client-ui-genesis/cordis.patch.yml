@@ -8,6 +8,12 @@
     default: life
 
 - insert:
+    - id: preset-genesis-model-setup
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: genesis-model-setup
+        name: Genesis setup
+        plugins: []
     - id: preset-life
       name: '@deepseek-ai/dsh-agent-preset'
       config:

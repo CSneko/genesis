@@ -14,6 +14,7 @@ import Settings from '@deepseek-ai/dsh-settings'
 import Credentials from '@deepseek-ai/dsh-credentials-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Tools from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import McpManager from '@deepseek-ai/dsh-mcp-manager'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -48,11 +49,24 @@ const metadata = serverSchema.parse({
     },
   ],
 })
-async function setup() {
+async function setup(numen = false) {
   const home = await mkdtemp(join(tmpdir(), 'genesis-mcp-market-'))
   cleanup.push(() => rm(home, { recursive: true, force: true }))
+  const replies: Array<{ companion: string; text: string }> = []
   const handler = createMcpHandler(() => {
-    const mcp = new McpServer({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {} } })
+    const mcp = new McpServer(
+      { name: 'fixture', version: '1.0.0' },
+      { capabilities: { tools: {} }, instructions: 'Fixture external brain instructions.' },
+    )
+    if (numen) {
+      mcp.registerTool('get_events', { inputSchema: z.object({ companion: z.string() }) }, async ({ companion }) => ({
+        content: [{ type: 'text', text: `<query>Say hello, ${companion}.</query>` }],
+      }))
+      mcp.registerTool('say', { inputSchema: z.object({ companion: z.string(), text: z.string() }) }, async (input) => {
+        replies.push(input)
+        return { content: [{ type: 'text', text: 'Spoken.' }] }
+      })
+    }
     mcp.registerTool('ping', { description: 'Fixture ping', inputSchema: z.object({}) }, async () => ({
       content: [{ type: 'text', text: 'pong' }],
     }))
@@ -61,7 +75,11 @@ async function setup() {
   const handle = toNodeHandler(handler)
   let registryMetadata = metadata
   const server = createServer((request, response) => {
-    if (request.url === '/mcp') {
+    if (request.url === '/mcp' || request.url === '/numen') {
+      if (request.url === '/numen' && request.headers.authorization !== 'Bearer fixture-brain-token') {
+        response.writeHead(401).end()
+        return
+      }
       void handle(request as NodeIncomingMessageLike, response).catch(() => {
         response.writeHead(500).end()
       })
@@ -127,6 +145,7 @@ async function setup() {
     ctx.provide('profileContext', profile)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(Tools)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(Credentials, { path: join(home, 'credentials.yml'), watch: false })
     await ctx.plugin(Loader)
     ctx.loader.builtins['manager'] = McpManager
@@ -137,7 +156,7 @@ async function setup() {
     await ctx.loader.await()
     return ctx
   }
-  return { home, profile, boot, ctx: await boot() }
+  return { home, profile, boot, registryUrl, replies, ctx: await boot() }
 }
 it('installs from the displayed recipe, protects credentials, rejects replay and restores the live service after restart', async () => {
   const { ctx, profile, home, boot } = await setup(),
@@ -188,6 +207,7 @@ it('installs from the displayed recipe, protects credentials, rejects replay and
   ).toEqual([expect.objectContaining({ id: `mcp-${name}`, tools: [`mcp__${name}__*`], qqAccess: 'disabled' })])
   const result = await executeToolFixture(ctx, { name: `mcp__${name}__ping`, arguments: {}, callId: ToolCallId('mcp-fixture-call'), signal })
   expect(result.isError).not.toBe(true)
+  expect(JSON.stringify(await ctx.systemPrompt.assemble())).toContain('Fixture external brain instructions.')
   expect(JSON.stringify(result)).toContain('pong')
   expect(await readFile(profile.patchPath, 'utf8')).not.toContain('fixture-secret')
   expect(await readFile(join(home, 'credentials.yml'), 'utf8')).toContain('fixture-secret')
@@ -301,4 +321,40 @@ it('supports pinned packages and required inputs without accepting runtime flags
       }),
     ).recipes,
   ).toEqual([])
+})
+
+it('connects Numen with a brain token, reads game chat and restores the connection without importing its instructions', async () => {
+  const { ctx, home, profile, registryUrl, replies, boot } = await setup(true)
+  const signal = new AbortController().signal
+  const { revision } = await ctx.genesisMcp.inspect(signal)
+  await ctx.genesisMcp.addCustom({
+    name: 'numen',
+    includeServerInstructions: false,
+    transport: 'streamable-http',
+    url: `${registryUrl}/numen`,
+    command: '',
+    args: [],
+    env: {},
+    headers: { Authorization: 'Bearer fixture-brain-token' },
+  }, revision, signal)
+  await vi.waitFor(() => expect(ctx.tools.get('mcp__numen__get_events')).toBeDefined())
+  const message = await executeToolFixture(ctx, {
+    name: 'mcp__numen__get_events', arguments: { companion: 'Genesis' }, callId: ToolCallId('numen-events'), signal,
+  })
+  expect(JSON.stringify(message)).toContain('<query>Say hello, Genesis.</query>')
+  expect(JSON.stringify(await ctx.systemPrompt.assemble())).not.toContain('Fixture external brain instructions.')
+  expect(await readFile(profile.patchPath, 'utf8')).not.toContain('fixture-brain-token')
+  expect(await readFile(join(home, 'credentials.yml'), 'utf8')).toContain('fixture-brain-token')
+
+  await ctx.fiber.dispose()
+  const restored = await boot()
+  await vi.waitFor(() => expect(restored.tools.get('mcp__numen__say')).toBeDefined())
+  await executeToolFixture(restored, {
+    name: 'mcp__numen__say',
+    arguments: { companion: 'Genesis', text: 'Hello from Genesis.' },
+    callId: ToolCallId('numen-say'),
+    signal,
+  })
+  expect(replies).toEqual([{ companion: 'Genesis', text: 'Hello from Genesis.' }])
+  expect(JSON.stringify(await restored.systemPrompt.assemble())).not.toContain('Fixture external brain instructions.')
 })

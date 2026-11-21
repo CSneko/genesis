@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/genesis-shock/README.md
+/:
+  en: a01a935599495147
+  zh: e06828f251c9e761
+/deepseek-ai-dsh-genesis-shock:
+  en: 9cfe4cfbcdc0c169
+  zh: a3854e26924718bd
+/deepseek-ai-dsh-genesis-shock/summary:
+  en: 81819a9db220a4d1
+  zh: d246d1ee66fd6c39
+/deepseek-ai-dsh-genesis-shock/table-of-contents:
+  en: a91b4d4f8836279d
+  zh: 7f34a2fd54680aea
+/deepseek-ai-dsh-genesis-shock/use-this-package:
+  en: e581e27a0f1c2781
+  zh: 11540060e8077a86
+/deepseek-ai-dsh-genesis-shock/understand-the-implementation:
+  en: a2120d801cb29d44
+  zh: a3593e977715c2fb
+/deepseek-ai-dsh-genesis-shock/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-genesis-shock/model-experience/what-the-model-sees:
+  en: ec12adae25f8d4f3
+  zh: 94b5eaa58016167f
+/deepseek-ai-dsh-genesis-shock/model-experience/token-impact:
+  en: d86809d2c861036f
+  zh: f37a500677d4ae39
+/deepseek-ai-dsh-genesis-shock/model-experience/kv-cache-impact:
+  en: 4fa98cb57a9ab6ff
+  zh: 0ecdb730dc0ccb9f
+/deepseek-ai-dsh-genesis-shock/known-limitations-and-deferred-work:
+  en: fa2df9bc5a6d7490
+  zh: 9f150fa93bc2ca87
+/deepseek-ai-dsh-genesis-shock/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

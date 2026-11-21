@@ -79,3 +79,28 @@ it('requests a required key in a password field and retains the draft after an i
   expect(key.value).toBe('fixture-secret')
   expect(screen.queryByText('fixture-secret')).toBeNull()
 })
+
+it('adds Numen through the existing custom connection form with its own brain token', async () => {
+  const { props } = fixture(false)
+  const addCustom = vi.fn().mockResolvedValue({ ok: true, value: 'numen' })
+  render(<McpPanel {...props} addCustom={addCustom} />)
+  fireEvent.click(screen.getByRole('button', { name: zh.custom }))
+  fireEvent.change(screen.getByLabelText(zh.transport), { target: { value: 'numen' } })
+  expect(screen.getByLabelText(zh.name)).toHaveProperty('value', 'numen')
+  expect(screen.getByLabelText(zh.url)).toHaveProperty('value', 'http://127.0.0.1:8765/mcp')
+  const token = screen.getByLabelText(zh.numenToken)
+  expect(token).toHaveProperty('type', 'password')
+  expect(token).toHaveProperty('required', true)
+  fireEvent.change(token, { target: { value: 'fixture-brain-token' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.add }))
+  await waitFor(() => expect(addCustom).toHaveBeenCalledWith({
+    includeServerInstructions: false,
+    name: 'numen',
+    transport: 'streamable-http',
+    url: 'http://127.0.0.1:8765/mcp',
+    command: '',
+    args: [],
+    env: {},
+    headers: { Authorization: 'Bearer fixture-brain-token' },
+  }, 7))
+})

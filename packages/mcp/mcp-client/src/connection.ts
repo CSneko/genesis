@@ -313,7 +313,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       bindingValue = { config: resolved }
       await record.wire.connect(resolved, remaining())
       if (!isCurrent(record)) return
-      const text = client.getInstructions()?.trimEnd() ?? ''
+      const text = config.includeServerInstructions === false ? '' : (client.getInstructions()?.trimEnd() ?? '')
       const instructions = text ? `### MCP server: ${config.serverName}\n\n${text}` : ''
       const maxInstructionBytes = config.maxInstructionBytes ?? DEFAULT_MAX_INSTRUCTION_BYTES
       if (Buffer.byteLength(instructions) > maxInstructionBytes) throw new McpLocalError(`${label}: server instructions exceed maxInstructionBytes (${maxInstructionBytes})`)
@@ -393,10 +393,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       stopTimers()
       const record = current
       current = undefined
-      if (record?.connectedAt !== undefined && config.shutdownTool !== undefined) {
+      const shutdownTool = config.shutdownTool
+      if (record?.connectedAt !== undefined && shutdownTool !== undefined) {
         try {
           const result = await record.wire.run(signal => record.wire.client.callTool(
-            { name: config.shutdownTool!, arguments: {} }, { signal, timeout: config.toolCallTimeoutMs },
+            { name: shutdownTool, arguments: {} }, { signal, timeout: config.toolCallTimeoutMs },
           ), config.toolCallTimeoutMs)
           if (result.isError) ctx.logger.error(`${label}: shutdown tool failed; server data may be incomplete — inspect its saved state before restarting`)
         } catch (error) {

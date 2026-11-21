@@ -22,13 +22,29 @@ import {
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
-import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
+import { initProfile, readProfileManifest, removeLinkProjections, sanitizeProfile, writeProfileManifest } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
+const GENESIS_SHOCK_PACKAGE = '@deepseek-ai/dsh-genesis-shock'
+const GENESIS_DESKTOP_BUNDLES = [
+  DESKTOP_HOST_PACKAGE,
+  '@deepseek-ai/dsh-experimental-genesis-mcp',
+  '@deepseek-ai/dsh-genesis-punishment',
+  GENESIS_SHOCK_PACKAGE,
+  '@deepseek-ai/dsh-experimental-genesis-speech',
+  '@deepseek-ai/dsh-genesis-weather',
+  '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
+  '@deepseek-ai/dsh-experimental-voice-input-bundle',
+  '@deepseek-ai/dsh-personalized-recommendations',
+  '@deepseek-ai/dsh-experimental-genesis-mail',
+  '@deepseek-ai/dsh-experimental-genesis-qq',
+  '@deepseek-ai/dsh-experimental-genesis-companion',
+  'dsh-any-background',
+]
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
@@ -44,7 +60,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
   const coreBuildKey = coreBuildSpec === undefined
     ? CORE_BUILD_PACKAGE
     : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
-  return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
+  return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  esbuild: true\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
 }
 
 function migrateProfileSettings(projectDir: string): void {
@@ -169,7 +185,22 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
 }
 
-/** Create the first external plugin profile without running a package manager. */
+/** Initialize the Desktop defaults once, preserving installed packages and the user patch. */
 export function createPluginProfile(projectDir: string): void {
   initProfile(projectDir, WEB_PROFILE.bundles)
+  const manifest = readProfileManifest('dsh desktop', projectDir)
+  const initialized = 'genesisDesktopDefaults' in manifest
+  if (initialized && manifest.genesisDesktopDefaults !== 1) throw new Error('Unsupported Genesis Desktop profile defaults version')
+  const bundles = manifest.dsh?.profile?.bundles ?? []
+  const shockInitialized = 'genesisShockDefault' in manifest && manifest.genesisShockDefault === true
+  if (initialized && (shockInitialized || !bundles.includes(DESKTOP_HOST_PACKAGE))) return
+  const candidates = initialized ? [GENESIS_SHOCK_PACKAGE] : GENESIS_DESKTOP_BUNDLES
+  const defaults = candidates.filter(name => !bundles.includes(name) && !Object.hasOwn(manifest.dependencies ?? {}, name))
+  const updated = {
+    ...manifest,
+    genesisDesktopDefaults: 1,
+    genesisShockDefault: true,
+    dsh: { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...bundles, ...defaults] } },
+  }
+  writeProfileManifest(projectDir, updated)
 }

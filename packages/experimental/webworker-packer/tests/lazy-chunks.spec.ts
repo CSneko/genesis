@@ -39,7 +39,7 @@ function fixture(test: TestContext, files: Record<string, string>): PackOptions 
 }
 
 const CHUNKS = {
-  'client.browser.js': 'module.exports = { load: () => require.async("./client.pdf.js") }',
+  'client.browser.js': 'module.exports = { load: () => require.async(`./client.pdf.js`) }',
   'client.pdf.js': 'module.exports = { worker: () => require.async(\'./client.pdf-worker.js\') }',
   'client.pdf-worker.js': 'module.exports = "pdf worker"',
   'client.orphan.js': 'module.exports = "nobody asks for me"',

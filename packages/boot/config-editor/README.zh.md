@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-将插件配置保存到当前 profile 的 patch 并立即应用。写入在改动磁盘前验证完整候选值，并与 profile 更改及 HMR 串行执行。无效值和更高层覆盖不会改动文件。
+将插件配置保存到所属的 patch 并立即应用。写入在改动磁盘前验证完整候选值，并与 profile 更改及 HMR 串行执行。无效值和更高层覆盖不会改动文件。
 
 ## 目录
 
@@ -64,7 +64,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- 编辑写入当前 profile patch。Home patch 和命令行 overlay 参与优先级解析，但不作为写入目标。
+- 编辑默认写入当前 profile patch。启动器声明共享配置时，指定条目会在额外的文件锁保护下写入共享文档。Home patch 和命令行 overlay 可以覆盖这两个编辑层。
 - 完整配置覆盖保留普通字段，但会在 profile 层固定其当前原始值。
 - 仅可编辑 profile 根 Include 拥有且可唯一定位的条目。
 

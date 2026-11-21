@@ -8,8 +8,23 @@
   "main": "lib/index.js",
   "files": [
     "lib/index.js",
-    "lib/cli.js"
+    "lib/cli.js",
+    "lib/genesis/*.yml"
   ],
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./lib/genesis/core.patch.yml",
+        "./lib/genesis/life.patch.yml",
+        "./lib/genesis/bilibili.patch.yml",
+        "./lib/genesis/video.patch.yml",
+        "./lib/genesis/screen.patch.yml",
+        "./lib/genesis/ui.patch.yml",
+        "./lib/genesis/computer.patch.yml",
+        "./lib/genesis/desktop.patch.yml"
+      ]
+    }
+  },
   "dependencies": {
     "koffi": "3.1.1",
     "@deepseek-ai/libreoffice-kit": "^0.1.5",
@@ -26,7 +41,17 @@
     "@deepseek-ai/dsh-skill-office": "workspace:*",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
-    "@deepseek-ai/dsh-plugin-manager": "workspace:*"
+    "@deepseek-ai/dsh-plugin-manager": "workspace:*",
+    "@deepseek-ai/dsh-computer-use": "workspace:*",
+    "@deepseek-ai/dsh-experimental-computer-use-portal": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis": "workspace:*",
+    "@deepseek-ai/dsh-experimental-client-ui-genesis": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-bili-humanism": "workspace:*",
+    "@deepseek-ai/dsh-experimental-genesis-video": "workspace:*",
+    "@deepseek-ai/dsh-genesis-see-now": "workspace:*",
+    "dsh-drawai": "0.4.6",
+    "dsh-pet-lite": "0.2.6",
+    "dsh-taiwind": "0.3.6"
   },
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",

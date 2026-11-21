@@ -1,0 +1,16 @@
+- id: webserver
+  config:
+    host: !!js ctx.webStartup.host
+    port: !!js ctx.webStartup.port
+    allowWildcardHost: true
+    requireAdmission: true
+    tls: !!js ctx.webStartup.tls
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+
+- id: connection
+  config:
+    trustedHosts: ['*']
+    keyLogin:
+      keyFile: !!js process.env.DSH_DESKTOP_WEB_ACCESS_KEY_FILE

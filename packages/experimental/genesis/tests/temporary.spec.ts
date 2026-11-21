@@ -128,22 +128,23 @@ it('forgets expired current records and preserves QQ audiences independently of 
   const other = conversationSchema.parse({ id: 'qq:private:11111:99999', sessionId: 'other', kind: 'private', personId: qqPersonId('99999') })
   const group = conversationSchema.parse({ id: 'qq:group:11111:67890', sessionId: 'group', kind: 'group' })
   const operator = conversationSchema.parse({ id: 'qq:private:11111:55555', sessionId: 'operator', kind: 'private', personId: qqPersonId('55555') })
-  const audience = { ...state, people: { version: 1 as const, people: [], operatorPersonId: operator.personId, conversations: [privateChat, other, group, operator] } }
+  const audience = (conversation?: typeof privateChat) =>
+    ({ conversation, operatorPersonId: operator.personId })
   const memory = temporaryMemorySchema.parse({ id: randomUUID(), sessionId: 'private', sourceSeqs: [1], audience: { kind: 'private', personId },
     summary: '私聊内容', days: 1, createdAt: 0, expiresAt: 86400000 })
-  expect(temporaryVisible(memory, audience, 'conversation', SessionId('private'))).toBe(true)
-  expect(temporaryVisible(memory, audience, 'conversation', SessionId('other'))).toBe(false)
-  expect(temporaryVisible(memory, audience, 'conversation', SessionId('group'))).toBe(false)
-  expect(temporaryVisible(memory, audience, 'conversation', SessionId('web'))).toBe(false)
+  expect(temporaryVisible(memory, audience(privateChat), 'conversation')).toBe(true)
+  expect(temporaryVisible(memory, audience(other), 'conversation')).toBe(false)
+  expect(temporaryVisible(memory, audience(group), 'conversation')).toBe(false)
+  expect(temporaryVisible(memory, audience(), 'conversation')).toBe(false)
   const own = { ...memory, audience: { kind: 'operator' as const } }
-  expect(temporaryVisible(own, audience, 'conversation', SessionId('web'))).toBe(true)
-  expect(temporaryVisible(own, audience, 'conversation', SessionId('operator'))).toBe(true)
-  expect(temporaryVisible(own, audience, 'conversation', SessionId('private'))).toBe(false)
-  expect(temporaryVisible(own, audience, 'conversation', SessionId('group'))).toBe(false)
+  expect(temporaryVisible(own, audience(), 'conversation')).toBe(true)
+  expect(temporaryVisible(own, audience(operator), 'conversation')).toBe(true)
+  expect(temporaryVisible(own, audience(privateChat), 'conversation')).toBe(false)
+  expect(temporaryVisible(own, audience(group), 'conversation')).toBe(false)
   const shared = { ...memory, audience: { kind: 'group' as const, conversationId: group.id } }
-  expect(temporaryVisible(shared, audience, 'conversation', SessionId('group'))).toBe(true)
-  expect(temporaryVisible(shared, audience, 'conversation', SessionId('web'))).toBe(false)
-  expect(temporaryVisible(shared, audience, 'conversation', SessionId('private'))).toBe(false)
+  expect(temporaryVisible(shared, audience(group), 'conversation')).toBe(true)
+  expect(temporaryVisible(shared, audience(), 'conversation')).toBe(false)
+  expect(temporaryVisible(shared, audience(privateChat), 'conversation')).toBe(false)
   const store = new TemporaryStore(await new DomainFacility(life.ctx, { backend: 'json' }).open(temporaryDomain), { schemaVersion: 1, lifeId: state.identity.id,
     revision: 0, settings: { enabled: false, idleMs: 1000, summary: { kind: 'provider', provider: '', model: '' } },
     sessions: [], memories: [memory] })
@@ -194,7 +195,9 @@ it.each(['life', 'conversation'] as const)('applies %s sharing to recall and inj
   if (memorySharing === 'life') expect(found[0]).toContain(memory.summary)
   const agentFor = (session: Session): Agent => ({
     id: session.id, ctx: life.ctx, session, options: {}, model: { current: () => undefined, select() {} }, status: 'idle',
-    inbox: { nextTurn: [], nextStep: [], clear() {}, append() {}, prepend() {}, replace: () => false, remove: () => false, splice: () => [] },
+    inbox: {
+      nextTurn: [], nextStep: [], clear() {}, append() {}, prepend() {}, replace: () => false, remove: () => false, splice: () => [],
+    },
     send() {}, followup() {}, steer: () => ({ outcome: Promise.resolve({ status: 'rejected' as const }) }), inject() {}, cancel() {},
     runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),
   })

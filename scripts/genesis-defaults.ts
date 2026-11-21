@@ -13,6 +13,6 @@ if (launch.genesisHome) {
   const home = process.env.DSH_HOME ??= join(homedir(), '.genesis-harness')
   const invocation = parseDshArgs(launch.args, getDshRuntimeVersion())
   if (invocation.mode !== 'plugin' && !(invocation.mode === 'dump-config' && invocation.defaultOnly)) {
-    await ensureGenesisProfileBundles(home, fileURLToPath(new URL('../package.json', import.meta.url)))
+    await ensureGenesisProfileBundles(home, fileURLToPath(new URL('../apps/cli/package.json', import.meta.url)))
   }
 }

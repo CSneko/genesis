@@ -2377,49 +2377,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
-    key: 'genesisMinecraft',
-    summary: 'Operator access does not teach or enable any model tool.',
-    description: 'Operator access does not teach or enable any model tool.',
-    methods: [
-      {
-        signature: '@Remote(\'inspect\') inspect(signal: AbortSignal): Promise<MinecraftStatus>',
-        description: 'Read settings and sampled status without a connection side effect.',
-        parameters: [{ name: 'signal', description: 'Caller cancellation.' }],
-        returns: 'Current nonsecret status.',
-      },
-      {
-        signature: '@Remote(\'save\') save(settings: MinecraftSettings, revision: number, signal: AbortSignal): Promise<number>',
-        description: 'Persist settings, stopping the existing game before changes.',
-        parameters: [{ name: 'settings', description: 'Complete operator draft.' }, { name: 'revision', description: 'Displayed revision.' }, { name: 'signal', description: 'Caller cancellation before admission.' }],
-        returns: 'Committed revision.',
-      },
-      {
-        signature: '@Remote(\'connect\') connect(connection: MinecraftConnection, signal: AbortSignal): Promise<void>',
-        description: 'Connect with explicit server choices in a connection-owned Life conversation.',
-        parameters: [{ name: 'connection', description: 'Server, offline player name and protocol selection.' }, { name: 'signal', description: 'Cancels setup.' }],
-        returns: 'After real spawn and camera readiness.',
-      },
-      {
-        signature: '@Remote(\'stop\') stop(signal: AbortSignal): Promise<void>',
-        description: 'Stop skills immediately without waiting for Jev or a chat response.',
-        parameters: [{ name: 'signal', description: 'Caller cancellation before admission.' }],
-        returns: 'After controls are cleared.',
-      },
-      {
-        signature: '@Remote(\'disconnect\') disconnect(signal: AbortSignal): Promise<void>',
-        description: 'Disconnect without automatic reconnection.',
-        parameters: [{ name: 'signal', description: 'Caller cancellation before admission.' }],
-        returns: 'After all game resources close.',
-      },
-      {
-        signature: '@Remote({ mode: \'stream\' }) async *watch(signal: AbortSignal): AsyncIterable<MinecraftStatus>',
-        description: 'Stream bounded sampled status while this settings resource is open.',
-        parameters: [{ name: 'signal', description: 'Ends the subscription.' }],
-        returns: 'Current snapshots; cancellation creates no additional work.',
-      },
-    ],
-  },
-  {
     key: 'genesisPeople',
     summary: 'Operator-only, paged relationship inspection and explicit retention deletion.',
     description: 'Operator-only, paged relationship inspection and explicit retention deletion.',
@@ -2851,6 +2808,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Evaluate a binary question through the configured decision route with durable request/response audit.',
         parameters: [{ name: 'session', description: 'Actual caller\'s inference log.' }, { name: 'question', description: 'Trusted binary question; generative routes receive explicit JSON output instructions.' }, { name: 'input', description: 'Complete bounded evidence with explicitly scoped participants.' }, { name: 'criteria', description: 'Trusted yes/no interpretations for binary endpoints.' }, { name: 'signal', description: 'Caller cancellation; the shared auxiliary deadline also applies.' }, { name: 'route', description: 'Optional channel-only decision route; shared settings remain unchanged.' }],
         returns: 'Validated answer and genuine endpoint probability when supplied; failure authorizes no action.',
+      },
+      {
+        signature: '@Remote(\'beginModelSetup\') beginModelSetup(sessionId: SessionId, signal: AbortSignal): Promise<void>',
+        description: 'Admit a blank setup Session for the local operator. The grant expires on Agent disposal or naming.',
+        parameters: [{ name: 'sessionId', description: 'Newly created setup Session.' }, { name: 'signal', description: 'Caller cancellation before admission.' }],
+        returns: 'Once the current dialogue model is resolved and the Session is authorized for setup.',
       },
       {
         signature: '@Remote(\'initialize\') async initialize(name: string, signal: AbortSignal): Promise<void>',
@@ -9099,54 +9062,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'MessageTargetId',
     declaration: 'export type MessageTargetId = Branded<\'GenesisMessageTargetId\'>;',
-  },
-  {
-    name: 'MinecraftBlockObservation',
-    declaration: 'export type MinecraftBlockObservation = {\n    name: string;\n    position: {\n        x: number;\n        y: number;\n        z: number;\n    };\n    stateId: number;\n    properties: Record<string, string | number | boolean>;\n    distance: number;\n    visible: boolean;\n    withinReach: boolean;\n};',
-  },
-  {
-    name: 'MinecraftChat',
-    declaration: 'export interface MinecraftChat {\n    sequence: number;\n    channel: \'public\' | \'whisper\';\n    player: string;\n    playerId?: MinecraftPlayerId;\n    message: string;\n}',
-  },
-  {
-    name: 'MinecraftCollectionProgress',
-    declaration: 'export type MinecraftCollectionProgress = {\n    item: string;\n    requested: number;\n    before: number;\n    current: number;\n    gained: number;\n    minedBlocks: number;\n};',
-  },
-  {
-    name: 'MinecraftConnection',
-    declaration: 'export interface MinecraftConnection {\n    host: string;\n    port: number;\n    username: string;\n    version: string;\n}',
-  },
-  {
-    name: 'MinecraftObservation',
-    declaration: 'export interface MinecraftObservation {\n    id: MinecraftObservationId;\n    time: string;\n    position: {\n        x: number;\n        y: number;\n        z: number;\n    };\n    health: number;\n    food: number;\n    dimension: string;\n    action: string;\n    failure: string | null;\n    inventory: Array<{\n        name: string;\n        count: number;\n    }>;\n    entities: Array<{\n        id: number;\n        uuid?: MinecraftPlayerId;\n        name: string;\n        distance: number;\n    }>;\n    chat: MinecraftChat[];\n    blocks?: MinecraftBlockObservation[];\n    crosshair?: {\n        name: string;\n        position: {\n            x: number;\n            y: number;\n            z: number;\n        };\n    } | null;\n    supportedActions?: string[];\n    lastAction?: MinecraftSkillOutcome & {\n        action: string;\n    };\n}',
-  },
-  {
-    name: 'MinecraftObservationId',
-    declaration: 'export type MinecraftObservationId = Branded<\'MinecraftObservationId\'>;',
-  },
-  {
-    name: 'MinecraftPlayerId',
-    declaration: 'export type MinecraftPlayerId = Branded<\'MinecraftPlayerId\'>;',
-  },
-  {
-    name: 'MinecraftSettings',
-    declaration: 'export interface MinecraftSettings {\n    enabled: boolean;\n    reuseKnowledge: boolean;\n    jevEnabled: boolean;\n    jevUrl: string;\n    jevModel: string;\n    jevKeyRef: string;\n    intervalMs: number;\n    timeoutMs: number;\n    threshold: number;\n    notificationIntervalMs: number;\n    vision: boolean;\n    lowHealth: number;\n    skillTimeoutMs: number;\n}',
-  },
-  {
-    name: 'MinecraftSkillOutcome',
-    declaration: 'export interface MinecraftSkillOutcome {\n    outcome: \'completed\' | \'failed\' | \'interrupted\' | \'timed-out\';\n    failure: string | null;\n    target?: {\n        name: string;\n        position: {\n            x: number;\n            y: number;\n            z: number;\n        };\n    };\n    collection?: MinecraftCollectionProgress;\n}',
-  },
-  {
-    name: 'MinecraftStatus',
-    declaration: 'export interface MinecraftStatus {\n    sessionId: SessionId | null;\n    task: MinecraftTaskStatus | null;\n    revision: number;\n    settings: MinecraftSettings;\n    connection: \'disconnected\' | \'connecting\' | \'connected\';\n    monitor: \'disabled\' | \'running\' | \'failed\';\n    failure: string | null;\n    observation: MinecraftObservation | null;\n    image: string | null;\n    lastNotice: string | null;\n}',
-  },
-  {
-    name: 'MinecraftTaskId',
-    declaration: 'export type MinecraftTaskId = Branded<\'MinecraftTaskId\'>;',
-  },
-  {
-    name: 'MinecraftTaskStatus',
-    declaration: 'export interface MinecraftTaskStatus {\n    id: MinecraftTaskId;\n    goal: string;\n    phase: \'running\' | \'completed\' | \'cancelled\' | \'timed-out\' | \'blocked\' | \'failed\';\n    step: number;\n    totalSteps: number;\n    completedActions: number;\n    deadline: string;\n    action: string | null;\n    reason: string | null;\n    budget?: {\n        requestedTimeoutMs: number;\n        timeoutMs: number;\n        timeoutLimitMs: number;\n        stepLimit: number;\n        repeatLimit: number;\n        planCharsLimit: number;\n    };\n    waitingDecisions?: number;\n    lastResult?: {\n        isError: boolean;\n        value?: JsonValue;\n    };\n    inventoryGoal?: {\n        item: string;\n        required: number;\n        current: number;\n    };\n}',
   },
   {
     name: 'ModDefinition',

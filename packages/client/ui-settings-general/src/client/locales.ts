@@ -2,6 +2,18 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'desktop.webAccess.title': '网页访问',
+  'desktop.webAccess.description': '在浏览器中访问此桌面工作区。请使用可信网络或 HTTPS 反向代理。',
+  'desktop.webAccess.enabled': '启用网页访问',
+  'desktop.webAccess.port': '端口',
+  'desktop.webAccess.key': '访问密钥',
+  'desktop.webAccess.existingKey': '留空保留当前密钥',
+  'desktop.webAccess.save': '保存网页访问设置',
+  'desktop.webAccess.restart': '重启桌面应用后生效。',
+  'desktop.webAccess.active': '正在监听端口 {port}',
+  'desktop.webAccess.portError': '请选择 1 至 65535 之间的可用端口。',
+  'desktop.webAccess.keyError': '请输入 16 至 1024 字节的访问密钥。',
+  'desktop.webAccess.ioError': '无法读取或保存网页访问设置。',
   'desktop.channel.title': '更新渠道',
   'desktop.channel.description': '正式版适合日常使用；开发版可提前体验新功能，但可能不稳定。',
   'desktop.channel.stable': '正式版',
@@ -72,8 +84,24 @@ export const zh = {
 /** The settings namespace key union. */
 export type SettingsKey = keyof typeof zh
 
+const webAccessEnglish = {
+  'desktop.webAccess.title': 'Web access',
+  'desktop.webAccess.description': 'Share this Desktop workspace in a browser. Use a trusted network or an HTTPS reverse proxy.',
+  'desktop.webAccess.enabled': 'Enable Web access',
+  'desktop.webAccess.port': 'Port',
+  'desktop.webAccess.key': 'Access key',
+  'desktop.webAccess.existingKey': 'Leave blank to keep the current key',
+  'desktop.webAccess.save': 'Save Web access settings',
+  'desktop.webAccess.restart': 'Restart Desktop to apply these settings.',
+  'desktop.webAccess.active': 'Listening on port {port}',
+  'desktop.webAccess.portError': 'Choose an available port between 1 and 65535.',
+  'desktop.webAccess.keyError': 'Enter an access key between 16 and 1024 UTF-8 bytes.',
+  'desktop.webAccess.ioError': 'Could not read or save Web access settings.',
+}
+
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  ...webAccessEnglish,
   'desktop.channel.title': 'Update channel',
   'desktop.channel.description': 'Stable is suitable for everyday use. Development offers early access to new features but may be unstable.',
   'desktop.channel.stable': 'Stable',
@@ -143,6 +171,7 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  ...webAccessEnglish,
   'desktop.channel.title': '更新チャンネル',
   'desktop.channel.description': '安定版は日常的な使用に適しています。開発版では新機能をいち早く試せますが、不安定な場合があります。',
   'desktop.channel.stable': '安定版',
@@ -212,6 +241,7 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  ...webAccessEnglish,
   'desktop.channel.title': 'Canal de actualizaciones',
   'desktop.channel.description': 'Estable es adecuado para el uso diario. Desarrollo permite probar nuevas funciones antes, pero puede ser inestable.',
   'desktop.channel.stable': 'Estable',
@@ -281,6 +311,7 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  ...webAccessEnglish,
   'desktop.channel.title': 'Canal de mise à jour',
   'desktop.channel.description': 'Stable convient à un usage quotidien. Développement permet de découvrir les nouveautés en avance, mais peut être instable.',
   'desktop.channel.stable': 'Stable',
@@ -350,6 +381,7 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  ...webAccessEnglish,
   'desktop.channel.title': 'Update-Kanal',
   'desktop.channel.description': 'Stabil eignet sich für den Alltag. Entwicklung bietet frühzeitigen Zugang zu neuen Funktionen, kann aber instabil sein.',
   'desktop.channel.stable': 'Stabil',
@@ -419,6 +451,7 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  ...webAccessEnglish,
   'desktop.channel.title': 'Канал обновлений',
   'desktop.channel.description': 'Стабильный канал подходит для повседневного использования. Канал разработки позволяет раньше попробовать новые функции, но может быть нестабильным.',
   'desktop.channel.stable': 'Стабильный',
@@ -488,6 +521,7 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  ...webAccessEnglish,
   'desktop.channel.title': 'Canal de atualização',
   'desktop.channel.description': 'Estável é adequado para o uso diário. Desenvolvimento oferece acesso antecipado a novos recursos, mas pode ser instável.',
   'desktop.channel.stable': 'Estável',

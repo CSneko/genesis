@@ -289,7 +289,6 @@ flowchart TD
     pkg_experimental_genesis["experimental-genesis"]
     pkg_experimental_genesis_bili_humanism["experimental-genesis-bili-humanism"]
     pkg_experimental_genesis_companion["experimental-genesis-companion"]
-    pkg_experimental_genesis_minecraft["experimental-genesis-minecraft"]
     pkg_experimental_genesis_qq["experimental-genesis-qq"]
     pkg_experimental_genesis_speech["experimental-genesis-speech"]
     pkg_experimental_genesis_video["experimental-genesis-video"]
@@ -1505,22 +1504,6 @@ flowchart TD
   pkg_experimental_genesis_companion --> pkg_tools
   pkg_experimental_genesis_companion --> pkg_typert_protocol
   pkg_experimental_genesis_companion --> pkg_workspace
-  pkg_experimental_genesis_minecraft --> pkg_agent
-  pkg_experimental_genesis_minecraft --> pkg_agent_default_model
-  pkg_experimental_genesis_minecraft --> pkg_agent_preset_registry
-  pkg_experimental_genesis_minecraft --> pkg_attachment
-  pkg_experimental_genesis_minecraft --> pkg_brand
-  pkg_experimental_genesis_minecraft --> pkg_credentials
-  pkg_experimental_genesis_minecraft --> pkg_experimental_genesis
-  pkg_experimental_genesis_minecraft --> pkg_llm
-  pkg_experimental_genesis_minecraft --> pkg_ptc_runtime
-  pkg_experimental_genesis_minecraft --> pkg_sandbox_policy
-  pkg_experimental_genesis_minecraft --> pkg_session
-  pkg_experimental_genesis_minecraft --> pkg_storage_domain
-  pkg_experimental_genesis_minecraft --> pkg_tools
-  pkg_experimental_genesis_minecraft --> pkg_typert_protocol
-  pkg_experimental_genesis_minecraft --> pkg_working_directory
-  pkg_experimental_genesis_minecraft --> pkg_workspace
   pkg_experimental_genesis_qq --> pkg_agent
   pkg_experimental_genesis_qq --> pkg_agent_default_model
   pkg_experimental_genesis_qq --> pkg_agent_preset_registry
@@ -2002,7 +1985,6 @@ flowchart TD
 | [`workflow-ptc`](../packages/workflow/workflow-ptc) | `workflow` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`ptc-runtime`](../packages/ptc-runtime/ptc-runtime), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow), [`working-directory`](../packages/session/working-directory) |
 | [`experimental-genesis-bili-humanism`](../packages/experimental/genesis-bili-humanism) | `experimental` | [`agent`](../packages/core/agent), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`brand`](../packages/util/brand), [`experimental-genesis`](../packages/experimental/genesis), [`session`](../packages/core/session), [`subprocess`](../packages/subprocess/subprocess), [`tools`](../packages/core/tools) |
 | [`experimental-genesis-companion`](../packages/experimental/genesis-companion) | `experimental` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`brand`](../packages/util/brand), [`credentials`](../packages/credentials/credentials), [`experimental-genesis`](../packages/experimental/genesis), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-title`](../packages/session/session-title), [`storage-domain`](../packages/storage/storage-domain), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol), [`workspace`](../packages/workspace/workspace) |
-| [`experimental-genesis-minecraft`](../packages/experimental/genesis-minecraft) | `experimental` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`attachment`](../packages/attachment/attachment), [`brand`](../packages/util/brand), [`credentials`](../packages/credentials/credentials), [`experimental-genesis`](../packages/experimental/genesis), [`llm`](../packages/llm/llm), [`ptc-runtime`](../packages/ptc-runtime/ptc-runtime), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`storage-domain`](../packages/storage/storage-domain), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol), [`working-directory`](../packages/session/working-directory), [`workspace`](../packages/workspace/workspace) |
 | [`experimental-genesis-qq`](../packages/experimental/genesis-qq) | `experimental` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`attachment`](../packages/attachment/attachment), [`brand`](../packages/util/brand), [`compaction`](../packages/compaction/compaction), [`credentials`](../packages/credentials/credentials), [`experimental-genesis`](../packages/experimental/genesis), [`llm`](../packages/llm/llm), [`sandbox`](../packages/sandbox/sandbox), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`session-title`](../packages/session/session-title), [`storage-domain`](../packages/storage/storage-domain), [`subprocess`](../packages/subprocess/subprocess), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol), [`workspace`](../packages/workspace/workspace) |
 | [`experimental-genesis-speech`](../packages/experimental/genesis-speech) | `experimental` | [`agent`](../packages/core/agent), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`attachment`](../packages/attachment/attachment), [`credentials`](../packages/credentials/credentials), [`experimental-genesis`](../packages/experimental/genesis), [`launch-environment`](../packages/util/launch-environment), [`llm`](../packages/llm/llm), [`tools`](../packages/core/tools) |
 | [`experimental-genesis-video`](../packages/experimental/genesis-video) | `experimental` | [`agent`](../packages/core/agent), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`attachment`](../packages/attachment/attachment), [`brand`](../packages/util/brand), [`experimental-genesis`](../packages/experimental/genesis), [`fs`](../packages/fs/fs), [`jobs`](../packages/jobs/jobs), [`llm`](../packages/llm/llm), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`subprocess`](../packages/subprocess/subprocess), [`tools`](../packages/core/tools) |

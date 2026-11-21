@@ -2,6 +2,7 @@ import { recallResultReadings, retainedMemoryReadings, trimMemoryContext } from 
 import { GenesisContactsGateway } from './contacts-gateway.ts'
 import './social-projection.ts'
 import './task-source.ts'
+import './minecraft-source.ts'
 import './session-evidence.ts'
 import { LifeToolExecutor } from './tool-executor.ts'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
@@ -41,6 +42,7 @@ import { LifeEmotionEngine, EMOTION_GUIDANCE } from './emotion.ts'
 import { emotionSettingsSchema, resolveEmotion, initialEmotion } from './emotion-state.ts'
 import { LifeInterestEngine, INTEREST_GUIDANCE } from './interest.ts'
 import { LifeCore } from './core.ts'
+import { lifeReads } from './memory-access.ts'
 import { GUIDANCE, selfContextSections, boundedJson } from './context.ts'
 import { PERSONALITY_GUIDANCE } from './personality.ts'
 import { lifeRecordsDomain, lifeDomain } from './model.ts'
@@ -65,7 +67,7 @@ import { writingsDomain } from './records-model.ts'
 import { prepareWritingRoot } from './records-files.ts'
 import { GenesisRecordsGateway } from './records-gateway.ts'
 import { registerWritingTool } from './records-tool.ts'
-import { installModeIsolation } from './mode.ts'
+import { installModeIsolation, MODEL_SETUP_PRESET } from './mode.ts'
 import { registerTaskTool } from './tasks.ts'
 import { registerPlanTool } from './plan-tool.ts'
 import { ToolkitPreferences, toolkitPreferencesDomain } from './toolkit-preferences.ts'
@@ -256,8 +258,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       }
     })
   }
+  const isSetup = (agent: Agent | undefined) => config.awakening !== undefined && agent !== undefined &&
+    ctx.get('agentPresets')?.composedPreset(agent.ctx) === MODEL_SETUP_PRESET
   const lifeMode = (agent: Agent | undefined) =>
-    config.awakening !== undefined &&
+    config.awakening !== undefined && !isSetup(agent) &&
     (config.awakening.lifePreset === undefined ||
       (agent !== undefined && ctx.get('agentPresets')?.composedPreset(agent.ctx) === config.awakening.lifePreset))
   const participates = (agent: Agent | undefined) => config.awakening === undefined || lifeMode(agent)
@@ -276,6 +280,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     { global: true },
   )
 
+  const lifeId = await core[lifeReads].lifeId()
   const personal =
     config.personalDirectory === undefined
       ? undefined
@@ -285,7 +290,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   let records: WritingRecords | undefined
   if (config.records !== undefined && personal !== undefined) {
     const root = await prepareWritingRoot(personal)
-    records = new WritingRecords(await ctx.storageDomain.open(writingsDomain), root, (await core.snapshot()).identity.id, config.records)
+    records = new WritingRecords(await ctx.storageDomain.open(writingsDomain), root, lifeId, config.records)
     const owner = records
     ctx.effect(() => () => owner.close())
     await records.start()
@@ -319,7 +324,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   try {
     temporaryStore = new TemporaryStore(temporaryStorage, {
       schemaVersion: 1,
-      lifeId: (await core.snapshot()).identity.id,
+      lifeId,
       revision: 0,
       settings: {
         enabled: config.temporaryMemory.enabled,
@@ -368,7 +373,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const toolkits = new LifeToolkits(ctx, core, toolkitPreferences, config, qqPermissions)
   if (config.awakening !== undefined) toolkits.install(lifeMode)
   await ctx.plugin(GenesisToolkitGateway, { preferences: toolkitPreferences, permissions: qqPermissions, config })
-  installModeIsolation(ctx, participates)
+  installModeIsolation(ctx, participates, isSetup)
   if (config.awakening?.lifePreset !== undefined) {
     ctx.inject(
       ['workspaceRegistry', 'agentPresets', 'agentDefaultModel', 'sessions', 'sessionPersistence', 'sessionQuery'],
@@ -535,7 +540,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     engine: social,
     applies: (agent: Agent) => config.awakening === undefined || lifeMode(agent),
   })
-  await ctx.plugin(GenesisStatusGateway, { config, preferences, models, memory, memoryBatcher, emotion, interest, lifeMode, purge })
+  await ctx.plugin(GenesisStatusGateway, {
+    config, preferences, models, memory, memoryBatcher, emotion, interest, lifeMode, isSetup, purge,
+  })
   const associations = new Map<object, string>()
   const pendingMemoryContext = new WeakMap<Agent, UserMessage>()
   const selectTools = (agent: Agent, registered: readonly ToolDefinition[]) => {
@@ -678,7 +685,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         core.isOperatorSession(context.agent.id) &&
         !core.isSpontaneitySession(context.agent.id) &&
         config.emotion !== undefined &&
-        (await core.snapshot()).emotion?.intimacy?.settings.enabled === true
+        await core[lifeReads].intimacyEnabled()
       if (lifeMode(context.agent)) {
         assembled.sections = [
           {
@@ -877,11 +884,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ctx.inject(['sessionPersistence', 'agentPresets'], async (child) => {
       if (config.sleep !== undefined) {
         const policy = config.sleep
-        const life = await core.snapshot()
+        const initialized = await core[lifeReads].eventByKey('sleep:initialized')
         const domain = await child.storageDomain.open(sleepDomain)
-        const store = new SleepStore(domain, life.identity.id, policy, Date.now())
+        const store = new SleepStore(domain, lifeId, policy, Date.now())
         try {
-          await store.start(life.events.some(event => event.dedupKey === 'sleep:initialized'))
+          await store.start(initialized !== undefined)
           await core.recordSleep('initialized', 'initialized', {})
         } catch (error) {
           await store.close()

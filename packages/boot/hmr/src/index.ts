@@ -383,6 +383,7 @@ class Hmr extends Service {
       yield () => { unsubscribe(); started.resolve(false); return Promise.resolve() }
       const manifestPath = join(profile.dir, 'package.json')
       const patchFiles = [profile.patchPath, join(profile.home, PROFILE_PATCH_FILENAME)]
+      if (profile.sharedConfig !== undefined) patchFiles.push(profile.sharedConfig.path)
       let lastInputs: string | undefined
       let lastBundles = JSON.stringify(profile.startedBundles)
       const refresh = async (manifestOnly: boolean): Promise<void> => {

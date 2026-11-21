@@ -30,6 +30,8 @@ Build Desktop installers locally or through Windows or macOS Actions, choose dep
 
 ## Choose a build path
 
+The [Genesis Desktop workflow](../../../.github/workflows/genesis-desktop.yml) builds standalone artifacts on GitHub-hosted runners from primary-branch source changes, version tags and manual runs. Standalone packaging takes its version from the checkout and uses no update feed.
+
 Run local commands from the repository root after installing locked dependencies. Use platform-specific commands for a local build, or platform Actions for the registered self-hosted runner. Choose test or production deployment independently from signed or unsigned mode. Read [Windows signing and runner operations](../windows-signing/README.md#trust-and-isolation) before any Windows signed build or shared-runner use. Installation is separate from packaging; [publication](../publishing/README.md) is a further explicit operation.
 
 Set `DSH_DESKTOP_PACKAGE_CACHE_DIR` to an absolute build-cache directory for reuse across checkouts; see [cache configuration and lifecycle](#desktop-runtime-preparation).
@@ -97,7 +99,7 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux is not a supported Desktop release target.
+The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux x64 supports standalone packages. Run `pnpm run package:desktop:linux:x64` on a Linux x64 host with RPM tooling to generate DEB, RPM and AppImage under `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts`. The host must support the Chromium sandbox to run the AppImage.
 
 Both release and local unsigned macOS DMGs use LZMA compression (`dmg.format: 'ULMO'`) in [the electron-builder configuration](../scripts/electron-builder-config.mjs). A [build-time patch](../../../patches/app-builder-lib@26.17.0.patch) adds this format to the pinned builder's validation and TypeScript declarations.
 

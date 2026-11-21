@@ -2,7 +2,7 @@ import type { DesktopFileActions } from '@deepseek-ai/dsh-client-ui-file-actions
 /** Typed preload operations exposed only by the Electron shell. */
 
 export type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
-import type { DesktopChannelBridge, DesktopChannelState } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopChannelBridge, DesktopChannelState, DesktopWebAccessBridge } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
@@ -34,6 +34,8 @@ export const DESKTOP_IPC = {
   deviceInfo: 'dsh-desktop:device-info',
   localeBootstrap: 'dsh-desktop:locale-bootstrap',
   localeChanged: 'dsh-desktop:locale-changed',
+  webAccessGet: 'dsh-desktop:web-access-get',
+  webAccessSave: 'dsh-desktop:web-access-save',
   updatesChannelGet: 'dsh-desktop:updates-channel-get',
   updatesChannelSet: 'dsh-desktop:updates-channel-set',
   updatesChannelChanged: 'dsh-desktop:updates-channel-changed',
@@ -91,6 +93,7 @@ export interface DesktopUpdatePresentation {
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi {
+  readonly webAccess: DesktopWebAccessBridge
   readonly fileActions: DesktopFileActions
   readonly protocolVersion: 1
   readonly browser: DesktopBrowserBridge

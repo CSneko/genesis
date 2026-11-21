@@ -6,13 +6,15 @@ import type { EmbeddingSettings, MemoryModelsSettings } from '@deepseek-ai/dsh-e
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { operationFailure } from './operation-failure.ts'
 import type { StatusActions } from './StatusPanel.tsx'
-import { LifeSetupButton } from './Awakening.tsx'
+import { LifeSetupButton, ModelSetupEntry, type AwakeningActions } from './Awakening.tsx'
 import { ReviewSummary } from './ReviewNotice.tsx'
 import { MemoryModels } from './MemoryModels.tsx'
 import css from './StatusPanel.module.css'
 
 /** Settings and authenticated operations supplied by the owning plugin. */
 export interface KnowledgeActions extends StatusActions {
+  /** Start the operator's separate configuration conversation before naming. */
+  startModelSetup?: AwakeningActions['startModelSetup']
   /** Persist both independent routes as one revision. */
   saveModels(this: void, settings: MemoryModelsSettings, revision: number, signal: AbortSignal): Promise<RemoteResult<number>>
   /** Check the saved route without sending conversation evidence. */
@@ -40,8 +42,11 @@ type EditorProps = PropsLocale<'genesis'> & Pick<InjectFace<KnowledgeActions>, '
 }
 
 function editableSettings(settings: EmbeddingSettings): EmbeddingSettings {
-  return { ...(settings.enabled === undefined ? {} : { enabled: settings.enabled }), url: settings.url, model: settings.model, dimensions: settings.dimensions,
-    ...(settings.keyRef === undefined ? {} : { keyRef: settings.keyRef }) }
+  return {
+    ...(settings.enabled === undefined ? {} : { enabled: settings.enabled }),
+    url: settings.url, model: settings.model, dimensions: settings.dimensions,
+    ...(settings.keyRef === undefined ? {} : { keyRef: settings.keyRef }),
+  }
 }
 
 function EmbeddingEditor({ initial, revision, writable, keyConfigured, keyWritable, save, credential, test, refresh, t }: EditorProps) {
@@ -169,7 +174,7 @@ function EmbeddingEditor({ initial, revision, writable, keyConfigured, keyWritab
  * @param props - Framework resources, live configuration and cancellable Host operations.
  * @returns A wrapping page retaining drafts and search results after recoverable failures.
  */
-export function KnowledgePanel({ useResource, initialize, startConversation, close, saveModels, testModel,
+export function KnowledgePanel({ useResource, initialize, startConversation, startModelSetup, close, saveModels, testModel,
   save, credential, test, refresh, deployLocalDecision, stopLocalDecision, t }: KnowledgeProps) {
   const id = useId()
   const resource = useResource<'genesis'>('dsh-resource://genesis/status')
@@ -187,6 +192,8 @@ export function KnowledgePanel({ useResource, initialize, startConversation, clo
     {resource.status === 'none' ? <p role="status">{t('unavailable')}</p> : null}
     <LifeSetupButton t={t} setup={status?.setup} initialize={initialize} startConversation={startConversation}
       refresh={refresh} done={close} />
+    {status?.identity.name === null && status.setup !== undefined && startModelSetup !== undefined ?
+      <ModelSetupEntry t={t} startModelSetup={startModelSetup} done={close} /> : null}
     {status?.models === undefined ? null : <MemoryModels t={t} initial={status.models} writable={resource.status === 'live'}
       saveModels={saveModels} testModel={testModel} credential={credential} refresh={refresh}
       localStatus={status.localDecision} deployLocalDecision={deployLocalDecision} stopLocalDecision={stopLocalDecision} />}

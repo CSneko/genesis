@@ -8,6 +8,7 @@ import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -43,6 +44,7 @@ import { desktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
+import { DesktopWebAccessSettings } from './web-access-settings.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest, removeLegacyHostCookies } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
@@ -207,13 +209,17 @@ interface RuntimeResources {
 
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
-  const node = process.execPath
+  // On Linux, running image decoding outside Electron avoids a GLib symbol collision.
+  const node = process.platform === 'linux'
+    ? join(development ? developmentPrimaryRuntime() : join(process.resourcesPath, 'runtime', 'primary-runtime'),
+      'dependencies', 'node', 'bin', 'node')
+    : process.execPath
   const nodeBin = development ? join(app.getAppPath(), 'scripts', 'node-bin') : join(process.resourcesPath, 'runtime', 'bin')
   const pnpm = (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : undefined)
     ?? (development ? join(app.getAppPath(), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs')
       : join(process.resourcesPath, 'runtime', 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
-    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
+    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(process.platform === 'linux' ? process.resourcesPath : app.getAppPath(), 'dsh'))
   return { node, nodeBin, pnpm, dsh }
 }
 
@@ -371,6 +377,8 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
 
 async function main(): Promise<void> {
   const desktopSettings = await readDesktopSettings(app.getPath('userData'))
+  const webAccess = new DesktopWebAccessSettings(app.getPath('userData'))
+  const sharedWeb = await webAccess.prepare()
   void pruneCrashReports(app.getPath('logs'))
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
@@ -525,7 +533,14 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort, {
+        ...hostEnvironment,
+        DSH_CLIENT_VERSION: desktopClientVersion(),
+        DSH_DESKTOP_WEB_ACCESS_PORT: sharedWeb === undefined ? undefined : String(sharedWeb.port),
+        DSH_DESKTOP_WEB_ACCESS_KEY_FILE: sharedWeb?.keyFile,
+        DSH_DESKTOP_PET_EXECUTABLE: process.execPath,
+        DSH_DESKTOP_PET_ENTRY: development ? app.getAppPath() : '',
+      }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
@@ -536,7 +551,7 @@ async function main(): Promise<void> {
     return {
       start: async () => {
         const ready = await host.start()
-        const cookie = await authenticateWebHost(ready.url)
+        const cookie = await authenticateWebHost(ready.url, sharedWeb?.key)
         hostCookie = cookie
         hostUrl = ready.url
         void removeLegacyHostCookies(session.defaultSession.cookies, ready.url)
@@ -892,6 +907,14 @@ async function main(): Promise<void> {
     platformView.notifyLocaleChanged()
     windowsLanguage = locale.id
     refreshApplicationMenu()
+  })
+  ipcMain.handle(DESKTOP_IPC.webAccessGet, (event) => {
+    assertProductSender(event)
+    return webAccess.status()
+  })
+  ipcMain.handle(DESKTOP_IPC.webAccessSave, (event, update: unknown) => {
+    assertProductSender(event)
+    return webAccess.save(update)
   })
   ipcMain.handle(DESKTOP_IPC.updatesChannelGet, (event) => {
     assertProductSender(event)
@@ -1572,19 +1595,25 @@ async function main(): Promise<void> {
   publishUpdate(updateState)
 }
 
-const ownsDesktopInstance = claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
+function startDesktop(): void {
+  if (!claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })) return
+  void app.whenReady().then(main).catch(async (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(error)
+    const diagnosticFile = process.env.DSH_DESKTOP_DIAGNOSTIC_FILE
+    if (diagnosticFile !== undefined) {
+      await writeFile(diagnosticFile, `${error instanceof Error ? error.stack ?? message : message}\n`).catch(() => undefined)
+    }
+    reportFatal(error, 'main')
+  }).catch(async (error: unknown) => {
+    console.error(error)
+    shuttingDown = true
+    await stopOperationReports()
+    app.exit(1)
+  })
+}
 
-if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error)
-  console.error(error)
-  const diagnosticFile = process.env.DSH_DESKTOP_DIAGNOSTIC_FILE
-  if (diagnosticFile !== undefined) {
-    await writeFile(diagnosticFile, `${error instanceof Error ? error.stack ?? message : message}\n`).catch(() => undefined)
-  }
-  reportFatal(error, 'main')
-}).catch(async (error: unknown) => {
-  console.error(error)
-  shuttingDown = true
-  await stopOperationReports()
-  app.exit(1)
-})
+if (process.argv.includes('--genesis-pet-helper')) {
+  if (!/^[0-9a-f]{64}$/u.test(process.env.DSH_PET_LITE_HELPER_TOKEN ?? '')) app.exit(1)
+  else createRequire(import.meta.url)(join(runtimeResources().dsh, 'node_modules', 'dsh-pet-lite', 'runtime', 'electron-helper', 'main.cjs'))
+} else startDesktop()

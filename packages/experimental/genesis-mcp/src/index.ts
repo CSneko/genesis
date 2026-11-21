@@ -45,6 +45,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 const serverName = z.string().regex(/^[A-Za-z0-9_-]{1,32}$/u)
 const strings = z.record(z.string().min(1).max(256), z.string().max(8192)).refine(value => Object.keys(value).length <= 100)
 const customSchema = z.object({
+  includeServerInstructions: z.boolean().optional(),
   name: serverName,
   transport: z.enum(['streamable-http', 'stdio']),
   url: z.string().max(8192),
@@ -276,7 +277,11 @@ export class McpMarketplace extends TypertRemoteService {
           value.transport === 'streamable-http'
             ? { transport: value.transport, url: value.url, headers: protect(value.headers) }
             : { transport: value.transport, command: value.command, args: value.args, env: protect(value.env) }
-        await this.commit(value.name, { ...entry, enabled: true }, descriptor.revision, keys)
+        await this.commit(value.name, {
+          ...entry,
+          ...(value.includeServerInstructions === undefined ? {} : { includeServerInstructions: value.includeServerInstructions }),
+          enabled: true,
+        }, descriptor.revision, keys)
         return value.name
       })
     })

@@ -11,6 +11,7 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { once } from 'node:events'
+import type { IncomingMessage } from 'node:http'
 import { Agent, request as httpsRequest } from 'node:https'
 import { connect, createServer as createTcpServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -92,6 +93,7 @@ async function loadComposition(
   gzip = false,
   host = '127.0.0.1',
   tls?: Partial<TlsConfig> | null,
+  requireAdmission = false,
 ): Promise<Context> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-webserver-loader-'))
   const configPath = join(root, 'cordis.yml')
@@ -100,6 +102,7 @@ async function loadComposition(
     '  config:',
     `    host: '${host}'`,
     `    port: ${String(port)}`,
+    ...(requireAdmission ? ['    requireAdmission: true'] : []),
     ...(tls === undefined
       ? []
       : tls === null
@@ -333,6 +336,8 @@ describe('real Loader composition', () => {
 
   it('applies gzip only to eligible socket-backed HTTP responses', { timeout: 60_000 }, async () => {
     expect(HttpServer.Config({ host: '127.0.0.1', port: 0 })).toEqual({
+      allowWildcardHost: false,
+      requireAdmission: false,
       host: '127.0.0.1',
       port: 0,
       compression: 'none',
@@ -885,6 +890,8 @@ describe('real Loader composition', () => {
     const fixture = await tlsFixture()
     const tls = { certFile: fixture.certFile, keyFile: fixture.keyFile }
     expect(HttpServer.Config({ host: '127.0.0.1', port: 0, tls })).toEqual({
+      allowWildcardHost: false,
+      requireAdmission: false,
       host: '127.0.0.1',
       port: 0,
       tls,
@@ -1077,4 +1084,21 @@ describe('real Loader composition', () => {
     expect(fiber?.state).toBe(FiberState.FAILED)
     await expect(fiber?.await()).rejects.toThrow('EADDRINUSE')
   })
+})
+
+it('denies protected socket routes until admitted and after the gate is disposed', async () => {
+  const context = await loadComposition(0, false, '127.0.0.1', undefined, true)
+  const server = context.webServer
+  context.effect(() => server.register({
+    kind: 'exact',
+    path: '/private',
+    handler: (_req, res) => { res.end('authorized') },
+  }))
+  const url = `http://127.0.0.1:${server.port}/private`
+  expect((await fetch(url)).status).toBe(403)
+  const dispose = server.registerAdmission((req: IncomingMessage) => req.headers.authorization === 'test' ? undefined : 401)
+  expect((await fetch(url)).status).toBe(401)
+  expect(await (await fetch(url, { headers: { authorization: 'test' } })).text()).toBe('authorized')
+  dispose()
+  expect((await fetch(url)).status).toBe(403)
 })

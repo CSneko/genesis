@@ -125,6 +125,27 @@ it('restores the committed primary after publication uncertainty while retaining
   expect(await readBackup(join(root, 'life.lock.backup.json'))).toEqual(await second.core.snapshot())
 })
 
+it('keeps the backup manifest when reopening detects a damaged backup component', async () => {
+  const root = await directory()
+  const first = await setup(root)
+  const { identity } = await first.core.snapshot()
+  await first.close()
+  const backup = join(root, 'life.lock.backup.json')
+  const previous = await readFile(backup, 'utf8')
+  const ref = manifestSchema.parse(JSON.parse(previous)).records.find(record => record.table === 'identity')!
+  const component = join(`${backup}.d`, ref.table, `${ref.key}.json`)
+  const original = await readFile(component, 'utf8')
+  await writeFile(component, '{}\n')
+  await expect(openCore(root)).rejects.toMatchObject({
+    code: 'storage',
+    cause: expect.objectContaining({ message: expect.stringContaining('damaged life record') }),
+  })
+  expect(await readFile(backup, 'utf8')).toBe(previous)
+  await writeFile(component, original)
+  const restored = await setup(root)
+  expect((await restored.core.snapshot()).identity).toEqual(identity)
+})
+
 it.each(['missing', 'malformed', 'future-version', 'changed-content'] as const)(
   'refuses a %s referenced record without replacing identity or backup', async (damage) => {
     const root = await directory()

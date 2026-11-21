@@ -7,10 +7,11 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import type { DesktopRelease } from '../src/release.ts'
-import { developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { prepareDevelopmentProject } from './development-project.ts'
 import { prepareDevelopmentApp } from './development-app.ts'
-import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
+import { prepareDevelopmentLinuxRuntime } from './development-linux-runtime.ts'
+import { prepareDevelopmentPrimaryRuntime } from './prepare-primary-runtime.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -56,7 +57,7 @@ async function runPackageScript(script: string, cwd: string): Promise<void> {
   await run(process.execPath, [packageManager, 'run', script], cwd)
 }
 
-async function launchElectron(): Promise<void> {
+async function launchElectron(primaryRuntime: string): Promise<void> {
   const require = createRequire(import.meta.url)
   const electron: unknown = require('electron')
   if (typeof electron !== 'string') throw new Error('desktop development: electron executable is unavailable')
@@ -68,7 +69,7 @@ async function launchElectron(): Promise<void> {
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     DSH_HOME: home,
-    DSH_DESKTOP_PRIMARY_RUNTIME_DIR: process.env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR ?? developmentRuntimeDirectory(),
+    DSH_DESKTOP_PRIMARY_RUNTIME_DIR: primaryRuntime,
     DSH_DESKTOP_HOST_INSPECT_PORT: String(hostPort),
     DSH_DESKTOP_OPEN_DEVTOOLS: process.env.DSH_DESKTOP_OPEN_DEVTOOLS ?? '1',
     ELECTRON_ENABLE_LOGGING: process.env.ELECTRON_ENABLE_LOGGING ?? '1',
@@ -82,7 +83,10 @@ async function launchElectron(): Promise<void> {
     await run(executable, [], APP_ROOT, environment)
     return
   }
-  await run(electron, [
+  const executable = process.platform === 'linux' && !process.env.ELECTRON_OVERRIDE_DIST_PATH
+    ? prepareDevelopmentLinuxRuntime(electron, DEVELOPMENT_ROOT)
+    : electron
+  await run(executable, [
     `--inspect=127.0.0.1:${String(mainPort)}`,
     `--remote-debugging-port=${String(rendererPort)}`,
     `--user-data-dir=${userData}`,
@@ -92,10 +96,7 @@ async function launchElectron(): Promise<void> {
 
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { 'skip-build': { type: 'boolean', default: false } } })
-  if (!values['skip-build']) {
-    await runPackageScript('build:artifacts', REPOSITORY_ROOT)
-    await runPackageScript('build', APP_ROOT)
-  }
+  if (!values['skip-build']) await runPackageScript('build:artifacts', REPOSITORY_ROOT)
   for (const path of [
     join(APP_ROOT, 'lib', 'main.js'),
     join(REPOSITORY_ROOT, 'apps', 'desktop-host', 'lib', 'index.js'),
@@ -104,11 +105,16 @@ async function main(): Promise<void> {
   }
   const version = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
   const pnpmVersion = packageVersion(join(APP_ROOT, 'node_modules', 'pnpm', 'package.json'), 'pnpm package')
+  const target = resolveDesktopBuildTarget()
+  const primaryRuntime = process.env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR
+    ?? await prepareDevelopmentPrimaryRuntime(join(DEVELOPMENT_ROOT, 'runtime'), target, version, pnpmVersion)
+  const node = target === 'linux-x64' ? join(primaryRuntime, 'dependencies', 'node', 'bin', 'node')
+    : createRequire(import.meta.url)('electron') as string
   const release: DesktopRelease = {
     schemaVersion: 1,
     version,
     hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,
-    nodeVersion: execFileSync(createRequire(import.meta.url)('electron') as string, ['-p', 'process.versions.node'],
+    nodeVersion: execFileSync(node, ['-p', 'process.versions.node'],
       { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }).trim(),
     pnpmVersion,
   }
@@ -118,10 +124,9 @@ async function main(): Promise<void> {
     hostDir: join(REPOSITORY_ROOT, 'apps', 'desktop-host'),
     dependencyDir: join(REPOSITORY_ROOT, 'node_modules', '.pnpm', 'node_modules'),
     release,
-    target: resolveDesktopBuildTarget(),
+    target,
   })
-  await preparePrimaryRuntime()
-  await launchElectron()
+  await launchElectron(primaryRuntime)
 }
 
 await main().catch((error: unknown) => {

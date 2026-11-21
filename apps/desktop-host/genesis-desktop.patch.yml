@@ -1,0 +1,21 @@
+# The shared Life overlay carries the source Web sandbox default.
+- id: sandbox-policy
+  config:
+    mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+    workspaceRoot: !!js process.cwd()
+
+- id: genesis-computer-portal
+  config:
+    autoConnect: true
+    requireApplicationConsent: true
+    restoreTokenPath: !!js dshHomePath('computer/portal-token.json')
+
+- insert:
+    - id: drawai
+      name: dsh-drawai
+    - id: dsh-pet-lite
+      name: dsh-pet-lite
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+    - id: dsh-taiwind
+      name: dsh-taiwind
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"

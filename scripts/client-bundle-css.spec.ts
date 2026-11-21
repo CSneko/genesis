@@ -10,8 +10,9 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { build, type TsdownBundle, type UserConfig } from 'tsdown'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { packageAssetRevision } from '../packages/client/modules/src/assets.ts'
+import type { ClientBundleRegistration } from '../packages/client/modules/src/client/manifest.ts'
 import { clientBundle } from '../packages/client/tsdown.client.ts'
 
 interface EmittedAsset {
@@ -259,10 +260,14 @@ describe('client bundle package asset imports', () => {
         write: false, clean: false, exports: false, report: false, logLevel: 'silent',
       })
       const output = builds.flatMap(bundle => bundle.chunks).find(chunk => chunk.type === 'chunk' && chunk.fileName === 'client.js')
-      const code = output?.type === 'chunk' ? output.code : ''
-      expect(code).toContain(`require.asset(${JSON.stringify(WHALE_URL)})`)
-      expect(code).not.toContain('__dshPackageAsset_')
-      expect(code).toContain('"__dshPackageAsset("')
+      if (output?.type !== 'chunk') throw new Error('browser bundle missing')
+      const asset = vi.fn((reference: string) => `browser:${reference}`)
+      const unexpectedImport = (specifier: string): never => { throw new Error(`unexpected import: ${specifier}`) }
+      const resolver = Object.assign(unexpectedImport, { async: unexpectedImport, asset })
+      const load = vi.fn(({ factory }: ClientBundleRegistration) => ({ ...factory(resolver) }))
+      runInNewContext(output.code, { window: { __ModuleLoader__: { load } } })
+      expect(asset).toHaveBeenCalledExactlyOnceWith(WHALE_URL)
+      expect(load).toHaveReturnedWith({ url: `browser:${WHALE_URL}`, text: '__dshPackageAsset(' })
     } finally {
       for (const bundle of builds) await bundle[Symbol.asyncDispose]()
     }

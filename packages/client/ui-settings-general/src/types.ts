@@ -72,3 +72,31 @@ export interface DesktopChannelBridge {
    */
   subscribe(listener: (state: DesktopChannelState) => void): () => void
 }
+
+/** Saved and active Desktop Web access settings, with the key kept in the shell. */
+export interface DesktopWebAccessState {
+  readonly enabled: boolean
+  readonly port: number
+  readonly hasKey: boolean
+  readonly activePort: number | undefined
+  readonly restartRequired: boolean
+  readonly portUnavailable: boolean
+}
+
+/** Explicit local change to Desktop Web access. */
+export interface DesktopWebAccessUpdate {
+  readonly enabled: boolean
+  readonly port: number
+  readonly key?: string
+}
+
+/** Local preload operations for the Desktop-only Settings row. */
+export interface DesktopWebAccessBridge {
+  /** @returns Current preference and listener status. */
+  get(): Promise<DesktopWebAccessState>
+  /**
+   * @param update Validated again by the owning Desktop process.
+   * @returns Persisted state or the field requiring correction.
+   */
+  save(update: DesktopWebAccessUpdate): Promise<DesktopWebAccessState | 'port' | 'key'>
+}

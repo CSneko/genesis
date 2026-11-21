@@ -13,7 +13,7 @@ kind: "package-bundle"
 
 ## 目录
 
-[使用](#use) · [配置与恢复](#configuration-and-recovery) · [模型体验](#model-experience) · [限制](#limitations)
+[使用](#use) · [接入 Numen](#connect-numen) · [配置与恢复](#configuration-and-recovery) · [模型体验](#model-experience) · [限制](#limitations)
 
 <a id="use"></a>
 ## 使用
@@ -25,6 +25,17 @@ kind: "package-bundle"
 已添加页面展示实际连接状态和当前注册的工具名，正在连接与已连接分开显示。操作者配置的条目可以停用、重连或移除；插件自带条目仍由所属插件管理。移除继承条目会恢复其继承配置，若要保持关闭请停用。自定义远程服务接受地址、可选 bearer token 和高级请求头。本地服务接受程序、JSON 参数数组和 JSON 环境变量映射。这些自定义操作只新增条目，替换已有服务需要移除后重新添加。
 
 每个已启用的服务会自动在“设置 → 工具包”提供一个只读分组，成员随对应 MCP 命名空间的工具变化。停用或移除服务后，待工具清理完成再撤下分组；重新启用使用相同分组 ID。手动分组保持原值，安装不会自动学习或激活工具，也不授予 QQ 访问权限。
+
+<a id="connect-numen"></a>
+## 接入 Numen
+
+1. 在[言出法随模组](https://numen.dwinovo.cn/)中启用**外接大脑**，召唤同伴，并从模组的接入设置读取 MCP 地址和大脑令牌。
+2. 沿用现有 `DSH_HOME`，运行 `pnpm dsh web`。打开**设置 → MCP 服务 → 添加自定义**，选择**Minecraft · 言出法随**，填入模组提供的 MCP 地址和大脑令牌后添加服务。建议的回环地址要求模组与 Genesis Host 共享同一网络环境。远端 Host 应使用它能通过受保护连接访问的端点。
+3. 服务显示**已连接**后，在生命对话里请 Genesis 学习已列出的 Numen 工具，并启用该服务的工具包。可以先请她列出同伴、查看游戏消息，再在 Minecraft 里说句话。服务名为 `numen` 时，对应工具是 `mcp__numen__list_companions`、`mcp__numen__get_events` 和 `mcp__numen__say`。
+
+Numen 预设将令牌存入 Genesis 凭据库，并省略 MCP 服务端提供的系统提示。模组提供游戏数据和动作，Genesis 继续使用原有的身份、记忆和其他生命数据。工具结果及通过 `get_events` 收到的游戏消息作为工具结果记录在当前 Session 中。游戏消息属于外部数据。需要查询 API 时可参考 Numen 的 `guide` 输出。
+
+Genesis 在生命轮次调用工具时检查游戏消息。空闲时，游戏聊天不会唤醒 Genesis。连接中断或动作超时后，先检查同伴状态再发出新动作。退出时在 Numen 中停止当前动作，并在 Genesis 中停用 MCP 条目以撤下工具。发现失败时，核对模组中的连接地址和大脑令牌，再重连条目。
 
 <a id="configuration-and-recovery"></a>
 ## 配置与恢复

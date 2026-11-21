@@ -17,6 +17,7 @@ import { FiberState, type Context } from '@deepseek-ai/cordis'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import {
   boot,
+  loadOptionalPatches,
   readProfilePatches,
   createRuntimeResolution,
   initProfile,
@@ -37,6 +38,7 @@ import { installProxyFromEnvironment } from '@deepseek-ai/dsh-http-proxy'
 import { DSH_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { provideCmdline, type AppReady } from '@deepseek-ai/dsh-cmdline'
 import { createProcessShutdown, type ProcessShutdown } from './process-shutdown.ts'
+import { genesisModelSettings, initializeGenesisModelSettings } from './genesis-model-settings.ts'
 
 const NAME = 'dsh'
 
@@ -311,13 +313,19 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     })
 
     const rootConfig = join(composed.profile.dir, PROFILE_ROOT_FILENAME)
+    const home = resolveDshHome()
+    const sharedConfig = genesisModelSettings(composed.profile, home, [
+      loadOptionalPatches(NAME, homePatchPath()) ?? [], composed.overlays,
+    ])
+    if (sharedConfig !== undefined) await initializeGenesisModelSettings(home, sharedConfig)
     const profileContext: ProfileContext = {
       name: options.profile,
       ...(options.packageManager === undefined ? {} : { packageManager: options.packageManager }),
       dir: composed.profile.dir, patchPath: composed.profile.patchPath,
       installAnchor: options.resolvedProfile?.installAnchor ?? INSTALL_ANCHOR,
       startedBundles: composed.profile.layers.map(layer => layer.packageName),
-      cwd: process.cwd(), home: resolveDshHome(),
+      cwd: process.cwd(), home,
+      ...(sharedConfig === undefined ? {} : { sharedConfig }),
       overlays: composed.overlays, telemetryDisabledEnv: process.env.DSH_TELEMETRY_DISABLED,
     }
     const ctx = await boot(NAME, rootConfig, readProfilePatches(NAME, profileContext, composed.profile), async (hostCtx) => {

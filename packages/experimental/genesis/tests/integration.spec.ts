@@ -167,7 +167,7 @@ async function boot(
         ? [
           "- name: '@deepseek-ai/dsh-agent-preset-registry'",
           '  config: { default: life }',
-          ...['life', 'standard', 'ptc', 'minimal', 'cordis'].flatMap(id => [
+          ...['life', 'standard', 'ptc', 'minimal', 'cordis', 'genesis-model-setup'].flatMap(id => [
             "- name: '@deepseek-ai/dsh-agent-preset'",
             `  config: { id: ${id}, plugins: ${id === 'life' ? "[{ name: '@deepseek-ai/dsh-time-context' }]" : '[]'} }`,
           ]),
@@ -3192,6 +3192,97 @@ it('uses the saved Jev protocol once per completed turn, writes with a separate 
   expect((await next.genesis.snapshot()).identity).toEqual(identity)
 })
 
+it('verifies decisions in an isolated setup conversation before the operator starts a separate life conversation', async () => {
+  const root = await directory()
+  const memory = Genesis.Config({ leasePath: join(root, 'writer.lock'), memory: {
+    decisionProvider: 'reviewer', decisionModel: 'fixture', writerProvider: 'fixture', writerModel: 'chat', maxRetries: 0,
+  } }).memory!
+  const ctx = await boot(root, true, memory, true, false, true)
+  const approvalId = await ctx.loader.create({ name: '@deepseek-ai/dsh-user-approval' })
+  await ctx.loader.resolve(approvalId).fiber?.await()
+  let approved = false
+  ctx.on('approval/request', (request, next) => request.toolName === 'configure_genesis'
+    ? Promise.resolve(approved ? 'allowed-once' as const : 'rejected' as const) : next())
+  const chat = new ScriptedModel([
+    { name: 'configure_genesis', args: { action: 'verify' } },
+    'The decision check failed.',
+    { name: 'configure_genesis', args: { action: 'use-provider', provider: 'second-reviewer', model: 'fixture' } },
+    'The change was declined.',
+    { name: 'configure_genesis', args: {
+      action: 'configure-cloud', protocol: 'jev', endpoint: 'https://decision.example/v1/systemone', model: 'remote', requiresKey: true,
+    } },
+    'Enter your decision service key in Knowledge Base.',
+    { name: 'configure_genesis', args: { action: 'use-provider', provider: 'second-reviewer', model: 'fixture' } },
+    'The decision model is ready.',
+    'Hello!',
+  ])
+  ctx.llm.registerAdapter(['fixture'], chat)
+  ctx.llm.registerAdapter(['reviewer'], new ScriptedModel(['{"update":true}']))
+  const reviewer = new ScriptedModel(['{"update":false}'])
+  ctx.llm.registerAdapter(['second-reviewer'], reviewer)
+  ctx.tools.register(defineTool({
+    name: 'unrelated_tool',
+    description: 'An unrelated global tool.',
+    parameters: {},
+    output: { schema: { type: 'string' }, render: (_args, text) => [{ type: 'text', text }] },
+    execute: async () => 'unrelated',
+  }))
+  const signal = new AbortController().signal
+  const create = async (preset: string) => (await ctx.agents.create({
+    sessionId: SessionId(preset),
+    agentOptions: { provider: 'fixture', model: 'chat' },
+    setup: async (agentCtx) => { await ctx.agentPresets.mount(agentCtx, preset) },
+  })).agent
+  const setup = await create('genesis-model-setup')
+  const life = await create('life')
+  const configuredToolDeclared = async () => {
+    const toolSet = await ctx.tools.resolve({ agent: setup, modelSelection: { provider: 'fixture', model: 'chat' }, signal })
+    try {
+      return toolSet.view(setup).has('configure_genesis')
+    } finally {
+      toolSet.dispose()
+    }
+  }
+  await expect(ctx.genesisStatus.beginModelSetup(life.id, signal)).rejects.toThrow('onboarding')
+  expect(ctx.tools.schemas(setup).map(tool => tool.name)).toEqual(['configure_genesis'])
+  await expect(configuredToolDeclared()).resolves.toBe(false)
+  await ctx.genesisStatus.beginModelSetup(setup.id, signal)
+  const ask = async () => {
+    setup.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Verify the decision model.' }] }))
+    await setup.whenIdle()
+  }
+  await ask()
+  expect((await ctx.genesisStatus.inspect(signal)).setup?.verifiedSetupSessionId).toBeUndefined()
+  await ask()
+  expect(reviewer.requests).toHaveLength(0)
+  expect(ctx.genesisStatus.decisionModel()).toMatchObject({ provider: 'reviewer' })
+  approved = true
+  await ask()
+  expect(ctx.genesisStatus.decisionModel()).toMatchObject({
+    kind: 'jev', url: 'https://decision.example/v1/systemone',
+    keyRef: expect.stringMatching(/^GENESIS_DECISION_ENDPOINT_[A-F0-9]{64}$/),
+  })
+  expect((await ctx.genesisStatus.inspect(signal)).setup?.verifiedSetupSessionId).toBeUndefined()
+  await ask()
+  expect(reviewer.requests).toHaveLength(1)
+  expect(ctx.genesisStatus.decisionModel()).toMatchObject({ provider: 'second-reviewer' })
+  expect((await ctx.genesisStatus.inspect(signal)).setup?.verifiedSetupSessionId).toBe(setup.id)
+  expect(chat.requests[0]?.tools?.map(tool => tool.name)).toEqual(['configure_genesis'])
+  const setupRequest = JSON.stringify(chat.requests[0])
+  expect(setupRequest).toContain('Genesis model setup assistant')
+  expect(setupRequest).toContain('https://openrouter.ai/api/v1/systemone, model typesafe/jev-1.14')
+  expect(setupRequest).toContain('https://generativelanguage.googleapis.com/v1beta/decisions, model gemini-decision-1')
+  const before = await ctx.genesis.snapshot()
+  expect(before.identity.name).toBeNull()
+  expect(before.sessions).not.toHaveProperty(setup.id)
+  expect(before.memories).toEqual([])
+  await ctx.genesisStatus.initialize('芽', signal)
+  await expect(ctx.genesisStatus.greet(life.id, 'en', signal)).resolves.toBe(life.id)
+  await life.whenIdle()
+  await expect(configuredToolDeclared()).resolves.toBe(false)
+  expect((await ctx.genesis.snapshot()).identity).toMatchObject({ id: before.identity.id, name: '芽' })
+})
+
 it('keeps one life in Life mode and isolates all four ordinary presets from its tools, memory and prompts', async () => {
   const root = await directory()
   const embeddings = await embeddingFixture()
@@ -4196,6 +4287,14 @@ it('remembers an experience across turns, preserves changed preferences and reca
   expect(firstRequest).not.toContain('sourceEventIds')
   expect(firstRequest).not.toContain('The user prefers oolong.')
   expect(firstRequest).not.toContain('Unstored private marker')
+  const injected = reader.requests[0]!.messages
+    .filter(message => message.role === 'user' && message.source?.kind === 'genesis-state')
+    .flatMap(message => message.content)
+    .flatMap(block => block.type === 'text' ? [block.text] : [])
+    .join('\n')
+  expect(injected).toContain(`[genesis:memory:${current.id}]\n(reported by the user) "`)
+  expect(injected).toContain('currently prefers black tea')
+  expect(injected).not.toMatch(/"(?:version|level|type|confidence|deliveryHash)":/)
   const recall = other.session.ownEvents().find(event => event.type === 'tool/result')
   expect(JSON.stringify(recall)).toContain('alreadyPresent')
   expect(JSON.stringify(recall)).not.toContain(current.content)
@@ -4227,13 +4326,17 @@ it('limits automatic association to one embedding request while explicit recall 
     embeddings.config,
   )
   disposers.push(() => engine.close())
+  const snapshot = vi.spyOn(ctx.genesis, 'snapshot').mockRejectedValue(new Error('Recall must select before copying'))
   const start = performance.now()
-  expect(await engine.associate('Oolong preference', new AbortController().signal)).toContain('Oolong preference')
+  const sessionId = SessionId('embedding-recall-reader')
+  expect(await engine.associate('Oolong preference', new AbortController().signal, sessionId)).toContain('Oolong preference')
   console.info(
     `Automatic association: ${embeddings.requests.length} embedding requests, ${Math.round(performance.now() - start)} ms (local fixture)`,
   )
   expect(embeddings.requests).toHaveLength(1)
-  expect(await engine.recall({ text: 'Oolong preference', limit: 3, chars: 2000 })).toHaveLength(3)
+  expect(await engine.recall({ text: 'Oolong preference', sessionId, limit: 3, chars: 2000 })).toHaveLength(3)
+  expect(snapshot).not.toHaveBeenCalled()
+  snapshot.mockRestore()
   expect(embeddings.requests).toHaveLength((await ctx.genesis.snapshot()).memories.length + 2)
 })
 

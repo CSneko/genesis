@@ -1,0 +1,127 @@
+name: Build Genesis Desktop
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*', 'genesis-v*']
+    paths:
+      - 'apps/**'
+      - 'config/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'vendor/**'
+      - 'package.json'
+      - 'pnpm-*'
+      - 'tsconfig*.json'
+      - '.github/workflows/genesis-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: genesis-desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+  package:
+    name: Package ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: win-x64
+            runner: windows-2025
+            formats: exe
+          - target: mac-arm64
+            runner: macos-15
+            formats: dmg
+          - target: mac-x64
+            runner: macos-15-intel
+            formats: dmg
+          - target: linux-x64
+            runner: ubuntu-24.04
+            formats: 'deb rpm AppImage'
+    defaults:
+      run:
+        shell: bash
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5.0.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build installer and verify its packaged runtime
+        if: runner.os != 'Windows'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: pnpm run package:desktop "$TARGET" --standalone
+      - name: Build Windows installer and verify its packaged runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pnpm run package:desktop win-x64 --standalone
+      - name: Verify installer files
+        if: runner.os != 'Windows'
+        env:
+          TARGET: ${{ matrix.target }}
+          FORMATS: ${{ matrix.formats }}
+        run: |
+          set -euo pipefail
+          cd "apps/desktop/.desktop-build/targets/$TARGET/unsigned-artifacts"
+          shopt -s nullglob
+          for extension in $FORMATS; do
+            files=(*."$extension")
+            if [[ ${#files[@]} -ne 1 || ! -s "${files[0]}" ]]; then
+              echo "::error::Expected one nonempty .$extension artifact for $TARGET"
+              exit 1
+            fi
+            case "$extension" in
+              deb) dpkg-deb --info "${files[0]}" ;;
+              rpm) rpm -qp "${files[0]}" ;;
+              AppImage) "./${files[0]}" --appimage-offset ;;
+            esac
+          done
+      - name: Verify Windows installer file
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -File "apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe")
+          if ($files.Count -ne 1 -or $files[0].Length -eq 0) {
+            throw 'Expected one nonempty Windows installer'
+          }
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: genesis-desktop-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.exe
+            apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.dmg
+            apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.deb
+            apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.rpm
+            apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.AppImage
+          if-no-files-found: error
+          compression-level: 0
+          include-hidden-files: true
+      - name: Upload packaging diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: genesis-desktop-logs-${{ matrix.target }}
+          path: apps/desktop/.desktop-build/packaging-runs/
+          if-no-files-found: warn
+          include-hidden-files: true

@@ -40,8 +40,6 @@ Optional version-3 `EmotionState` separates nine-field `EmotionCurrent`, two-fie
 
 `genesis-state` attributes bounded, named life-module snapshots on existing user-message envelopes. Each listed module supersedes only its own earlier value; empty text clears that module. Unlisted modules remain current. The adapter compares retained projected messages rather than keeping unlogged delivery state. [Package context behavior](../../packages/experimental/genesis/README.md#model-experience) defines module selection and recovery.
 
-[Minecraft](../../packages/experimental/genesis-minecraft/README.md) owns the optional Java game connection, bounded skills, independent Jev monitoring and operator settings. Game observations enter the Life Session as attributed messages; connection state is never restored as an active skill.
-
 [Video creation](../../packages/experimental/genesis-video/README.md) owns life-bound Remotion projects, immutable revisions, imported assets and sandboxed render jobs. Tool learning, execution permission and successful rendering remain distinct facts; a job without a terminal receipt reports interrupted after restart and never replays automatically.
 
 `PersonId` identifies an authenticated QQ person independently of names and Sessions. `ConversationId` and `LifeConversation` bind group/private routes to durable Sessions; `PersonSource` is the logged `genesis-person` attribution. Optional version-1 `LifeState.people` retains only meaningful `LifePerson` relationship profiles, explicit operator binding and conversation routes. `QqController` owns independently persisted `QqConnection` choices, credentials, transport replacement and durable receipt inspection; `QqRuntime` owns transport readiness and input admission; Genesis owns relationship learning and memory audience checks. [QQ conversations](../genesis/qq.md) defines deployment, retention, failure and permission semantics.
@@ -1167,61 +1165,6 @@ Types: [Agent](core.md)
 
 Source: [`packages/experimental/genesis/src/message-routing.ts`](../../packages/experimental/genesis/src/message-routing.ts)
 
-<a id="ctxgenesisminecraft--minecraftgateway"></a>
-
-### `ctx.genesisMinecraft` — `MinecraftGateway`
-
-Operator access does not teach or enable any model tool.
-
-```ts cordis-catalog
-/**
- * Read settings and sampled status without a connection side effect.
- * @param signal - Caller cancellation.
- * @returns Current nonsecret status.
- */
-@Remote('inspect') inspect(signal: AbortSignal): Promise<MinecraftStatus>
-
-/**
- * Persist settings, stopping the existing game before changes.
- * @param settings - Complete operator draft.
- * @param revision - Displayed revision.
- * @param signal - Caller cancellation before admission.
- * @returns Committed revision.
- */
-@Remote('save') save(settings: MinecraftSettings, revision: number, signal: AbortSignal): Promise<number>
-
-/**
- * Connect with explicit server choices in a connection-owned Life conversation.
- * @param connection - Server, offline player name and protocol selection.
- * @param signal - Cancels setup.
- * @returns After real spawn and camera readiness.
- */
-@Remote('connect') connect(connection: MinecraftConnection, signal: AbortSignal): Promise<void>
-
-/**
- * Stop skills immediately without waiting for Jev or a chat response.
- * @param signal - Caller cancellation before admission.
- * @returns After controls are cleared.
- */
-@Remote('stop') stop(signal: AbortSignal): Promise<void>
-
-/**
- * Disconnect without automatic reconnection.
- * @param signal - Caller cancellation before admission.
- * @returns After all game resources close.
- */
-@Remote('disconnect') disconnect(signal: AbortSignal): Promise<void>
-
-/**
- * Stream bounded sampled status while this settings resource is open.
- * @param signal - Ends the subscription.
- * @returns Current snapshots; cancellation creates no additional work.
- */
-@Remote({ mode: 'stream' }) async *watch(signal: AbortSignal): AsyncIterable<MinecraftStatus>
-```
-
-Source: [`packages/experimental/genesis-minecraft/src/gateway.ts`](../../packages/experimental/genesis-minecraft/src/gateway.ts)
-
 <a id="ctxgenesispeople--genesispeoplegateway"></a>
 
 ### `ctx.genesisPeople` — `GenesisPeopleGateway`
@@ -1859,6 +1802,14 @@ decisionModel(): MemoryModelsSettings['decision']
  * @returns Validated answer and genuine endpoint probability when supplied; failure authorizes no action.
  */
 async decide( session: Session, question: string, input: Record<string, unknown> & { participants: object }, criteria: { true: string; false: string }, signal: AbortSignal, route?: MemoryModelsSettings['decision'], ): Promise<{ update: boolean; decision?: { probability: number; threshold: number } | undefined }>
+
+/**
+ * Admit a blank setup Session for the local operator. The grant expires on Agent disposal or naming.
+ * @param sessionId - Newly created setup Session.
+ * @param signal - Caller cancellation before admission.
+ * @returns Once the current dialogue model is resolved and the Session is authorized for setup.
+ */
+@Remote('beginModelSetup') beginModelSetup(sessionId: SessionId, signal: AbortSignal): Promise<void>
 
 /**
  * Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once.

@@ -5,7 +5,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm'
 /** Owned QQ transport, Life Session composition, replay-safe admission and real send receipts. @module */
 import { setTimeout as delay } from 'node:timers/promises'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
@@ -851,7 +851,18 @@ export class QqRuntime {
     }
     const registry = this.ctx.get('workspaceRegistry')
     if (registry !== undefined) {
-      const workspace = await registry.create(this.config.cwd, 'QQ')
+      let workspace = await registry.create(this.config.cwd, 'QQ')
+      const cwd = handle.agent.session.header.cwd
+      if (cwd !== undefined && cwd !== this.config.cwd && cwd !== workspace.path && isAbsolute(cwd)) {
+        // Bind mounts can expose the same directory under distinct canonical paths.
+        const [recorded, configured] = await Promise.all([
+          stat(cwd, { bigint: true }),
+          stat(workspace.path, { bigint: true }),
+        ])
+        if (recorded.isDirectory() && configured.isDirectory() && recorded.ino !== 0n
+          && recorded.dev === configured.dev && recorded.ino === configured.ino)
+          workspace = await registry.create(cwd, 'QQ')
+      }
       await workspace.attachSession(sessionId)
     }
     return handle

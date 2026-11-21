@@ -1,0 +1,341 @@
+diff --git a/dist/index.js b/dist/index.js
+index e79cd0c..4a38f13 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,5 +1,6 @@
+ import { createRequire } from "node:module";
+ import { spawn } from "node:child_process";
++import { randomBytes } from "node:crypto";
+ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+ import { dirname, join, resolve, sep } from "node:path";
+ import process from "node:process";
+@@ -116,6 +117,7 @@ function resolveElectronPath(candidates = []) {
+ 		list.push(value);
+ 	};
+ 	for (const value of candidates) push(value);
++	push(process.env.DSH_DESKTOP_PET_EXECUTABLE);
+ 	if (process.env.DSH_PET_ELECTRON_PATH) push(process.env.DSH_PET_ELECTRON_PATH);
+ 	for (const value of hostInjectedCandidates()) push(value);
+ 	try {
+@@ -187,6 +189,11 @@ async function ensureElectronDownload(options = {}) {
+ function defaultLaunch(options = {}) {
+ 	const electronPath = resolveElectronPath([options.electronPath]);
+ 	if (!electronPath) throw new Error("dsh-pet-lite: cannot resolve Electron executable. Set DSH_PET_ELECTRON_PATH or install electron.");
++	if (electronPath === process.env.DSH_DESKTOP_PET_EXECUTABLE) {
++		const entry = process.env.DSH_DESKTOP_PET_ENTRY;
++		const displayArgs = process.platform === "linux" && process.env.DISPLAY ? ["--ozone-platform=x11"] : [];
++		return { command: electronPath, args: [...displayArgs, ...(entry ? [entry] : []), "--genesis-pet-helper"] };
++	}
+ 	return {
+ 		command: electronPath,
+ 		args: [options.helperPath || defaultHelperMain]
+@@ -2514,11 +2521,13 @@ function notFound(res, pathname) {
+ const inject = [
+ 	"webServer",
+ 	"sessions",
+-	"workspaceRegistry"
++	"workspaceRegistry",
++	"connection"
+ ];
+ const name = PLUGIN_ID;
+ function apply(ctx) {
+ 	attachHost(ctx);
++	const helperToken = randomBytes(32).toString("hex");
+ 	let helper;
+ 	let desktopOpen = false;
+ 	/** 当前环境能否真的开一个独立窗口（纯浏览器访问时为 false）。 */
+@@ -2534,7 +2543,9 @@ function apply(ctx) {
+ 		if (!electronPath) throw new Error("PET_DESKTOP_UNAVAILABLE: no usable Electron runtime");
+ 		const process_ = new HelperProcess({
+ 			electronPath,
++			cwd: dshHomeDir(),
+ 			env: {
++				DSH_PET_LITE_HELPER_TOKEN: helperToken,
+ 				DSH_PET_LITE_ORIGIN: `http://127.0.0.1:${port}`,
+ 				DSH_PET_LITE_CONFIG_URL: `http://127.0.0.1:${port}${ROUTE_PREFIX}/catalog`
+ 			}
+@@ -2574,6 +2585,14 @@ function apply(ctx) {
+ 			kind: "prefix",
+ 			path: ROUTE_PREFIX,
+ 			handler: async (req, res) => {
++				if (req.headers["x-genesis-pet-helper"] !== helperToken) {
++					const admission = ctx.connection.admit(req);
++					if ("rejection" in admission) {
++						res.writeHead(admission.rejection);
++						res.end();
++						return;
++					}
++				}
+ 				const url = new URL(req.url ?? "/", "http://127.0.0.1");
+ 				const route = matchRoute(req.method ?? "GET", url.pathname);
+ 				if (!route) {
+diff --git a/runtime/electron-helper/main.cjs b/runtime/electron-helper/main.cjs
+index 56fdf46..da87e59 100644
+--- a/runtime/electron-helper/main.cjs
++++ b/runtime/electron-helper/main.cjs
+@@ -16,6 +16,7 @@
+  */
+ 
+ const path = require('node:path')
++const { createRequire } = require('node:module')
+ const process = require('node:process')
+ const { app, BrowserWindow, ipcMain, Menu, screen, shell } = require('electron')
+ 
+@@ -47,6 +48,11 @@ const BUBBLE_HEADROOM = 120
+ /** 宿主 origin 与配置地址（由插件 host 半侧注入）。 */
+ const ORIGIN = process.env.DSH_PET_LITE_ORIGIN || ''
+ const CATALOG_URL = process.env.DSH_PET_LITE_CONFIG_URL || ''
++const HELPER_TOKEN = process.env.DSH_PET_LITE_HELPER_TOKEN || ''
++const LINUX = process.platform === 'linux'
++const X11 = LINUX && process.argv.includes('--genesis-pet-helper') && app.commandLine.getSwitchValue('ozone-platform') === 'x11'
++let menuOpen = false
++let refreshX11Input
+ 
+ /** 窗口是否处于「忽略鼠标」态（Electron 没有读取 API，自己镜像）。 */
+ let ignoring = true
+@@ -61,14 +67,9 @@ let ignoring = true
+  */
+ let hovering = false
+ 
+-/**
+- * 唯一设置点击穿透的入口。
+- *
+- * `forward: true` 让窗口在被忽略时仍收到 mousemove —— 渲染端正是靠它判定「指针进了
+- * 宠物身体」。没有这个参数，整窗一旦穿透就再也没法翻转回来。
+- */
++/** Apply click-through on platforms that forward mouse motion to an ignored window. */
+ function setWindowIgnore(target, value) {
+-  if (target.isDestroyed())
++  if (LINUX || target.isDestroyed())
+     return
+   if (ignoring === value)
+     return
+@@ -76,6 +77,64 @@ function setWindowIgnore(target, value) {
+   target.setIgnoreMouseEvents(value, { forward: true })
+ }
+ 
++// X11 input shapes preserve drawing outside the pet's interactive area and
++// let XWayland route the first pointer event without querying the global cursor.
++function attachX11InputShape(target) {
++  const runtime = app.isPackaged ? path.join(process.resourcesPath, 'dsh') : app.getAppPath()
++  const koffi = createRequire(path.join(runtime, 'package.json'))('koffi')
++  const x11 = koffi.load('libX11.so.6')
++  const xext = koffi.load('libXext.so.6')
++  const rectangle = koffi.struct({ x: 'short', y: 'short', width: 'unsigned short', height: 'unsigned short' })
++  const open = x11.func('XOpenDisplay', 'void *', ['const char *'])
++  const close = x11.func('XCloseDisplay', 'int', ['void *'])
++  const sync = x11.func('XSync', 'int', ['void *', 'int'])
++  const combine = xext.func('XShapeCombineRectangles', 'void', [
++    'void *', 'unsigned long', 'int', 'int', 'int', koffi.pointer(rectangle), 'int', 'int', 'int',
++  ])
++  const display = open(null)
++  if (!display)
++    throw new Error('Cannot open the X11 display for the pet input shape.')
++  const windowId = target.getNativeWindowHandle().readUInt32LE()
++  const shapeInput = 2
++  const shapeSet = 0
++  const unsorted = 0
++  let hitbox = null
++  let pending
++  const apply = () => {
++    pending = undefined
++    if (target.isDestroyed() || !target.isVisible())
++      return
++    const bounds = target.getContentBounds()
++    const { scaleFactor } = screen.getDisplayMatching(bounds)
++    const rect = isDragging() || menuOpen ? [0, 0, bounds.width, bounds.height] : hitbox
++    let areas = null
++    if (rect) {
++      const [left, top, right, bottom] = rect
++      const x = Math.floor(left * scaleFactor)
++      const y = Math.floor(top * scaleFactor)
++      areas = [{ x, y, width: Math.ceil(right * scaleFactor) - x, height: Math.ceil(bottom * scaleFactor) - y }]
++    }
++    combine(display, windowId, shapeInput, 0, 0, areas, areas?.length ?? 0, shapeSet, unsorted)
++    sync(display, 0)
++  }
++  // Chromium updates the input region while applying window geometry.
++  const update = refreshX11Input = () => {
++    pending ??= setImmediate(apply)
++  }
++  target.once('closed', () => {
++    refreshX11Input = undefined
++    clearImmediate(pending)
++    close(display)
++  })
++  target.webContents.ipc.on('pet:set-hitbox', (_event, rect) => {
++    hitbox = Array.isArray(rect) && rect.length === 4 && rect.every(Number.isFinite) ? rect : null
++    update()
++  })
++  target.on('show', update)
++  target.on('move', update)
++  target.on('resize', update)
++}
++
+ /** 窗口尺寸：宠物本体 + 四周留白 + 上方气泡画布（按 size 百分比缩放）。 */
+ function windowSize(sizePercent) {
+   const width = Math.round((PET_BASE_WIDTH * sizePercent) / 100)
+@@ -135,7 +194,7 @@ function createWindow() {
+       preload: path.join(__dirname, 'preload.cjs'),
+       contextIsolation: true,
+       nodeIntegration: false,
+-      sandbox: false,
++      sandbox: true,
+       spellcheck: false,
+       // The page is loaded from file:// while all pet data comes from the DSH host
+       // on 127.0.0.1. Chromium otherwise blocks fetch() with "Failed to fetch" because
+@@ -144,6 +203,14 @@ function createWindow() {
+     },
+   })
+ 
++  created.webContents.on('will-navigate', event => event.preventDefault())
++  created.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
++  if (HELPER_TOKEN && /^http:\/\/127\.0\.0\.1:\d+$/u.test(ORIGIN)) {
++    created.webContents.session.webRequest.onBeforeSendHeaders({ urls: [ORIGIN + '/dsh-pet-lite/*'] }, (details, callback) => {
++      callback({ requestHeaders: { ...details.requestHeaders, 'x-genesis-pet-helper': HELPER_TOKEN } })
++    })
++  }
++
+   created.setAlwaysOnTop(true, 'screen-saver')
+   created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+   // 被其他窗口完全遮挡时不要让渲染停下来（否则宠物「消失」）。
+@@ -154,6 +221,13 @@ function createWindow() {
+   // 整窗点击穿透，从创建那一刻就生效。
+   ignoring = false
+   setWindowIgnore(created, true)
++  if (X11) {
++    try {
++      attachX11InputShape(created)
++    } catch (error) {
++      console.warn('[dsh-pet-lite] X11 input shape unavailable; the pet window will receive all clicks.', error)
++    }
++  }
+ 
+   // 可靠显示：只用 ready-to-show 在部分平台可能永远不触发，因此再补一条 did-finish-load
+   // 兜底（上游 issue #55 的同类修复）。
+@@ -168,24 +242,34 @@ function createWindow() {
+   loaded(created)
+ }
+ 
++/** Full display coordinates, including other monitors and areas reserved by system UI. */
++function desktopBounds() {
++  const displays = screen.getAllDisplays().map(display => display.bounds)
++  const x = Math.min(...displays.map(bounds => bounds.x))
++  const y = Math.min(...displays.map(bounds => bounds.y))
++  const right = Math.max(...displays.map(bounds => bounds.x + bounds.width))
++  const bottom = Math.max(...displays.map(bounds => bounds.y + bounds.height))
++  return { x, y, width: right - x, height: bottom - y }
++}
++
+ /** 加载渲染端页面（本地文件 + 宿主地址 + 初始几何作为查询参数）。 */
+ function loaded(target) {
+   // 渲染端不知道自己在屏幕哪里，也不知道工作区多大 —— 必须由主进程下发。
+   // dsh-pet 也走同一条路（它把 workArea / areas / primaryIndex 塞进查询串）。
+   // 否则渲染端只能猜，猜错的表现就是「一拖就跳左上角」或「只能在原地挪一小片」。
+   const bounds = target.getContentBounds()
+-  const { workArea } = screen.getDisplayMatching(bounds)
++  const area = desktopBounds()
+   const query = new URLSearchParams({
+     origin: ORIGIN,
+     catalog: CATALOG_URL,
+     // 窗口内容区左上角（屏幕坐标，DIP）
+     winX: String(bounds.x),
+     winY: String(bounds.y),
+-    // 工作区（屏幕坐标，DIP）：拖拽与抛掷的边界都按它算
+-    areaX: String(workArea.x),
+-    areaY: String(workArea.y),
+-    areaWidth: String(workArea.width),
+-    areaHeight: String(workArea.height),
++    // The renderer insets its movement area by 24 DIP.
++    areaX: String(area.x - 24),
++    areaY: String(area.y - 24),
++    areaWidth: String(area.width + 48),
++    areaHeight: String(area.height + 48),
+     margin: String(WINDOW_MARGIN),
+     // 上方气泡画布（窗口顶部留白）：渲染端的窗口几何必须与这里同源。
+     headroom: String(BUBBLE_HEADROOM),
+@@ -236,6 +320,8 @@ ipcMain.on('pet:set-bounds', (event, bounds) => {
+ 
+ /** 渲染端在指针进/出宠物命中区时翻转可交互性。 */
+ ipcMain.on('pet:set-interactive', (event, interactive) => {
++  if (LINUX)
++    return
+   hovering = Boolean(interactive)
+   const target = BrowserWindow.fromWebContents(event.sender)
+   if (!target || target.isDestroyed())
+@@ -297,7 +383,9 @@ ipcMain.on('pet:show-menu', (event, payload) => {
+   if (!target || target.isDestroyed())
+     return
+   // 菜单是窗口内交互：弹出期间保持可交互，否则点不到菜单项。
++  menuOpen = true
+   setWindowIgnore(target, false)
++  refreshX11Input?.()
+   const openUrl = typeof payload?.openUrl === 'string' && payload.openUrl ? payload.openUrl : ''
+   const template = []
+   // 宿主没给 openUrl（例如独立运行、没有桌面端）时只留「关闭宠物」，不摆一个点了没反应的项。
+@@ -321,7 +409,9 @@ ipcMain.on('pet:show-menu', (event, payload) => {
+     // 关闭（点外部 / Esc）后交还命中判定，下一次 pointermove 会重新算可交互性。
+     // 拖拽中不翻穿透（`dragging` 由下面的 pet:set-dragging 维护）。
+     callback: () => {
+-      if (!target.isDestroyed() && !isDragging())
++      menuOpen = false
++      refreshX11Input?.()
++      if (!X11 && !target.isDestroyed() && !isDragging())
+         setWindowIgnore(target, !hovering)
+     },
+   })
+@@ -349,6 +439,7 @@ ipcMain.on('pet:set-dragging', (event, value) => {
+   const target = BrowserWindow.fromWebContents(event.sender)
+   if (!target || target.isDestroyed())
+     return
++  refreshX11Input?.()
+   if (dragging) {
+     // 拖拽开始：窗口必须可交互，否则接下来的 move/up 全部收不到。
+     setWindowIgnore(target, false)
+@@ -356,7 +447,8 @@ ipcMain.on('pet:set-dragging', (event, value) => {
+   }
+   // 拖拽结束：交还给命中判定 —— 用最近一次悬停结果，不能无脑翻回穿透。
+   // 双击的第二次点击前通常没有 pointermove，翻了就再也翻不回来（见 hovering 注释）。
+-  setWindowIgnore(target, !hovering)
++  if (!X11)
++    setWindowIgnore(target, !hovering)
+ })
+ 
+ /**
+diff --git a/runtime/electron-helper/preload.cjs b/runtime/electron-helper/preload.cjs
+index 9505893..e3e5f35 100644
+--- a/runtime/electron-helper/preload.cjs
++++ b/runtime/electron-helper/preload.cjs
+@@ -5,6 +5,32 @@
+  */
+ const { contextBridge, ipcRenderer } = require('electron')
+ 
++if (process.platform === 'linux') {
++  window.addEventListener('DOMContentLoaded', () => {
++    const root = document.getElementById('root')
++    if (!root)
++      return
++    let last = ''
++    let frame = 0
++    const update = () => {
++      frame = 0
++      const bounds = root.querySelector('.dsh-pet__hitbox')?.getBoundingClientRect()
++      const rect = bounds?.width && bounds.height ? [bounds.left, bounds.top, bounds.right, bounds.bottom] : null
++      const key = rect?.join(',') ?? ''
++      if (key !== last) {
++        ipcRenderer.send('pet:set-hitbox', rect)
++        last = key
++      }
++    }
++    const observer = new MutationObserver(() => {
++      if (!frame)
++        frame = window.requestAnimationFrame(update)
++    })
++    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] })
++    update()
++  }, { once: true })
++}
++
+ contextBridge.exposeInMainWorld('petBridge', {
+   /** 逐帧跟随：窗口内容矩形（屏幕坐标，DIP）。 */
+   setBounds(x, y, width, height) {

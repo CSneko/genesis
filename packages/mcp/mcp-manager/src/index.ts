@@ -55,6 +55,8 @@ export interface McpManagedServerEntry {
   url: string
   /** streamable-http: extra request headers; values may use templates. */
   headers: Record<string, string>
+  /** Whether to include the server instructions in the system prompt. Omission includes them. */
+  includeServerInstructions?: boolean
   /** Durable intent: whether the entry asks for a running instance. */
   enabled: boolean
   /** Per-tool-call timeout override in milliseconds; omission uses the mcp-client default. */
@@ -92,6 +94,7 @@ const ServerEntrySchema = z.object({
   cwd: z.string().default(''),
   url: z.string().default(''),
   headers: z.dict(String).default({}),
+  includeServerInstructions: z.boolean(),
   enabled: z.boolean().default(true),
   toolCallTimeoutMs: z.number(),
   startupTimeoutMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(30_000),
@@ -576,6 +579,7 @@ export default class McpServerManager extends TypertRemoteService {
       serverName: name,
       failOnStartupError: false as const,
       expandTemplates: true,
+      ...entry.includeServerInstructions === undefined ? {} : { includeServerInstructions: entry.includeServerInstructions },
       ...entry.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: entry.closeTimeoutMs },
       ...entry.toolCallTimeoutMs === undefined ? {} : { toolCallTimeoutMs: entry.toolCallTimeoutMs },
       startupTimeoutMs: entry.startupTimeoutMs,

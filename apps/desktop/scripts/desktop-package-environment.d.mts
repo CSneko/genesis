@@ -7,6 +7,9 @@
  */
 export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 
+/** Select credential-free packaging for independent Desktop artifacts. */
+export function standaloneDesktopPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
+
 /**
  * Read a machine preset when selected, otherwise the target's required dotenv; no ambient release fallback.
  * PACKAGE_TEST_RELEASE_ID overrides the test preset only; blank retains its configured ID.
@@ -35,6 +38,6 @@ export function loadDesktopPackageEnvironment(
  */
 export function validateDesktopPackageEnvironment(
   environment: NodeJS.ProcessEnv,
-  target: { platform: 'win32' | 'darwin', arch: string },
+  target: { platform: 'win32' | 'darwin' | 'linux', arch: string },
   options?: { unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean },
 ): void

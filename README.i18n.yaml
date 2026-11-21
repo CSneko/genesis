@@ -6,14 +6,17 @@
   en: c980002a4b224802
   zh: 9e79941e2ba4474c
 /genesis/what-she-does-now:
-  en: 865141375a60ef9d
-  zh: cd7b9e34ea83b7ad
+  en: a1f2cc0a831c2af2
+  zh: d3bff98ef2c50f7a
 /genesis/run:
   en: 89ac9265f3b6c08b
   zh: 1038bd9181bbce21
 /genesis/run/run-from-source:
   en: 9daba7633967a3c9
   zh: 4453a44766698669
+/genesis/run/desktop:
+  en: 74030fa8363fd43f
+  zh: f5cc62626509884a
 /genesis/documentation:
   en: c2cb705143934557
   zh: 5f977e54005b8bed
@@ -23,3 +26,6 @@
 /genesis/lineage-and-license:
   en: d6c16b2b561fdeab
   zh: 89b8a923c2e0d1ee
+/genesis/upstream-plugins:
+  en: 72915bc7d1b8ce5c
+  zh: a2a7bb1d6dd9e70f

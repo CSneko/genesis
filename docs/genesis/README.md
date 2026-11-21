@@ -34,7 +34,9 @@ The workspace Life overlay defaults to `danger-full-access`: available file and 
 
 For local browser testing, run `pnpm dsh web --test-no-login`. Open the authenticated URL printed at startup; it exchanges the launch token for a browser cookie without a key-entry form. This workspace-only flag applies the test overlay last, fixes the listener to `127.0.0.1` even when `--host` is supplied, and preserves `--port`. API authentication remains enabled; the bare root URL still requires a valid cookie. Omit the flag to return to key login. Use a dedicated temporary `DSH_HOME` for automated tests.
 
-Use `pnpm dsh --no-genesis web` for ordinary Harness Web. This switch belongs only to the workspace launcher; the published `dsh` CLI, other profiles and Desktop retain their existing defaults. The examples below explicitly enable selected Genesis features.
+Use `pnpm dsh --no-genesis web` for ordinary Harness Web. This switch belongs to the workspace Web launcher. [Desktop](../../README.md#desktop) uses its own `desktop` profile and defaults. The examples below explicitly enable selected Genesis features.
+
+Genesis Web and Desktop share provider and model lists when they use the same `DSH_HOME`. Changes in **Settings → Models** are saved to `$DSH_HOME/genesis-models.patch.yml`. API keys still resolve from the shared credential store. See [provider settings migration](../upgrade-guide/v0.2.2-rc.1/genesis-provider-settings/guide.md) for existing profiles.
 
 ### Bilibili experiences
 

@@ -44,6 +44,8 @@ The QQ guide describes bounded image/video/file reading, scoped media sends, sam
 
 After a QQ Session is archived, the next admitted message from that user or group creates a new Session; later input and restart recovery use the latest binding. The old Session remains archived, retaining history, person relationships and message deduplication evidence. Unarchiving it does not change the current binding. Proactive sending never replaces an archived target by itself. To pause input, disable the QQ connection or remove the allowed target. See [conversation restoration](../../../docs/genesis/qq.md).
 
+When a bind mount exposes the configured QQ directory at a path recorded in a restored Session, Genesis verifies both paths identify the same directory and attaches the Session under its recorded path. A different directory fails workspace attachment and stops the QQ operation.
+
 Default media origins allow HTTPS subdomains through `https://*.qq.com` and explicitly include `https://multimedia.nt.qq.com.cn`; deployment overrides of `mediaOrigins` must include every intended origin explicitly. See the QQ guide for download restrictions.
 
 The operator-only `genesis_message` tool searches platform-resolved targets, sends text, forwards recent original operator messages and checks delivery receipts. Configure separate `outboundGroups` and `outboundUsers`; both default to empty and do not inherit incoming permissions. Cold targets are opened without a model turn. Durable reservations prevent repeated identical tool calls from resending; unknown outcomes remain inspectable after restart. See [cross-conversation messaging](../../../docs/genesis/qq.md#cross-conversation-messages) for limits, configuration, attribution and deletion.

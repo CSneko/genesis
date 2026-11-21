@@ -1921,126 +1921,6 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-mail -->
 
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-minecraft -->
-<a id="deepseek-aidsh-experimental-genesis-minecraft"></a>
-
-## `@deepseek-ai/dsh-experimental-genesis-minecraft`
-
-- `inject`: `storageDomain` · `tools` · `agents` · `agentPresets` · `agentDefaultModel` · `workspaceRegistry` · `genesisStatus` · `genesisToolkits` · `attachments`
-- `source`: [`packages/experimental/genesis-minecraft/src/index.ts:24`](../packages/experimental/genesis-minecraft/src/index.ts)
-
-```ts config-catalog
-/** Deployment-owned paths and resource limits; runtime settings live in the authenticated Minecraft section. */
-export type Config = ControllerConfig
-
-/** Host bounds and Life preset restriction. */
-export interface ControllerConfig extends RuntimeConfig, TaskConfig, ScriptConfig {
-  /** Only Agents composed with this preset can own game activity. */
-  lifePreset: string
-  /** Absolute workspace directory for a connection-owned conversation when no existing Life conversation is selected. */
-  workingDirectory: string
-  /** Maximum serialized Jev text state and questions, excluding separately bounded image bytes. */
-  inputChars: number
-  /** Maximum decoded Jev response characters; UTF-8 bytes are additionally bounded to four times this value. */
-  responseChars: number
-  /** Maximum serialized observation result and complete notification text characters. */
-  resultChars: number
-  /** Elapsed time without delivery that requests a periodic visual review; capture and notification limits still apply. */
-  visualReviewMs: number
-}
-
-/** Runtime resource bounds. */
-export interface RuntimeConfig extends CameraConfig, UseConfig {
-  /** Maximum milliseconds allowed for game connection and initial renderer setup. */
-  connectTimeoutMs: number
-  /** Maximum nearest client-known entities included in an observation. */
-  entityLimit: number
-  /** Maximum inventory stacks included in an observation. */
-  inventoryLimit: number
-  /** Maximum recent player chat messages retained in memory and included in observations. */
-  chatLimit: number
-  /** Maximum recently issued observation identifiers retained for action admission. */
-  observationLimit: number
-  /** Maximum observation age in milliseconds at skill admission. */
-  observationMaxAgeMs: number
-  /** Maximum radius searched around the bot for optional mining hints. */
-  digSearchRadius: number
-  /** Maximum matching blocks evaluated per assisted mining skill. */
-  digCandidates: number
-  /** Maximum eye-to-block-center distance admitted for digging; pathfinding approaches a visible face. */
-  digReach: number
-  /** Maximum distance for a single directional move, in blocks. */
-  moveMaxDistance: number
-  /** Maximum nearby block records in an observation. */
-  blockLimit: number
-  /** Radius searched for observation block records; unloaded regions remain unknown. */
-  blockSearchRadius: number
-  /** Maximum source blocks mined by one collection skill. */
-  collectBlockLimit: number
-  /** Maximum wait per mined block for inventory acquisition, including pickup movement. */
-  collectPickupTimeoutMs: number
-  /** Radius around each mined block in which matching drops may be approached. */
-  collectPickupRadius: number
-}
-
-/** Resource limits for connection-local plans. */
-export interface TaskConfig {
-  /** Maximum submitted steps per short task. */
-  taskStepLimit: number
-  /** Maximum short-task lifetime, independent of individual skill timeouts. */
-  taskTimeoutLimitMs: number
-  /** Maximum repetitions per repeated mining step. */
-  taskRepeatLimit: number
-  /** Complete serialized model-input budget, also used to bound a submitted plan. */
-  inputChars: number
-  /** Maximum consecutive non-admission decisions before returning the plan for replanning. */
-  taskAdmissionLimit: number
-}
-
-/** Existing code, output and task time bounds plus the script binding-call limit. */
-export interface ScriptConfig {
-  /** Maximum serialized script audit input; source is bounded to half this value. */
-  inputChars: number
-  /** Maximum serialized audit record; script output is bounded to half this value. */
-  resultChars: number
-  /** Maximum elapsed milliseconds for tasks and finite Minecraft scripts. */
-  taskTimeoutLimitMs: number
-  /** Maximum guarded tool dispatches per one-shot run or resident handler; each action uses two calls. */
-  scriptCallLimit: number
-  /** Maximum queued observed events for a resident script. */
-  scriptEventQueueLimit: number
-  /** Milliseconds between generated tick events; busy callbacks coalesce ticks. */
-  scriptTickMs: number
-}
-
-/** Deployment capture limits; screenshots are re-renderings, without resource packs or vanilla menus. */
-export interface CameraConfig {
-  /** Absolute browser executable, or empty to use the Playwright installation. */
-  chromiumPath: string
-  /** First-person image width in CSS pixels. */
-  width: number
-  /** First-person image height in CSS pixels. */
-  height: number
-  /** Screenshot JPEG quality from 1 to 100. */
-  jpegQuality: number
-  /** Rendered radius in chunks within the bot's loaded world. */
-  viewDistance: number
-  /** Maximum raw screenshot or player texture bytes. */
-  maxImageBytes: number
-  /** Maximum milliseconds per browser setup, screenshot or texture request. */
-  timeoutMs: number
-}
-
-/** Deployment bounds for held-item activation; server effects require subsequent observation. */
-export interface UseConfig {
-  /** Default milliseconds to hold item activation before releasing it. */
-  useHoldMs: number
-  /** Maximum requested item activation duration in milliseconds. */
-  useHoldLimitMs: number
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-minecraft -->
-
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-genesis-qq -->
 <a id="deepseek-aidsh-experimental-genesis-qq"></a>
 
@@ -3441,7 +3321,7 @@ export interface LspLocalServerConfig {
 ## `@deepseek-ai/dsh-mcp-client`
 
 - `inject`: `tools`
-- `source`: [`packages/mcp/mcp-client/src/index.ts:142`](../packages/mcp/mcp-client/src/index.ts)
+- `source`: [`packages/mcp/mcp-client/src/index.ts:146`](../packages/mcp/mcp-client/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for one stdio or Streamable HTTP MCP server. */
@@ -3475,6 +3355,8 @@ export interface StdioConfig {
   expandTemplates: boolean
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
+  /** Whether to include the server instructions in the system prompt. Omission includes them. */
+  includeServerInstructions?: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -3507,6 +3389,8 @@ export interface StreamableHttpConfig {
   expandTemplates: boolean
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
+  /** Whether to include the server instructions in the system prompt. Omission includes them. */
+  includeServerInstructions?: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
@@ -3536,7 +3420,7 @@ export interface ReconnectConfig {
 
 - `inject`: `tools`
 - `refs`: [`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts) · `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/mcp/mcp-manager/src/index.ts:71`](../packages/mcp/mcp-manager/src/index.ts)
+- `source`: [`packages/mcp/mcp-manager/src/index.ts:73`](../packages/mcp/mcp-manager/src/index.ts)
 
 ```ts config-catalog
 /** Manager configuration with live server entries. */
@@ -3566,6 +3450,8 @@ export interface McpManagedServerEntry {
   url: string
   /** streamable-http: extra request headers; values may use templates. */
   headers: Record<string, string>
+  /** Whether to include the server instructions in the system prompt. Omission includes them. */
+  includeServerInstructions?: boolean
   /** Durable intent: whether the entry asks for a running instance. */
   enabled: boolean
   /** Per-tool-call timeout override in milliseconds; omission uses the mcp-client default. */

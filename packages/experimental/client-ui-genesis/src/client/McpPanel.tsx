@@ -483,13 +483,15 @@ function Custom({
 }: Locale & { disabled: boolean; invalid: () => void; save: (input: McpCustom) => Promise<void> }) {
   const id = useId(),
     [name, setName] = useState(''),
-    [transport, setTransport] = useState<'streamable-http' | 'stdio'>('streamable-http'),
+    [kind, setKind] = useState<'streamable-http' | 'stdio' | 'numen'>('streamable-http'),
     [url, setUrl] = useState(''),
     [key, setKey] = useState(''),
     [command, setCommand] = useState(''),
     [args, setArgs] = useState('[]'),
     [env, setEnv] = useState('{}'),
     [headers, setHeaders] = useState('{}')
+  const numen = kind === 'numen'
+  const transport = kind === 'stdio' ? 'stdio' : 'streamable-http'
   return (
     <form
       className={styles.form}
@@ -515,6 +517,7 @@ function Custom({
             return
           }
           void save({
+            ...(numen ? { includeServerInstructions: false } : {}),
             name,
             transport,
             url: transport === 'streamable-http' ? url : '',
@@ -528,7 +531,34 @@ function Custom({
         }
       }}
     >
-      <p className={css.secondary}>{t('customHint')}</p>
+      <label className={styles.field}>
+        {t('transport')}
+        <select
+          value={kind}
+          onChange={(event) => {
+            const selected = event.target.value
+            if (selected === 'numen') {
+              setName('numen')
+              setUrl('http://127.0.0.1:8765/mcp')
+            } else if (numen) {
+              setName('')
+              setUrl('')
+            }
+            if (numen || selected === 'numen') {
+              setKey('')
+              setHeaders('{}')
+              setArgs('[]')
+              setEnv('{}')
+            }
+            setKind(selected === 'numen' || selected === 'stdio' ? selected : 'streamable-http')
+          }}
+        >
+          <option value="streamable-http">Streamable HTTP</option>
+          <option value="stdio">stdio</option>
+          <option value="numen">{t('numen')}</option>
+        </select>
+      </label>
+      <p className={css.secondary}>{t(numen ? 'numenHint' : 'customHint')}</p>
       <label className={styles.field} htmlFor={`${id}-name`}>
         {t('name')}
         <Input
@@ -541,18 +571,6 @@ function Custom({
             setName(event.target.value)
           }}
         />
-      </label>
-      <label className={styles.field}>
-        {t('transport')}
-        <select
-          value={transport}
-          onChange={(event) => {
-            setTransport(event.target.value === 'stdio' ? 'stdio' : 'streamable-http')
-          }}
-        >
-          <option value="streamable-http">Streamable HTTP</option>
-          <option value="stdio">stdio</option>
-        </select>
       </label>
       {transport === 'streamable-http' ? (
         <>
@@ -569,11 +587,12 @@ function Custom({
             />
           </label>
           <label className={styles.field} htmlFor={`${id}-key`}>
-            {t('bearer')}
+            {t(numen ? 'numenToken' : 'bearer')}
             <Input
               id={`${id}-key`}
               type="password"
               autoComplete="off"
+              required={numen}
               value={key}
               onChange={(event) => {
                 setKey(event.target.value)

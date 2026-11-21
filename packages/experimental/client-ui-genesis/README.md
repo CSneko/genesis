@@ -15,7 +15,7 @@ Optional adult character sexuality is off by default and configurable on Plugins
 
 Genesis → Cognition and initiative combines thought controls, proactive Web channel policy and delivery receipts. The separate proactive settings seat and Actions delivery tab are omitted.
 
-Plugins → Genesis manages optional capabilities and their settings. MCP is built into the workspace composition and opens in Settings → MCP services. New workspace profiles enable weather, speech and browser support; QQ, mail, Minecraft, wallet and companion start disabled. Existing saved bundle selections are preserved. Later starts retain operator choices. Core life services remain enabled without individual plugin cards. Genesis-owned plugins identify their author as @CSNeko; package specifiers remain unchanged.
+Plugins → Genesis manages optional capabilities and their settings. MCP is built into the workspace composition and opens in Settings → MCP services. Use its [Numen connection](../genesis-mcp/README.md#connect-numen) to play Minecraft. New workspace profiles enable weather, speech and browser support; QQ, mail, wallet and companion start disabled. Existing saved bundle selections are preserved. Later starts retain operator choices. Core life services remain enabled without individual plugin cards. Genesis-owned plugins identify their author as @CSNeko; package specifiers remain unchanged.
 
 Settings → MCP services provides public catalog discovery, service details, one-action installation with required credentials, custom connections and live connection controls through the optional [MCP bundle](../genesis-mcp/README.md).
 
@@ -26,6 +26,8 @@ The left sidebar provides four workspaces beside Plugins and Scheduled tasks: Ge
 Settings → Sleep edits schedules and wake controls; Genesis → Cognition and initiative manages private cognition. Life conversations display the current sleep state. See [sleep](../../../docs/genesis/sleep.md). Thought output budgets use M tokens, defaulting to 50M; per-request output, request-count and tool-call-count controls are absent.
 
 The sleep banner uses the lightweight rhythm endpoint; it does not subscribe to full life inspection when opening conversations.
+
+**Plugins → Genesis → Electric shock** controls [electric shock](../genesis-shock/README.md) in Life conversations.
 
 **Plugins → Genesis → Punishment** controls the built-in, disabled-by-default [punishment webhook](../genesis-punishment/README.md). Set the webhook URL, tool description and level description in its settings; saved changes apply immediately and survive restart. Enabling or saving does not send a request. Its **Allow group chats** setting optionally permits QQ groups while retaining tool learning, toolkit activation and QQ permission checks.
 
@@ -79,8 +81,6 @@ Memories offers multi-selection and explicit organization into one or several in
 
 Memories includes an expandable operator identity form. Saving it safely relabels current legacy participant roles; conflicts retain the draft. Direct edits and conversions add no history. The editor retains stable date anchors while character-facing recall retains important exact dates and renders ordinary experiences relatively. See [identity and memory time](../../../docs/genesis/memory.md).
 
-The separate [Minecraft section](../genesis-minecraft/README.md) configures access, independent model selection and monitoring, with stop and disconnect controls. The AI chooses connection details through `minecraft_connect` in its current conversation. Its live status subscription runs only while the resource is open; game activity continues after closing the panel.
-
 Settings → Temporary memories configures a separate small summary model, optional write-only endpoint key and inactivity interval, with expiry previews, immediate forgetting and failed-source retry. See [temporary memory](../../../docs/genesis/temporary-memory.md). Delivery history and temporary memories use separated sections and record cards, with full-history search and previous/next page controls.
 
 The optional [video toolkit](../genesis-video/README.md) creates `*.genesis-remotion.html` files. Their dedicated right-sidebar viewer plays the saved Remotion composition directly, with seeking, volume and fullscreen; Open in browser opens the same isolated Player. Source edits become visible after rebuilding the preview and reloading the file. The shared file reader owns authentication, size limits and refresh. Closing the view releases its Blob URLs; hiding it pauses playback.
@@ -101,6 +101,8 @@ The source-workspace life preset includes an isolated automatic-compaction backe
 Memories → Personality and speaking style groups enduring self tendencies and procedural speaking or behavioral habits. A dedicated bounded read selects these entries before unrelated memory previews. Add, edit, conversion and deletion reuse the existing version-fenced memory operations and editor; rejected writes retain the draft. This page does not call a model or expose trait-score controls.
 
 The Host life plugin owns character and memory instructions. This companion creates the first Session through the existing Session API and asks the Host to enqueue its logged built-in awakening. Provider checks prepare configured routes; endpoint checks authenticate against the model catalog, and embedding testing makes one request. Memory browsing, text search and direct CRUD do not run inference. Per-reply generation uses its source conversation and the independent writer, bypasses the decision model and enforces the chosen memory layer; automatic review remains enabled. See [memory controls](../../../docs/genesis/memory.md) for version checks, sources and retry behavior.
+
+**Set up with AI** opens an operator-authorized setup Session before awakening. It offers the naming action when the Host verifies the decision model for that Session. See [first awakening](../../../docs/genesis/awakening.md#configure-and-start) for setup and credential entry.
 
 Memories → Her writings browses, searches, reads, edits and deletes the character’s writings and manages their categories through the authenticated records Remote. Shared on-demand resources retain data on failure; captured drafts and revision checks protect edits. See [writings](../../../docs/genesis/records.md) for deletion, attribution and recovery.
 

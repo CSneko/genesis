@@ -68,6 +68,7 @@ export interface Recipe extends McpRecipe {
     args?: string[]
     env?: Record<string, string>
     headers?: Record<string, string>
+    includeServerInstructions?: boolean
   }
 }
 /** Reject non-HTTP addresses, embedded credentials and credential-template injection.

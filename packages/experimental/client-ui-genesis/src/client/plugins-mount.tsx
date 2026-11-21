@@ -11,25 +11,26 @@ import { StatusResource } from './resource.ts'
 import css from './StatusPanel.module.css'
 
 const plugins = [
+  { id: 'shock', package: '@deepseek-ai/dsh-genesis-shock' },
   { id: 'punishment', package: '@deepseek-ai/dsh-genesis-punishment' },
   { id: 'weather', package: '@deepseek-ai/dsh-genesis-weather' },
   { id: 'qq', package: '@deepseek-ai/dsh-experimental-genesis-qq' },
   { id: 'mail', package: '@deepseek-ai/dsh-experimental-genesis-mail' },
-  { id: 'minecraft', package: '@deepseek-ai/dsh-experimental-genesis-minecraft' },
   { id: 'wallet', package: '@deepseek-ai/dsh-experimental-genesis-wallet' },
   { id: 'companion', package: '@deepseek-ai/dsh-experimental-genesis-companion' },
   { id: 'speech', package: '@deepseek-ai/dsh-experimental-genesis-speech' },
   { id: 'browser', package: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp' },
 ] as const
-type Selection = (typeof plugins)[number]['id'] | 'intimacy'
+type Selection = Exclude<(typeof plugins)[number]['id'], 'shock'> | 'intimacy'
+type EnableSnapshot = ConfigFormSnapshot<{ enabled: boolean }>
 const en = {
   title: 'Genesis',
   description: 'Enable optional Genesis capabilities and configure them here. Core life services remain enabled.',
+  shock: 'Electric shock',
   punishment: 'Punishment',
   weather: 'Weather',
   qq: 'QQ',
   mail: 'Mail',
-  minecraft: 'Minecraft',
   wallet: 'Wallet',
   companion: 'Companion',
   speech: 'Speech',
@@ -54,11 +55,11 @@ type Key = keyof typeof en
 const zh: Record<Key, string> = {
   title: 'Genesis',
   description: '在这里启停和配置 Genesis 的可选能力，核心生命功能保持启用',
+  shock: '电击',
   punishment: '惩罚',
   weather: '天气',
   qq: 'QQ',
   mail: '邮件',
-  minecraft: 'Minecraft',
   wallet: '钱包',
   companion: 'Companion',
   speech: '语音',
@@ -80,8 +81,9 @@ const zh: Record<Key, string> = {
   browserAuthor: 'Harness 浏览器集成',
 }
 interface Actions {
-  hooks: { settings: HostObservable<string>; punishmentConfig: HostObservable<ConfigFormSnapshot<{ enabled: boolean }>> }
+  hooks: { settings: HostObservable<string>; punishmentConfig: HostObservable<EnableSnapshot>; shockConfig: HostObservable<EnableSnapshot> }
   setPunishmentEnabled(value: boolean): Promise<boolean>
+  setShockEnabled(value: boolean): Promise<boolean>
   setEnabled: TypertClientRemote['pluginManager']['setBundleEnabled']
   refresh(): void
 }
@@ -111,6 +113,8 @@ export function GenesisPlugins({
   useSettings,
   usePunishmentConfig,
   setPunishmentEnabled,
+  useShockConfig,
+  setShockEnabled,
 }: PropsRuntime<'plugins.tab'> & PropsRenderSlots<'genesis.plugin.settings'> & PropsLocale<'genesis.plugins'> & InjectFace<Actions>) {
   const resource = useResource<'genesis-plugins'>('dsh-resource://genesis-plugins/catalog')
   const [selected, setSelected] = useState<Selection>()
@@ -124,13 +128,13 @@ export function GenesisPlugins({
       mounted.current = false
     }
   }, [])
-  const toggle = (name: string, enabled: boolean) => {
+  const toggle = (name: string, enabled: boolean, setBuiltin?: (value: boolean) => Promise<boolean>) => {
     if (operation.current) return
     operation.current = true
     setPending(name)
     setNotice(undefined)
-    const result = name === '@deepseek-ai/dsh-genesis-punishment'
-      ? setPunishmentEnabled(enabled).then(ok => ({ ok, value: { application: 'applied' as const } }))
+    const result = setBuiltin !== undefined
+      ? setBuiltin(enabled).then(ok => ({ ok, value: { application: 'applied' as const } }))
       : setEnabled(name, enabled)
     void result
       .then((result) => {
@@ -154,7 +158,10 @@ export function GenesisPlugins({
         if (mounted.current) setPending(undefined)
       })
   }
-  const punishment = usePunishmentConfig(value => value)
+  const builtinSwitches = {
+    punishment: { snapshot: usePunishmentConfig(value => value), set: setPunishmentEnabled },
+    shock: { snapshot: useShockConfig(value => value), set: setShockEnabled },
+  }
   const availableSettings = useSettings(value => value).split('\0')
   const selectedPlugin = plugins.find(plugin => plugin.id === selected)
   const enabled = selected === 'punishment' || selectedPlugin === undefined || resource.value?.find(bundle => bundle.name === selectedPlugin.package)?.enabled === true
@@ -174,9 +181,10 @@ export function GenesisPlugins({
         resource.value === undefined ? null : (
           <ul className={css.records}>
             {plugins.map((plugin) => {
-              const builtin = plugin.id === 'punishment'
+              const builtin = plugin.id === 'punishment' || plugin.id === 'shock' ? builtinSwitches[plugin.id] : undefined
               const bundle = resource.value?.find(item => item.name === plugin.package)
-              const enabled = builtin ? punishment.value?.enabled === true : bundle?.enabled === true
+              const enabled = builtin ? builtin.snapshot.value?.enabled === true : bundle?.enabled === true
+              const selection = plugin.id === 'shock' ? undefined : plugin.id
               return (
                 <li key={plugin.id}>
                   <div className={css.header}>
@@ -187,27 +195,25 @@ export function GenesisPlugins({
                       disabled={
                         pending !== undefined ||
                         (builtin
-                          ? punishment.status !== 'ready' || !punishment.writable
+                          ? builtin.snapshot.status !== 'ready' || !builtin.snapshot.writable
                           : resource.status !== 'live' || bundle === undefined || bundle.availability === 'missing' || bundle.readOnlyReason !== undefined)
                       }
                       onChange={(value) => {
-                        toggle(plugin.package, value)
+                        toggle(plugin.package, value, builtin?.set)
                       }}
                     />
                   </div>
                   <p className={css.secondary}>
-                    {t(plugin.id === 'browser' ? 'browserAuthor' : 'author')} · {t(enabled ? 'enabled' : 'disabled')}
+                    {plugin.id === 'shock' ? null : `${t(plugin.id === 'browser' ? 'browserAuthor' : 'author')} · `}
+                    {t(enabled ? 'enabled' : 'disabled')}
                   </p>
                   {bundle?.error ? <p role="alert">{t('failure')}</p> : null}
                   {!builtin && bundle === undefined && resource.status === 'live' ? <p>{t('unavailable')}</p> : null}
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSelected(plugin.id)
-                    }}
-                  >
-                    {t('configure')}
-                  </Button>
+                  {selection === undefined ? null : (
+                    <Button variant="outline" onClick={() => setSelected(selection)}>
+                      {t('configure')}
+                    </Button>
+                  )}
                 </li>
               )
             })}
@@ -258,6 +264,7 @@ export function mountGenesisPlugins(ctx: Context): void {
   ctx.inject(['remote.pluginManager'], (scope) => {
     const resource = new StatusResource()
     const punishment = scope.configForms.get<{ enabled: boolean }>('genesis-punishment')
+    const shock = scope.configForms.get<{ enabled: boolean }>('genesis-shock')
     scope.effect(() => scope.locale.register('genesis.plugins', { en, zh }))
     scope.effect(() =>
       scope.resources.register<'genesis-plugins'>({
@@ -285,6 +292,7 @@ export function mountGenesisPlugins(ctx: Context): void {
           inject: (): Actions => ({
             hooks: {
               punishmentConfig: punishment,
+              shockConfig: shock,
               settings: {
                 getSnapshot: () =>
                   scope.slots
@@ -295,6 +303,7 @@ export function mountGenesisPlugins(ctx: Context): void {
               },
             },
             setPunishmentEnabled: value => punishment.set('enabled', value),
+            setShockEnabled: value => shock.set('enabled', value),
             setEnabled: (...args) => scope.remote.pluginManager.setBundleEnabled(...args),
             refresh: () => {
               resource.refresh()

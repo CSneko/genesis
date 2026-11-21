@@ -11,7 +11,7 @@ import type { MemoryModelsSettings } from './status-types.ts'
 import type { LifeCore } from './core.ts'
 import { auxiliaryCall } from './auxiliary-call.ts'
 import { boundedJson } from './context.ts'
-import { memoryViewFor } from './memory-access.ts'
+import { lifeReads, memoryViewFor } from './memory-access.ts'
 import { behaviorMemories, behaviorReading, isNonDeclarative, PERSONALITY_GUIDANCE } from './personality.ts'
 import { interestReading } from './interest.ts'
 import { withoutIntimacy, publicLifeEvents } from './intimacy-state.ts'
@@ -517,12 +517,12 @@ export class LifeDeliberationEngine {
 export async function agencyContext(core: LifeCore, config: Config, includeEvidence = true): Promise<string> {
   const settings = config.deliberation
   if (settings === undefined) return ''
-  const state = await core.snapshot()
-  if (state.agency === undefined) throw new GenesisError('invalid-state', 'Agency context is absent. Inspect life storage.')
+  const agency = await core[lifeReads].agencyContextState()
+  if (agency === undefined) throw new GenesisError('invalid-state', 'Agency context is absent. Inspect life storage.')
   const now = new Date().toISOString()
   const view = {
-    ...(includeEvidence ? { version: state.agency.version, revision: state.agency.revision } : {}),
-    motivations: state.agency.motivations
+    ...(includeEvidence ? { version: agency.version, revision: agency.revision } : {}),
+    motivations: agency.motivations
       .filter(item => item.status === 'active')
       .slice(0, config.queryLimit)
       .map(item => ({
@@ -532,7 +532,7 @@ export async function agencyContext(core: LifeCore, config: Config, includeEvide
           : `${Math.round(motivationStrength(item, now, settings.motivationHalfLifeMs) * 100)}%`,
         ...(includeEvidence ? { id: item.id, sourceEventIds: item.sourceEventIds } : {}),
       })),
-    goals: state.agency.goals
+    goals: agency.goals
       .filter(item => item.status === 'active' || item.status === 'paused')
       .slice(0, config.queryLimit)
       .map(item => ({

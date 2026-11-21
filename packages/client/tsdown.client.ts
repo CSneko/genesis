@@ -794,6 +794,12 @@ function clientConfig(
     platform: 'browser',
     // Types ship from lib/types (tsc); dts here would wrap the banner/footer into .d.cts and break parsing.
     dts: false,
+    minify: process.env.NODE_ENV === 'development' ? false : {
+      codegen: { legalComments: 'inline' },
+      compress: { keepNames: { function: true, class: true } },
+      // The WebWorker packer discovers lazy chunks from literal require.async calls.
+      mangle: false,
+    },
     // Plugin code is fetched outside Vite's module graph, so its own bundle
     // must carry the TS/TSX mapping consumed by browser profiling tools.
     sourcemap: true,

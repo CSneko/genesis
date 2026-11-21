@@ -19,6 +19,7 @@ import {
   createUserMessage,
   createToolResultMessage,
 } from '@deepseek-ai/dsh-llm'
+import * as fs from 'node:fs/promises'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,6 +46,11 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { appendPluginRecord, pluginRecordOf } from '@deepseek-ai/dsh-session'
 import { groupRecords, historyMessages, historyPage } from '../src/history.ts'
 import { temporaryStateSchema } from '../../genesis/src/temporary-model.ts'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof fs>()
+  return { ...actual, stat: vi.fn(actual.stat) }
+})
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
@@ -149,7 +155,9 @@ class Model extends LlmAdapter {
     }
   }
 }
-async function boot(root: string, settingsOnly = false, temporary = false, writings = false, messaging = false, batching = false) {
+async function boot(
+  root: string, settingsOnly = false, temporary = false, writings = false, messaging = false, batching = false, cwd = root,
+) {
   const path = join(root, 'cordis.yml')
   await writeFile(
     path,
@@ -213,7 +221,7 @@ async function boot(root: string, settingsOnly = false, temporary = false, writi
       ...(messaging ? ["    outboundGroups: ['67890']", "    outboundUsers: ['99999']"] : []),
       "    allowGroups: ['67890']",
       `    allowUsers: ['12345', '99999'${messaging ? ", '55555'" : ''}]`,
-      `    cwd: ${JSON.stringify(root)}`,
+      `    cwd: ${JSON.stringify(cwd)}`,
     ].join('\n') + '\n',
   )
   const ctx = new Context()
@@ -820,6 +828,40 @@ it('keeps QQ workspace and account-linked titles, logs prompt edits and restores
   expect(second.ctx.sessionTitle.get(resumed.session)?.title).toBe('再改名的小明')
   expect(second.ctx.workspaceRegistry.list().find(item => item.title === 'QQ')?.id).toBe(workspace.id)
   expect(second.ctx.waterfall('compaction/context-window', { session: resumed.session, modelWindow: 1000000 }, () => 1000000)).toBe(210000)
+})
+
+it('resumes a QQ Session through a bind-mount alias and rejects an unrelated workspace', async () => {
+  const root = await fs.realpath(await mkdtemp(join(tmpdir(), 'genesis-qq-workspace-alias-')))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const recorded = join(root, 'recorded')
+  const configured = join(root, 'configured')
+  const first = await boot(root, false, false, false, false, false, recorded)
+  first.socket.send(incoming('private', 110))
+  await receipt(first.ctx, 1)
+  const sessionId = SessionId((await first.ctx.genesis.snapshot()).people!.conversations[0]!.sessionId)
+  await first.ctx.fiber.dispose()
+
+  const second = await boot(root, false, false, false, false, false, configured)
+  const signal = new AbortController().signal
+  second.socket.send(incoming('private', 111))
+  await vi.waitFor(async () => {
+    expect((await second.ctx.genesisQqSettings.inspect(signal)).failure).toBe('operation')
+  })
+  expect(second.sent).toHaveLength(0)
+
+  // Only the directory identity read differs under a bind mount. Registry paths remain distinct.
+  const { stat } = await vi.importActual<typeof fs>('node:fs/promises')
+  const mount = vi.mocked(fs.stat).mockImplementation((path, options) =>
+    stat(path === configured && options?.bigint ? recorded : path, options))
+  try {
+    second.socket.send(incoming('private', 112))
+    await receipt(second.ctx, 2)
+    expect(second.ctx.agents.get(sessionId)?.session.header.cwd).toBe(recorded)
+    expect(second.ctx.workspaceRegistry.list().find(workspace => workspace.path === recorded)?.sessionIds)
+      .toContain(sessionId)
+  } finally {
+    mount.mockReset()
+  }
 })
 
 it('reads version-one admission settings with explicit conversation defaults and saves version three', async () => {

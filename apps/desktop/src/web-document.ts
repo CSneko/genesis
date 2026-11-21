@@ -38,10 +38,25 @@ export async function serveWebDocument(request: Request, root: string): Promise<
 /**
  * Exchange the Host launch URL for an authority-bound browser cookie.
  * @param url - Authenticated URL reported by the owned Host process.
+ * @param key - Optional configured Web access key for loopback login.
  * @returns Cookie header for requests forwarded to that Host.
  */
-export async function authenticateWebHost(url: string): Promise<string> {
-  const response = await fetch(url, { redirect: 'manual' })
+export async function authenticateWebHost(url: string, key?: string): Promise<string> {
+  let response: Response
+  if (key === undefined) {
+    response = await fetch(url, { redirect: 'manual' })
+  } else {
+    const host = new URL(url)
+    if (host.hostname !== '127.0.0.1') throw new Error('Desktop Host address is not loopback')
+    const login = new URL('/auth/login', host)
+    const session = await fetch(login, { redirect: 'error', signal: AbortSignal.timeout(10_000) })
+    const csrf = /name="csrf" value="([A-Za-z0-9_-]+)"/u.exec(await session.text())?.[1]
+    if (!session.ok || csrf === undefined) throw new Error('Desktop Host key login is unavailable')
+    response = await fetch(login, {
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(10_000),
+      headers: { origin: host.origin }, body: new URLSearchParams({ csrf, key }),
+    })
+  }
   const cookie = response.headers.get('set-cookie')
   await response.body?.cancel()
   if (response.status !== 303 || cookie === null) throw new Error('Desktop Host authentication failed')

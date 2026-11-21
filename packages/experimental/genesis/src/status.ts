@@ -43,6 +43,7 @@ import {
   type EmotionAdjustment,
 } from './emotion-state.ts'
 import { statusFailure } from './status-error.ts'
+import { registerModelSetup } from './model-setup.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -58,9 +59,13 @@ declare module '@deepseek-ai/cordis' {
 
 /** Sample shared life state and initialize its name without changing its identity or permissions. */
 export class GenesisStatusGateway extends TypertRemoteService {
-  static inject = ['genesis', 'agents', 'tools', 'llm']
+  static inject = ['genesis', 'agents', 'tools', 'llm', 'systemPrompt']
   private readonly lifetime = new AbortController()
   private greeting: Promise<SessionId> | undefined
+  private setupAgent: Agent | undefined
+  private setupVerifiedRevision: number | undefined
+  private setupBusy = false
+  private naming = false
   private readonly operations = new Set<Promise<unknown>>()
 
   /**
@@ -79,9 +84,18 @@ export class GenesisStatusGateway extends TypertRemoteService {
       emotion: LifeEmotionEngine | undefined
       interest: LifeInterestEngine | undefined
       lifeMode: (agent: Agent | undefined) => boolean
+      isSetup: (agent: Agent | undefined) => boolean
     },
   ) {
     super(ctx, 'genesisStatus')
+    if (options.config.awakening !== undefined) registerModelSetup(ctx, this, options.isSetup, {
+      allows: agent => this.allowsModelSetup(agent),
+      run: (agent, checking, signal, run) => this.configureModels(agent, checking, signal, run),
+      verified: (revision, signal) => this.finishModelSetup(revision, signal),
+    })
+    ctx.on('agent/disposed', ({ agent }) => {
+      if (this.setupAgent === agent) this.setupAgent = undefined
+    }, { global: true })
     ctx.effect(() => async () => {
       this.lifetime.abort()
       await Promise.allSettled(this.operations)
@@ -229,6 +243,62 @@ export class GenesisStatusGateway extends TypertRemoteService {
   }
 
   /**
+   * Admit a blank setup Session for the local operator. The grant expires on Agent disposal or naming.
+   * @param sessionId - Newly created setup Session.
+   * @param signal - Caller cancellation before admission.
+   * @returns Once the current dialogue model is resolved and the Session is authorized for setup.
+   */
+  @Remote('beginModelSetup')
+  beginModelSetup(sessionId: SessionId, signal: AbortSignal): Promise<void> {
+    return this.operation(signal, async (owned) => {
+      const agent = this.ctx.agents.get(sessionId)
+      const { awakening, memory } = this.options.config
+      if (principalOf(this.ctx.invocation) !== undefined || agent === undefined || !this.options.isSetup(agent)
+        || awakening === undefined || memory === undefined)
+        throw new GenesisError('invalid-source', 'Start model setup from the local Genesis onboarding screen.')
+      const boundary = this.ctx.agents.turnBoundaryOf(agent.session)
+      if (boundary?.lastTurn !== 0)
+        throw new GenesisError('invalid-state', 'Open a new setup conversation.')
+      await this.ctx.llm.prepareCall(agent.model.current() ?? awakening,
+        AbortSignal.any([owned, AbortSignal.timeout(memory.timeoutMs)]))
+      owned.throwIfAborted()
+      if (this.setupBusy || this.naming || this.ctx.genesis.learningStatus().ready || this.ctx.agents.get(sessionId) !== agent)
+        throw new GenesisError('invalid-state', 'Model setup is busy or Genesis already has a name.')
+      this.setupAgent = agent
+      this.setupVerifiedRevision = undefined
+    })
+  }
+
+  private allowsModelSetup(agent: Agent): boolean {
+    return this.setupAgent === agent && this.options.isSetup(agent) && !this.naming && !this.ctx.genesis.learningStatus().ready
+  }
+
+  private async configureModels<T>(agent: Agent, checking: boolean, signal: AbortSignal,
+    run: (current: ReturnType<ModelPreferences['read']>, owned: AbortSignal) => Promise<T>): Promise<T> {
+    return this.operation(signal, async (owned) => {
+      if (!this.allowsModelSetup(agent) || this.setupBusy)
+        throw new GenesisError('invalid-state', 'Open a new Genesis setup conversation or wait for the current check.')
+      this.setupBusy = true
+      try {
+        if (checking) this.setupVerifiedRevision = undefined
+        return await run(this.options.models.read(), owned)
+      } finally {
+        this.setupBusy = false
+      }
+    })
+  }
+
+  private async finishModelSetup(revision: number, signal: AbortSignal): Promise<void> {
+    const memory = this.options.config.memory
+    if (memory === undefined) throw new GenesisError('invalid-state', 'Enable memory before checking setup.')
+    await this.prepare(AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)]))
+    signal.throwIfAborted()
+    if (this.options.models.read().revision !== revision)
+      throw new GenesisError('configuration-conflict', 'Model settings changed. Check the current decision route again.')
+    this.setupVerifiedRevision = revision
+  }
+
+  /**
    * Check configured chat/reviewer/writer routes and any enabled embedding service, then name this existing life once.
    * Credentials use the existing provider settings or account sign-in; no secrets are accepted or stored here.
    * @param name - User-chosen name, retained across Sessions and restarts.
@@ -241,11 +311,19 @@ export class GenesisStatusGateway extends TypertRemoteService {
       const memory = this.options.config.memory
       if (memory === undefined) throw new GenesisError('invalid-state', 'Configure independent memory before initialization.')
       if (!name.trim() || name.trim().length > 200) throw new GenesisError('invalid-source', 'Choose a name of 1 to 200 characters.')
-      const deadline = AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)])
-      await this.prepare(deadline)
-      await optionalEmbeddings(this.ctx, memory, this.options.preferences.read().embedding)?.embed('Memory initialization', deadline)
-      deadline.throwIfAborted()
-      await this.ctx.genesis.awaken(name)
+      if (this.setupBusy || this.naming)
+        throw new GenesisError('invalid-state', 'Wait for the current Genesis setup operation.')
+      this.naming = true
+      try {
+        const deadline = AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)])
+        await this.prepare(deadline)
+        await optionalEmbeddings(this.ctx, memory, this.options.preferences.read().embedding)?.embed('Memory initialization', deadline)
+        deadline.throwIfAborted()
+        await this.ctx.genesis.awaken(name)
+        this.setupAgent = undefined
+      } finally {
+        this.naming = false
+      }
     })
   }
 
@@ -725,7 +803,9 @@ export class GenesisStatusGateway extends TypertRemoteService {
         } else {
           try {
             await this.prepare(AbortSignal.any([signal, AbortSignal.timeout(memory.timeoutMs)]))
-            result.setup = { phase: 'naming' }
+            result.setup = { phase: 'naming',
+              ...(this.setupAgent === undefined || this.setupVerifiedRevision !== this.options.models.read().revision
+                ? {} : { verifiedSetupSessionId: this.setupAgent.id }) }
           } catch {
             // Readiness failures contain provider/credential details; the UI receives only the recoverable setup phase.
             signal.throwIfAborted()

@@ -6,6 +6,7 @@ import mailContribution from '@deepseek-ai/dsh-experimental-genesis-mail/remote'
 import { mountMail } from './mail-mount.ts'
 import companionContribution from '@deepseek-ai/dsh-experimental-genesis-companion/remote'
 import { mountCompanion } from './companion-mount.ts'
+import { mountShock } from './shock-mount.tsx'
 import { mountPunishment } from './punishment-mount.tsx'
 import { mountWeather } from './weather-mount.tsx'
 import { mountSpeech } from './speech-mount.tsx'
@@ -37,6 +38,8 @@ import type {
   ContactCatalog,
 } from '@deepseek-ai/dsh-experimental-genesis/types'
 import type { TypertRemoteContribution, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { SessionCreateValue, SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
+import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { MemoryNotice, type MemoryNoticeActions, type MemoryNoticeState } from './MemoryNotice.tsx'
 import { operationFailure } from './operation-failure.ts'
@@ -51,7 +54,7 @@ import { EmotionPanel, type EmotionActions } from './EmotionPanel.tsx'
 import { AgencyPanel, type AgencyActions } from './AgencyPanel.tsx'
 import { InitiativePanel, type InitiativeActions } from './InitiativePanel.tsx'
 import { StatusPanel } from './StatusPanel.tsx'
-import { Awakening, LifeSetupHero } from './Awakening.tsx'
+import { Awakening, LifeSetupHero, ModelSetupHandoff } from './Awakening.tsx'
 import { PersonalityPanel } from './PersonalityPanel.tsx'
 import { MemoryPanel, type MemoryActions } from './MemoryPanel.tsx'
 import { ManualMemory, type ManualMemoryActions } from './ManualMemory.tsx'
@@ -59,8 +62,6 @@ import { ReviewNotice } from './ReviewNotice.tsx'
 import { KnowledgePanel, type KnowledgeActions } from './KnowledgePanel.tsx'
 import { en, zh, type GenesisKey } from './locales.ts'
 import { ToolkitsPanel, type ToolkitActions } from './ToolkitsPanel.tsx'
-import minecraftContribution from '@deepseek-ai/dsh-experimental-genesis-minecraft/remote'
-import { mountMinecraft } from './minecraft-mount.ts'
 import { mountRecords } from './records-resources.ts'
 import { mountNavigation } from './navigation.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -134,6 +135,7 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
       mountSpeech(scope)
       mountWeather(scope)
       mountPunishment(scope)
+      scope.effect(() => mountShock(scope))
       mountBrowser(scope)
       mountPurge(scope)
       mountIntimacy(scope)
@@ -278,6 +280,31 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
       scope.effect(() => () => {
         startupLifetime.abort()
       })
+      let setupOpening: Promise<boolean> | undefined
+      let setupDraft: SessionCreateValue['sessionId'] | undefined
+      const startModelSetup = () => {
+        setupOpening ??= (async () => {
+          const signal = startupLifetime.signal
+          const created = await scope.remote.session.create({ agentPreset: 'genesis-model-setup',
+            ...(setupDraft === undefined ? {} : { sessionId: setupDraft }) })
+          if (!created.ok || signal.aborted) return false
+          const { sessionId } = created.value
+          setupDraft = sessionId
+          const admitted = await scope.remote.genesisStatus.beginModelSetup(sessionId, signal)
+          if (!admitted.ok || signal.aborted) return false
+          const sent = await scope.remote.session.prompt({
+            requestId: randomUUID() as SessionRequestId,
+            sessionId,
+            mode: 'queue',
+            content: [{ type: 'text', text: scope.locale.bind('genesis')('modelSetupPrompt') }],
+          }, signal)
+          if (!sent.ok || signal.aborted) return false
+          setupDraft = undefined
+          scope.uiWorkspace.openSession(sessionId)
+          return true
+        })().finally(() => { setupOpening = undefined })
+        return setupOpening
+      }
       const startConversation = async (signal: AbortSignal) => {
         const status = await scope.remote.genesisStatus.inspect(signal)
         if (!status.ok || signal.aborted) return false
@@ -321,6 +348,7 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
       })
       const knowledge = (): KnowledgeActions => ({
         ...actions(),
+        startModelSetup,
         saveModels: async (settings, revision, signal) => {
           const result = await scope.remote.genesisStatus.saveModels(settings, revision, signal)
           resource.refresh()
@@ -356,10 +384,6 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
           mount: child => mountCompanion(child, companionContribution, notice),
         },
         { packageName: '@deepseek-ai/dsh-experimental-genesis-qq', mount: child => mountQq(child, qqContribution, notice) },
-        {
-          packageName: '@deepseek-ai/dsh-experimental-genesis-minecraft',
-          mount: child => mountMinecraft(child, minecraftContribution, notice),
-        },
       ])
       scope.slots.inject('settings.section', () =>
         scope.slots.register(
@@ -845,10 +869,18 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
             id: 'genesis-initialize',
             order: 10,
             locale: 'genesis',
-            inject: actions,
+            inject: () => ({ ...actions(), startModelSetup }),
           },
           LifeSetupHero,
         ),
+      )
+      scope.slots.inject('conversation.session.header.actions', () =>
+        scope.slots.register({
+          name: 'conversation.session.header.actions',
+          id: 'genesis-model-setup-handoff',
+          locale: 'genesis',
+          inject: actions,
+        }, ModelSetupHandoff),
       )
       scope.slots.inject('settings.onboarding', () =>
         scope.slots.register(
@@ -859,6 +891,7 @@ export async function mountStatus(ctx: Context, contribution: TypertRemoteContri
             locale: 'genesis',
             inject: () => ({
               ...actions(),
+              startModelSetup,
               hooks: { onboardingPreference },
               dismissSetup: async () => {
                 await onboardingPreference.set('credentialOnboardingDismissed', true)
