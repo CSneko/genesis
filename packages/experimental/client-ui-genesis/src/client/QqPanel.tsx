@@ -7,13 +7,16 @@ import type { QqStatus, QqSettings } from '@deepseek-ai/dsh-experimental-genesis
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { QqDecisionEditor } from './QqDecisionEditor.tsx'
 import { QqConnectionEditor } from './QqConnectionEditor.tsx'
+import { ImConnectionEditor } from './ImConnectionEditor.tsx'
 import css from './StatusPanel.module.css'
 import emotionCss from './EmotionPanel.module.css'
 
-/** Existing authenticated Remote actions and navigation; no credentials cross this interface. */
+/** Authenticated settings actions, write-only credentials and conversation navigation. */
 export interface QqActions {
   saveConnection: TypertClientRemote['genesisQqSettings']['saveConnection']
   setToken: TypertClientRemote['genesisQqSettings']['setToken']
+  saveImConnection: TypertClientRemote['genesisQqSettings']['saveImConnection']
+  setImToken: TypertClientRemote['genesisQqSettings']['setImToken']
   saveDecision: TypertClientRemote['genesisQqSettings']['saveDecision']
   setDecisionKey: TypertClientRemote['genesisQqSettings']['setDecisionKey']
   saveQq: TypertClientRemote['genesisQqSettings']['save']
@@ -30,6 +33,8 @@ export function QqPanel({
   saveQq,
   saveConnection,
   setToken,
+  saveImConnection,
+  setImToken,
   saveDecision,
   setDecisionKey,
   refresh,
@@ -38,18 +43,26 @@ export function QqPanel({
 }: PropsRuntime<'genesis.plugin.settings'> & PropsLocale<'genesis'> & InjectFace<QqActions>) {
   const resource = useResource<'genesis-qq'>('dsh-resource://genesis-qq/status')
   const sample = resource.value
+  const imConnections = sample?.imConnections
   return (
     <section className={`${css.panel} ${emotionCss.content}`}>
       <header className={css.header}>
-        <h3>{t('qqTitle')}</h3>
+        <h3>{t('imTitle')}</h3>
         <Button variant="outline" onClick={refresh}>
           {t('refresh')}
         </Button>
       </header>
+      {imConnections === undefined ? null : (['telegram', 'matrix'] as const).map(channel => (
+        <ImConnectionEditor key={channel} channel={channel} sample={imConnections[channel]}
+          mode={sample?.imChannels?.[channel] ?? 'disabled'} writable={resource.status === 'live'}
+          saveImConnection={saveImConnection} setImToken={setImToken} refresh={refresh} t={t} />
+      ))}
+      {resource.status === 'live' && imConnections === undefined ? <p role="status">{t('imControlsUnavailable')}</p> : null}
+      <h4>{t('qqTitle')}</h4>
       <p className={css.secondary}>{t('qqDescription')}</p>
       {resource.status === 'failed' ? <p role="alert">{t('qqUnavailable')}</p> : null}
       {sample === undefined && resource.status === 'loading' ? (
-        <div className={css.loading} role="status" aria-label={t('qqTitle')}>
+        <div className={css.loading} role="status" aria-label={t('imTitle')}>
           <StateDot state="ongoing" />
         </div>
       ) : null}

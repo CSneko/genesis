@@ -1,6 +1,28 @@
 /** Secret-free QQ settings and sampled delivery diagnostics for the authenticated operator UI. @module */
 import type { SessionId } from '@deepseek-ai/dsh-session'
 
+/** Text channel displayed alongside the QQ connection. */
+export type ImChannel = 'telegram' | 'matrix'
+
+/** Sampled delivery worker state. */
+export type ImChannelState = 'disabled' | 'unconfigured' | 'connecting' | 'connected' | 'paused' | 'retrying' | 'failed'
+
+/** Operator settings for one text channel. The homeserver is used only by Matrix. */
+export interface ImConnection {
+  enabled: boolean
+  allowChats: string[]
+  allowUsers: string[]
+  homeserver: string
+}
+
+/** Confirmed settings and credential presence, sampled without returning the secret. */
+export interface ImConnectionStatus {
+  connection: ImConnection
+  revision: number
+  tokenConfigured: boolean
+  writable: boolean
+}
+
 /** Nonsecret operator connection choices; the token remains in credential storage. */
 export interface QqConnection {
   enabled: boolean
@@ -33,6 +55,8 @@ export interface QqDelivery {
 }
 /** One bounded current sample; connection details and token presence never disclose the token itself. */
 export interface QqStatus {
+  imChannels?: Record<ImChannel, ImChannelState>
+  imConnections?: Record<ImChannel, ImConnectionStatus>
   revision: number
   connectionRevision: number
   connection: QqConnection

@@ -89,6 +89,8 @@ Life 预设注册 `subagent`、`subagent_fork`、模型发现和子代理控制�
 
 插件 → Genesis → 浏览器通过共享的暂存配置表单编辑服务器侧 Chrome 调试地址。保存值在重启后保留，共享浏览器提供方重启时使用新地址；当前连接保持原地址。无效或过期的保存保留草稿。保存不测试连通性。参见[浏览器配置](../../../docs/genesis/README.zh.md#browser-control)。
 
+插件 → Genesis → **im** 可配置 QQ、Telegram 和 Matrix，并查看各渠道连接状态。参见[即时通讯配置](../../../docs/genesis/im.zh.md)。
+
 设置 → 工具包 → QQ 工具权限展示个人与群规则，默认不显示输入框。单独打开窗口新增或编辑一条规则，每次保存保留其它已确认规则并检查显示的修订。保存失败保留草稿，并发修改需要重新加载；操作者的 `genesis_qq_permissions` 工具使用同一策略。详见 [QQ 权限](../../../docs/genesis/qq.zh.md#qq-toolkit-permissions)。
 
 <a id="implementation"></a>

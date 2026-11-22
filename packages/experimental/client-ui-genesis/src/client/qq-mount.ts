@@ -59,11 +59,13 @@ export async function mountQq(
       scope.slots.register(
         {
           name: 'genesis.plugin.settings',
-          key: 'genesis-qq',
+          key: 'genesis-im',
           locale: 'genesis',
           inject: (): QqActions => ({
             saveConnection: (...args) => perform(() => scope.remote.genesisQqSettings.saveConnection(...args), args[2]),
             setToken: (...args) => perform(() => scope.remote.genesisQqSettings.setToken(...args), args[1]),
+            saveImConnection: (...args) => scope.remote.genesisQqSettings.saveImConnection(...args),
+            setImToken: (...args) => scope.remote.genesisQqSettings.setImToken(...args),
             saveDecision: (...args) => perform(() => scope.remote.genesisQqSettings.saveDecision(...args), args[2]),
             setDecisionKey: (...args) => perform(() => scope.remote.genesisQqSettings.setDecisionKey(...args), args[1]),
             saveQq: (...args) => perform(() => scope.remote.genesisQqSettings.save(...args), args[2]),

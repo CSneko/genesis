@@ -1,8 +1,11 @@
 /** Explicit opt-in QQ routes, identity binding and bounded transport resources. @module */
 import z from '@deepseek-ai/schemastery'
+import { imConfig, type ImConfig } from './im-config.ts'
 
 /** Resolved deployment configuration; relationship estimates never change these permissions. */
 export interface Config {
+  /** Opt-in text channels alongside the existing QQ connection. */
+  im?: ImConfig
   /** Explicit autonomous group destinations; operator-requested outbound lists grant no autonomous permission. */
   proactiveGroups: string[]
   /** Explicit autonomous private destinations; empty disables private initiation. */
@@ -67,7 +70,7 @@ export interface Config {
   maxAllowedTargets: number
   /** Maximum recent delivery rows returned to the operator. */
   statusLimit: number
-  /** Maximum serialized characters returned by channel inspection. */
+  /** Maximum serialized characters returned for QQ inspection. */
   statusChars: number
   /** Idle gap before consecutive messages by one speaker are admitted together; zero disables batching. */
   inputBatchWindowMs: number
@@ -107,16 +110,17 @@ export interface Config {
   messageIntervalMs: number
   /** Maximum characters per outbound QQ message. */
   messageChars: number
-  /** Maximum accepted WebSocket frame bytes. */
+  /** Maximum accepted OneBot frame or text channel API response bytes. */
   maxFrameBytes: number
   /** Listener readiness deadline in milliseconds. */
   startupTimeoutMs: number
-  /** OneBot action acknowledgement deadline in milliseconds; timeout leaves delivery uncertain. */
+  /** Platform action deadline in milliseconds; text polling adds its configured wait. */
   actionTimeoutMs: number
 }
 
 /** Validated source-workspace deployment values; listener binding is always loopback. */
 export const Config: z<Partial<Config> & Pick<Config, 'cwd'>, Config> = z.object({
+  im: imConfig,
   sleepInboxLimit: z.number().min(1).step(1).default(10000),
   sleepInboxChars: z.number().min(1000).step(1).default(5000000),
   sleepInboxBatchChars: z.number().min(1000).step(1).default(16000),

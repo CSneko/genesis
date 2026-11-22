@@ -1,4 +1,4 @@
-# Registers QQ settings without opening a connection until the operator configures it.
+# Registers IM settings. Each channel requires explicit configuration before connecting.
 - insert:
     - id: genesis-qq
       name: '@deepseek-ai/dsh-experimental-genesis-qq'

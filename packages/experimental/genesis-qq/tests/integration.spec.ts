@@ -46,6 +46,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { appendPluginRecord, pluginRecordOf } from '@deepseek-ai/dsh-session'
 import { groupRecords, historyMessages, historyPage } from '../src/history.ts'
 import { temporaryStateSchema } from '../../genesis/src/temporary-model.ts'
+import { setTimeout as delay } from 'node:timers/promises'
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>()
@@ -62,6 +63,7 @@ afterEach(async () => {
       errors.push(error)
     }
   }
+  vi.unstubAllGlobals()
   if (errors.length) throw new AggregateError(errors, 'QQ integration teardown')
 })
 const token = 'fixture-onebot-access-token'
@@ -2445,4 +2447,117 @@ it('keeps a mention at the start of a manual group batch eligible for reply', as
   }
   await expect.poll(() => f.sent.length).toBe(1)
   expect(f.model.requests.filter(row => row.model === 'chat')).toHaveLength(1)
+})
+
+it('applies IM settings without an overlay, restores them and does not resend an uncertain reply', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'genesis-im-loader-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const room = '!fixture:example.test'
+  const sender = '@friend:example.test'
+  const telegram = { enabled: true, homeserver: '', allowChats: ['-123'], allowUsers: ['321'] }
+  const matrix = { enabled: true, homeserver: 'https://matrix.example.test', allowChats: [room], allowUsers: [sender] }
+  const telegramMessage = (updateId: number, messageId: number, user: number, text: string) => ({
+    update_id: updateId, message: { message_id: messageId, message_thread_id: 3, chat: { id: -123, type: 'supergroup' }, from: { id: user, is_bot: false }, text },
+  })
+  const telegramUpdates = [telegramMessage(1, 1, 322, 'telegram denied'), telegramMessage(2, 2, 321, 'telegram first')]
+  const matrixEvent = (id: number, author: string, body: string) =>
+    ({ event_id: `$event-${id}`, sender: author, type: 'm.room.message', content: { msgtype: 'm.text', body } })
+  const matrixBatch = (cursor: string, ...events: ReturnType<typeof matrixEvent>[]) =>
+    ({ next_batch: cursor, rooms: { join: { [room]: { timeline: { events } } } } })
+  const matrixUpdates = [
+    matrixBatch('baseline', matrixEvent(1, sender, 'matrix old history')),
+    matrixBatch('synced', matrixEvent(2, '@other:example.test', 'matrix denied'), matrixEvent(3, sender, 'matrix first')),
+  ]
+  const offsets: Array<number | undefined> = []
+  const matrixCursors: Array<string | null> = []
+  const telegramSends: unknown[] = []
+  const matrixSends: string[] = []
+  let matrixPoll: AbortSignal | null | undefined
+  const idle = async (signal: AbortSignal | null | undefined) => {
+    await delay(60_000, undefined, { ...(signal ? { signal } : {}), ref: false })
+    throw new Error('The platform poll should be aborted before teardown.')
+  }
+  const originalFetch = globalThis.fetch
+  vi.stubGlobal('fetch', async (target: string | URL, init?: RequestInit) => {
+    const url = new URL(target)
+    if (url.origin === 'https://api.telegram.org') {
+      if (url.pathname.endsWith('/getMe')) return Response.json({ ok: true, result: { id: 77, is_bot: true } })
+      const body = z.record(z.string(), z.unknown()).parse(JSON.parse(z.string().parse(init?.body)))
+      if (url.pathname.endsWith('/getUpdates')) {
+        offsets.push(z.number().optional().parse(body['offset']))
+        const update = telegramUpdates.shift()
+        if (update === undefined) return idle(init?.signal)
+        return Response.json({ ok: true, result: [update] })
+      }
+      expect(url.pathname.endsWith('/sendMessage')).toBe(true)
+      telegramSends.push(body)
+      return telegramSends.length === 1 ? new Response(null, { status: 502 }) : Response.json({ ok: true, result: { message_id: 80 } })
+    }
+    if (url.origin === 'https://matrix.example.test') {
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fixture-matrix')
+      if (url.pathname.endsWith('/whoami')) return Response.json({ user_id: '@genesis:example.test' })
+      if (url.pathname.endsWith('/sync')) {
+        matrixCursors.push(url.searchParams.get('since'))
+        const update = matrixUpdates.shift()
+        if (update !== undefined) return Response.json(update)
+        matrixPoll = init?.signal
+        return idle(matrixPoll)
+      }
+      matrixSends.push(decodeURIComponent(url.pathname))
+      return Response.json({ event_id: '$sent' })
+    }
+    return originalFetch(target, init)
+  })
+
+  const first = await boot(root)
+  const signal = new AbortController().signal
+  const settings = first.ctx.genesisQqSettings
+  const status = async (ctx: Context) => (await ctx.genesisQqSettings.inspect(signal)).imChannels
+  expect(await status(first.ctx)).toEqual({ telegram: 'disabled', matrix: 'disabled' })
+  await settings.setImToken('telegram', '77:fixture', 0, signal)
+  expect(await settings.saveImConnection('telegram', telegram, 0, signal)).toBe(1)
+  expect(await settings.saveImConnection('matrix', matrix, 0, signal)).toBe(1)
+  await settings.setImToken('matrix', 'fixture-matrix', 1, signal)
+  await expect(settings.saveImConnection('telegram', { ...telegram, enabled: false }, 0, signal)).rejects.toMatchObject({
+    details: { reason: 'configuration-conflict' },
+  })
+  await expect(settings.saveImConnection('matrix', { ...matrix, homeserver: 'https://other.example.test' }, 1, signal)).rejects.toMatchObject({
+    details: { reason: 'configuration-conflict' },
+  })
+  const sample = await settings.inspect(signal)
+  expect(sample.imConnections?.telegram).toMatchObject({ connection: telegram, tokenConfigured: true })
+  expect(JSON.stringify(sample)).not.toMatch(/77:fixture|fixture-matrix/u)
+  await expect.poll(() => status(first.ctx)).toEqual({ telegram: 'failed', matrix: 'connected' })
+  await expect.poll(() => matrixCursors.at(-1)).toBe('synced')
+  expect(telegramSends).toEqual([{ chat_id: -123, message_thread_id: 3, text: first.model.chatReply }])
+  expect(matrixSends).toEqual([`/_matrix/client/v3/rooms/${room}/send/m.room.message/$event-3`])
+  const life = (await first.ctx.genesis.snapshot()).identity
+  await first.ctx.fiber.dispose()
+
+  const previousPolls = offsets.length
+  const previousSyncs = matrixCursors.length
+  telegramUpdates.push(telegramMessage(2, 2, 321, 'telegram first'), telegramMessage(3, 3, 321, 'telegram second'))
+  matrixUpdates.push(matrixBatch('resynced', matrixEvent(4, sender, 'matrix second')))
+  const second = await boot(root)
+  await expect.poll(() => offsets.at(-1)).toBe(4)
+  await expect.poll(() => matrixCursors.at(-1)).toBe('resynced')
+  expect(offsets[previousPolls]).toBe(2)
+  expect(matrixCursors[previousSyncs]).toBe('synced')
+  expect(telegramSends).toHaveLength(2)
+  expect(matrixSends).toHaveLength(2)
+  expect(await second.ctx.genesisQqSettings.saveImConnection('matrix', { ...matrix, enabled: false }, 1, signal)).toBe(2)
+  expect(matrixPoll?.aborted).toBe(true)
+  expect(await status(second.ctx)).toEqual({ telegram: 'connected', matrix: 'disabled' })
+  expect((await second.ctx.genesis.snapshot()).identity).toEqual(life)
+  const requests = second.model.requests.filter(request => request.model === 'chat')
+  expect(requests).toHaveLength(2)
+  for (const channel of ['telegram', 'matrix']) {
+    const request = requests.find(request => modelText(request).includes(`${channel} second`))!
+    const text = modelText(request)
+    expect(text).toContain(`${channel} first`)
+    expect(text).not.toContain(channel === 'telegram' ? 'matrix first' : 'telegram first')
+    expect(text).toContain(life.name)
+    expect(text).not.toMatch(/denied|old history|fixture-matrix/u)
+    expect(request.tools ?? []).toEqual([])
+  }
 })

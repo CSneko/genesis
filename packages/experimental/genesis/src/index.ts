@@ -114,6 +114,9 @@ export type {
 export { qqPersonId, personSourceSchema, conversationIdSchema } from './people-model.ts'
 export type { PersonId, ConversationId, PersonSource, LifeConversation, LifePerson } from './people-model.ts'
 export { GenesisError } from './error.ts'
+
+/** Text-only external conversations use this preset to keep private life context out of IM requests. */
+export const IM_TEXT_PRESET = 'genesis-im-text'
 export type {
   EmotionState,
   Mood,
@@ -264,7 +267,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     config.awakening !== undefined && !isSetup(agent) &&
     (config.awakening.lifePreset === undefined ||
       (agent !== undefined && ctx.get('agentPresets')?.composedPreset(agent.ctx) === config.awakening.lifePreset))
-  const participates = (agent: Agent | undefined) => config.awakening === undefined || lifeMode(agent)
+  const participates = (agent: Agent | undefined) =>
+    agent?.session.header.agentPreset !== IM_TEXT_PRESET && (config.awakening === undefined || lifeMode(agent))
   if (config.emotion !== undefined) installBoredom(ctx, core, participates)
   ctx.tools.guard(exec =>
     exec.agent !== undefined && core.isSpontaneitySession(exec.agent.id) && !ctx.get('genesisSpontaneity')?.admits(exec.agent)

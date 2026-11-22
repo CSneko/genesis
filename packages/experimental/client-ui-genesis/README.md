@@ -89,6 +89,8 @@ The built-in [AI companion settings](../genesis-companion/README.md) enable an i
 
 Plugins → Genesis → Browser edits the server-side Chrome debugging address through the shared staged configuration form. Saved values survive restart and apply when the shared browser provider restarts; the current connection retains its captured address. Invalid or stale saves retain the draft. Saving does not test connectivity. See [browser setup](../../../docs/genesis/README.md#browser-control).
 
+Plugins → Genesis → **im** configures QQ, Telegram and Matrix and shows their sampled connection states. See the [IM setup](../../../docs/genesis/im.md).
+
 Settings → Toolkits → QQ tool permissions lists person and group rules without permanent input fields. Add or edit one rule in its own modal; each save retains other confirmed rules and checks the displayed revision. Failed drafts remain open; a concurrent change requires reloading. The same policy is available through the operator’s `genesis_qq_permissions` tool. See [QQ permissions](../../../docs/genesis/qq.md#qq-toolkit-permissions).
 
 <a id="implementation"></a>

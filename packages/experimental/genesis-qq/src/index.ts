@@ -1,5 +1,5 @@
 import { QqSleepInbox, qqSleepDomain } from './sleep-inbox.ts'
-/** Optional QQ transport for the existing Genesis life, loaded through a supported dsh profile. @module */
+/** Optional QQ, Telegram and Matrix channels for Genesis. @module */
 import { isAbsolute } from 'node:path'
 import { GenesisError } from '@deepseek-ai/dsh-experimental-genesis'
 import type { Context } from '@deepseek-ai/cordis'
@@ -11,6 +11,8 @@ import { QqDecisionPreferences, qqDecisionDomain } from './decision-settings.ts'
 import { qqMessageProjection } from './message-projection.ts'
 import { QqMessageStore, qqMessagesDomain } from './message-store.ts'
 import { QqGateway } from './gateway.ts'
+import { ImRuntime } from './im-runtime.ts'
+import { imConfig } from './im-config.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -25,11 +27,11 @@ export { QqController } from './controller.ts'
 export { QqGateway } from './gateway.ts'
 /** Loader plugin identifier. */
 export const name = 'experimental-genesis-qq'
-/** Genesis, durable Session ownership and preset composition must remain alive through QQ teardown. */
-export const inject = ['llm', 'attachments', 'genesis', 'genesisStatus', 'tools', 'agents', 'agentPresets', 'agentDefaultModel', 'sessions', 'sessionPersistence', 'storageDomain', 'sessionProjections', 'credentials', 'sessionTitle']
+/** Runtime services remain available while the channel workers and Sessions drain. */
+export const inject = ['llm', 'attachments', 'genesis', 'genesisStatus', 'tools', 'systemPrompt', 'agents', 'agentPresets', 'agentDefaultModel', 'sessions', 'sessionPersistence', 'storageDomain', 'sessionProjections', 'credentials', 'sessionTitle']
 
 /**
- * Mount a reversible loopback OneBot listener with Genesis-owned identities, memory and Session bindings.
+ * Restore QQ settings and start any configured text channels.
  * @param ctx - Plugin effect owner and required services.
  * @param config - Complete transport configuration.
  * @returns After configuration restore; transport failures remain visible through settings.
@@ -55,18 +57,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => connection.close())
   const decisionDomain = await ctx.storageDomain.open(qqDecisionDomain)
   let decisions: QqDecisionPreferences
-  try { decisions = new QqDecisionPreferences(decisionDomain, config.statusLimit) } catch (error) { await decisionDomain.close(); throw error }
+  try { decisions = new QqDecisionPreferences(decisionDomain, config.statusLimit) }
+  catch (error) { await decisionDomain.close(); throw error }
   ctx.effect(() => () => decisions.close())
   const messages = new QqMessageStore(await ctx.storageDomain.open(qqMessagesDomain), config.maxMessageReceipts)
   ctx.effect(() => () => messages.close())
   const life = await ctx.genesis.snapshot()
-  const inbox = new QqSleepInbox(await ctx.storageDomain.open(qqSleepDomain), life.identity.id, config.sleepInboxLimit, config.sleepInboxChars)
+  const inbox = new QqSleepInbox(
+    await ctx.storageDomain.open(qqSleepDomain), life.identity.id, config.sleepInboxLimit, config.sleepInboxChars,
+  )
   ctx.effect(() => () => inbox.close())
   await inbox.start(life.events.some(event => event.dedupKey === 'sleep:qq-inbox-initialized'))
   await ctx.genesis.recordSleep('qq-inbox-initialized', 'qq-inbox-initialized', {})
   const runtime = new QqController(ctx, config, preferences, connection, decisions, messages, inbox, session => evidence.stateOf(session))
   ctx.provide('genesisQq', runtime)
-  ctx.inject(['genesisSleep'], scope => {
+  ctx.inject(['genesisSleep'], (scope) => {
     runtime.setSleep(scope.genesisSleep)
     scope.effect(() => scope.genesisSleep.registerBacklog(() => inbox.inspect()))
     scope.effect(() => () => { runtime.setSleep(undefined) })
@@ -74,5 +79,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => runtime.close())
   ctx.on('session/event', (session, event) => { runtime.observe(session.id, event) }, { global: true })
   await runtime.start()
-  await ctx.plugin(QqGateway, { runtime, preferences })
+  const im = await ImRuntime.mount(ctx, config, config.im ?? imConfig({}))
+  await ctx.plugin(QqGateway, { runtime, preferences, im })
 }

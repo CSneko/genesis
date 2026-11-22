@@ -19,6 +19,7 @@
   margin: 16px 0 8px;
 }
 .header h3 { margin: 0; }
+.header .imChannelTitle { margin: 0; }
 .panel p { margin: 8px 0; }
 .secondary { color: var(--dsw-alias-label-secondary); }
 .status { display: flex; align-items: center; gap: 8px; }

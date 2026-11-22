@@ -1,5 +1,5 @@
 ---
-description: "可选的 OneBot 11 对话层，提供稳定 Genesis 人物身份以及独立的群聊和私聊 Session。"
+description: "Genesis 即时通讯组合包，支持 QQ、Telegram 和 Matrix。"
 kind: "package-bundle"
 ---
 
@@ -8,6 +8,8 @@ kind: "package-bundle"
 [English](README.md) | 中文
 
 ## 摘要
+
+Genesis 插件列表将此组合包显示为 **im**。各个文本渠道可在插件设置中启停，管理允许名单和令牌。已保存的设置优先于部署默认值。[Telegram 和 Matrix](../../../docs/genesis/im.zh.md) 需显式启用，使用同一生命身份，分别保留文本会话历史。
 
 为已初始化的 Genesis 生命添加 QQ 群聊和私聊对话。源码工作区包含其设置入口，QQ 初始未连接；上游配置需显式加载覆盖层。显式允许列表和鉴权的 OneBot 连接控制输入；关系不会授予主机权限。详见[连接与关系行为](../../../docs/genesis/qq.zh.md)。
 
@@ -22,7 +24,7 @@ kind: "package-bundle"
 
 在 Genesis → 联系人选择操作者。迁移时会沿用已保存的 QQ 操作者绑定；联系人选择生效后，QQ 执行权限、睡眠接收和跨会话发信均使用联系人身份。建立有意义的人物关系时会自动创建或关联到相同人物 ID 的联系人。
 
-在当前源码工作区中，通过支持的入口启动，再按 [QQ 指南](../../../docs/genesis/qq.zh.md)在“插件 → Genesis → QQ”配置连接：
+在当前源码工作区中，通过支持的入口启动，再按 [QQ 指南](../../../docs/genesis/qq.zh.md)在“插件 → Genesis → im”配置连接：
 
 ```sh
 pnpm dsh web

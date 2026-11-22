@@ -36,8 +36,16 @@ export class QqController {
    * @param inbox - Persistent sleep backlog.
    * @param evidence - Ready QQ message evidence reader.
    */
-  constructor(private readonly ctx: Context, private readonly config: Config, private readonly preferences: QqPreferences,
-    private readonly connection: QqConnectionPreferences, private readonly decisions: QqDecisionPreferences, private readonly messages: QqMessageStore, private readonly inbox: QqSleepInbox, private readonly evidence: QqEvidenceReader) {}
+  constructor(
+    private readonly ctx: Context,
+    private readonly config: Config,
+    private readonly preferences: QqPreferences,
+    private readonly connection: QqConnectionPreferences,
+    private readonly decisions: QqDecisionPreferences,
+    private readonly messages: QqMessageStore,
+    private readonly inbox: QqSleepInbox,
+    private readonly evidence: QqEvidenceReader,
+  ) {}
 
   /** Attach the optional life-wide sleep owner across transport replacements.
    * @param sleep - Current owner; undefined detaches its callbacks.
@@ -70,7 +78,9 @@ export class QqController {
     if (this.lifetime.signal.aborted || !connection.enabled) return
     const accessToken = await this.token()
     if (this.lifetime.signal.aborted || accessToken.length < 16) return
-    const runtime = new QqRuntime(this.ctx, { ...this.config, ...connection, accessToken }, this.preferences, this.decisions, this.messages, this.evidence, this.inbox)
+    const runtime = new QqRuntime(
+      this.ctx, { ...this.config, ...connection, accessToken }, this.preferences, this.decisions, this.messages, this.evidence, this.inbox,
+    )
     this.runtime = runtime
     runtime.attachSleep(this.sleep)
     try { await runtime.start(); this.failure = null }
@@ -120,13 +130,15 @@ export class QqController {
   }
   /**
    * Inspect without connecting or exposing secrets.
+   * @param im - Optional text-channel settings and state included in the response budget.
    * @returns Current nonsecret connection and bounded receipt sample.
    */
-  async inspect(): Promise<QqStatus> {
+  async inspect(im?: Pick<QqStatus, 'imChannels' | 'imConnections'>): Promise<QqStatus> {
     const connection = this.connection.read()
     const policy = this.preferences.read()
     const tokenConfigured = this.credentialUncertain ? false : (await this.token()).length >= 16
-    const sample = this.runtime === undefined ? { ...policy, botQq: connection.connection.botQq, operatorQq: connection.connection.operatorQq,
+    const sample = this.runtime === undefined ? {
+      ...policy, botQq: connection.connection.botQq, operatorQq: connection.connection.operatorQq,
       endpoint: connection.connection.wsUrl || `ws://127.0.0.1:${connection.connection.port}`, tokenConfigured,
       mode: !connection.connection.enabled ? 'paused' as const : this.failure !== null ? 'failed' as const : 'unconfigured' as const,
       failure: this.failure, pending: 0, liveSessions: 0 }
@@ -139,7 +151,9 @@ export class QqController {
       .map(event => [`${event.relatedSessionId}:${event.relatedEventId}`, event]))
     const deliveries: QqDelivery[] = reservations.slice(-this.config.statusLimit).reverse().map((event) => {
       const receipt = receipts.get(`${event.relatedSessionId}:${event.relatedEventId}`)
-      return { sessionId: SessionId(z.string().parse(event.relatedSessionId)), seq: z.coerce.number().int().nonnegative().parse(event.relatedEventId),
+      return {
+        sessionId: SessionId(z.string().parse(event.relatedSessionId)),
+        seq: z.coerce.number().int().nonnegative().parse(event.relatedEventId),
         timestamp: receipt?.timestamp ?? event.timestamp, parts: z.number().int().positive().parse(event.payload['parts']),
         status: receipt?.payload['status'] === 'confirmed' ? 'confirmed' : 'uncertain',
         acknowledged: receipt === undefined ? 0 : z.array(z.string()).parse(receipt.payload['messageIds']).length }
@@ -148,7 +162,7 @@ export class QqController {
       decision: { ...this.decisions.read(), keyConfigured: (await this.ctx.credentials.resolve(decisionKeyRef)) !== undefined },
       deliveries, omitted: reservations.length - deliveries.length }
     if (JSON.stringify(result).length > this.config.statusChars) throw new GenesisError('capacity', 'QQ status exceeds statusChars. Increase its configured response budget.')
-    return result
+    return { ...result, ...im }
   }
   /**
    * Save QQ-only inference choices.

@@ -1,7 +1,7 @@
 import type { QqDecisionEditor } from '../src/client/QqDecisionEditor.tsx'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -16,16 +16,45 @@ const t: ComponentProps<typeof QqDecisionEditor>['t'] = (key, params) => (dictio
   .replace(/\{(\w+)\}/gu, (_match: string, name: string) => String(params?.[name] ?? ''))
 it('shows unknown delivery, saves explicit access rules and retains failed or stale drafts', async () => {
   const sample: QqStatus = { revision: 0, connectionRevision: 0, connection: { enabled: true, wsUrl: 'ws://127.0.0.1:3001', port: 6700, botQq: '11111', operatorQq: '12345' }, botQq: '11111', operatorQq: '12345', endpoint: 'ws://127.0.0.1:3001', tokenConfigured: true,
+    imChannels: { telegram: 'disabled', matrix: 'failed' },
+    imConnections: {
+      telegram: { revision: 0, writable: true, tokenConfigured: false, connection: { enabled: false, homeserver: '', allowUsers: [], allowChats: [] } },
+      matrix: { revision: 0, writable: true, tokenConfigured: false, connection: { enabled: false, homeserver: '', allowUsers: [], allowChats: [] } },
+    },
     mode: 'connected', failure: null, pending: 0, liveSessions: 1, omitted: 0,
     settings: { enabled: true, allowGroups: ['67890'], allowUsers: ['12345'], acceptPrivateFromAnyone: false, groupAutoReply: true, replyOnlyWhenMentioned: true, extraPrompt: '', privateContextTokens: 200000, groupContextTokens: 400000, operatorContextTokens: 500000 },
     deliveries: [{ sessionId: brandString<SessionId>('qq-private'), seq: 10, timestamp: '2026-11-04T00:00:00.000Z', status: 'uncertain', parts: 2, acknowledged: 1 }] }
   const saveQq = vi.fn().mockResolvedValueOnce({ ok: false, error: new Error('conflict') }).mockResolvedValue({ ok: true, value: 2 })
   const saveConnection = vi.fn().mockResolvedValue({ ok: true, value: 1 })
   const setToken = vi.fn().mockResolvedValue({ ok: true, value: undefined })
-  const props = { ...globalProps, t, saveQq, saveConnection, setToken, refresh: vi.fn(), openSession: vi.fn(),
+  const saveImConnection = vi.fn().mockResolvedValueOnce({ ok: true, value: 1 }).mockResolvedValue({ ok: true, value: 2 })
+  const setImToken = vi.fn().mockResolvedValue({ ok: true, value: undefined })
+  const props = { ...globalProps, t, saveQq, saveConnection, setToken, saveImConnection, setImToken, refresh: vi.fn(), openSession: vi.fn(),
     useResource: () => ({ status: 'live', value: sample }),
   } as ComponentProps<typeof QqPanel>
   const view = render(<QqPanel {...props} />)
+  const telegram = within(screen.getByRole('region', { name: en.imTelegram }))
+  const matrix = within(screen.getByRole('region', { name: en.imMatrix }))
+  expect(matrix.getByRole('status').textContent).toBe(en['imState.failed'])
+  const settings = telegram.getByText('Telegram connection settings', { selector: 'summary' }).parentElement!
+  expect(settings).toHaveProperty('open', false)
+  fireEvent.click(telegram.getByRole('button', { name: 'Enable Telegram' }))
+  expect(saveImConnection).toHaveBeenNthCalledWith(1, 'telegram',
+    { enabled: true, homeserver: '', allowChats: [], allowUsers: [] }, 0, expect.any(AbortSignal))
+  await waitFor(() => expect(telegram.getByRole('button', { name: 'Disable Telegram' })).toBeTruthy())
+  expect(settings).toHaveProperty('open', true)
+  await waitFor(() => expect(telegram.getByRole('button', { name: en.imApply })).toHaveProperty('disabled', false))
+  fireEvent.change(telegram.getByLabelText(en.imChats), { target: { value: '-42, -42' } })
+  fireEvent.change(telegram.getByLabelText(en.imUsers), { target: { value: '77' } })
+  fireEvent.click(telegram.getByRole('button', { name: en.imApply }))
+  await waitFor(() => expect(saveImConnection).toHaveBeenNthCalledWith(2, 'telegram',
+    { enabled: true, homeserver: '', allowChats: ['-42'], allowUsers: ['77'] }, 1, expect.any(AbortSignal)))
+  const botToken = telegram.getByLabelText(en.imBotToken)
+  await waitFor(() => expect(botToken).toHaveProperty('disabled', false))
+  fireEvent.change(botToken, { target: { value: '77:fixture' } })
+  fireEvent.click(telegram.getByRole('button', { name: en.imSaveToken }))
+  await waitFor(() => expect(setImToken).toHaveBeenCalledWith('telegram', '77:fixture', 2, expect.any(AbortSignal)))
+  await waitFor(() => expect(botToken).toHaveProperty('value', ''))
   sample.failure = 'archived'
   view.rerender(<QqPanel {...props} />)
   expect(screen.getByRole('alert').textContent).toBe(en['qqFailure.archived'])

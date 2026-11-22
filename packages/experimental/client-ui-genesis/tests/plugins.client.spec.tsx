@@ -8,7 +8,7 @@ import { globalProps } from './global-props.client.ts'
 afterEach(cleanup)
 
 it('configures enabled capabilities, retains off switches on failures and reports saved restart requirements', async () => {
-  const bundles: BundleInfo[] = ['weather', 'qq'].map(id => ({
+  const bundles: BundleInfo[] = ['weather', 'im'].map(id => ({
     name: id === 'weather' ? '@deepseek-ai/dsh-genesis-weather' : '@deepseek-ai/dsh-experimental-genesis-qq',
     availability: 'installation',
     enabled: id === 'weather',
@@ -53,19 +53,19 @@ it('configures enabled capabilities, retains off switches on failures and report
   fireEvent.click(screen.getByRole('button', { name: 'back' }))
   fireEvent.click(screen.getByRole('switch', { name: 'punishment' }))
   await waitFor(() => expect(props.setPunishmentEnabled).toHaveBeenCalledWith(true))
-  const qq = screen.getByRole('switch', { name: 'qq' })
-  expect(qq.getAttribute('aria-checked')).toBe('false')
-  fireEvent.click(qq)
+  const im = screen.getByRole('switch', { name: 'im' })
+  expect(im.getAttribute('aria-checked')).toBe('false')
+  fireEvent.click(im)
   await screen.findByText('restart')
   expect(setEnabled).toHaveBeenCalledWith(bundles[1]!.name, true)
-  fireEvent.click(qq)
+  fireEvent.click(im)
   await screen.findByRole('alert')
-  expect(qq.getAttribute('aria-checked')).toBe('false')
+  expect(im.getAttribute('aria-checked')).toBe('false')
   const weatherCard = screen.getByRole('switch', { name: 'weather' }).closest('li')!
   fireEvent.click(within(weatherCard).getByRole('button', { name: 'configure' }))
   await waitFor(() => expect(renderSlot).toHaveBeenCalledWith('genesis.plugin.settings', {}, { entryKey: 'genesis-weather' }))
   fireEvent.click(screen.getByRole('button', { name: 'back' }))
-  const qqCard = screen.getByRole('switch', { name: 'qq' }).closest('li')!
-  fireEvent.click(within(qqCard).getByRole('button', { name: 'configure' }))
+  const imCard = screen.getByRole('switch', { name: 'im' }).closest('li')!
+  fireEvent.click(within(imCard).getByRole('button', { name: 'configure' }))
   expect(screen.getByText('enableFirst')).toBeTruthy()
 })

@@ -1,5 +1,5 @@
 ---
-description: "Optional OneBot 11 conversations with stable Genesis people and separate group/private Sessions."
+description: "Genesis IM bundle for QQ, Telegram and Matrix."
 kind: "package-bundle"
 ---
 
@@ -8,6 +8,8 @@ kind: "package-bundle"
 English | [中文](README.zh.md)
 
 ## Summary
+
+The Genesis plugin list calls this bundle **im**. Enable each text channel and manage its allowlists and token in the plugin settings. Saved channel choices override their deployment defaults. [Telegram and Matrix](../../../docs/genesis/im.md) offer opt-in text conversations with the same life identity and separate Session histories.
 
 Add QQ group and private conversations to an initialized Genesis life. The source workspace includes its settings with QQ initially disconnected; upstream profiles require an explicit overlay. Explicit allowlists and authenticated OneBot connections control admission; relationships grant no host permissions. See [connection and relationship behavior](../../../docs/genesis/qq.md).
 
@@ -22,7 +24,7 @@ With Genesis sleep enabled, private inputs wait in durable storage and replies p
 
 Choose the operator in Genesis → Contacts. The saved legacy QQ operator binding seeds the contact role during migration; after contact selection, QQ execution, sleep admission and cross-conversation sends use the contact role. Creating a meaningful person relationship automatically creates or attaches the contact with the same person ID.
 
-From this source workspace, launch through the supported entry point, then configure the connection in Plugins → Genesis → QQ using the [QQ guide](../../../docs/genesis/qq.md):
+From this source workspace, launch through the supported entry point, then configure the connection in Plugins → Genesis → im using the [QQ guide](../../../docs/genesis/qq.md):
 
 ```sh
 pnpm dsh web

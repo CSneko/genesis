@@ -11140,6 +11140,9 @@ importers:
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:*
         version: link:../../subprocess/subprocess
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
       '@deepseek-ai/dsh-tool-executor-native':
         specifier: workspace:*
         version: link:../../core/tool-executor-native
@@ -11160,7 +11163,7 @@ importers:
         version: 8.18.1
       dsh-qq-onebot-bridge:
         specifier: https://codeload.github.com/cheesehaqi/dsh-qq-onebot-bridge/tar.gz/78594612bb5f9c728342888801453c50868fff43
-        version: https://codeload.github.com/cheesehaqi/dsh-qq-onebot-bridge/tar.gz/78594612bb5f9c728342888801453c50868fff43(patch_hash=f8b9830a0349bfe6b3bd59a885e56ab3b0780ddd0701a1e86f8296ca35bb416d)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-agent-default-model@packages+core+agent-default-model)(@deepseek-ai/dsh-agent@packages+core+agent)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-system-prompt@0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-scope@0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)))(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)
+        version: https://codeload.github.com/cheesehaqi/dsh-qq-onebot-bridge/tar.gz/78594612bb5f9c728342888801453c50868fff43(patch_hash=f8b9830a0349bfe6b3bd59a885e56ab3b0780ddd0701a1e86f8296ca35bb416d)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-agent-default-model@packages+core+agent-default-model)(@deepseek-ai/dsh-agent@packages+core+agent)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-system-prompt@packages+core+system-prompt)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery)
 
   packages/experimental/genesis-see-now:
     dependencies:
@@ -34726,14 +34729,14 @@ snapshots:
       - typescript
       - universal-cookie
 
-  dsh-qq-onebot-bridge@https://codeload.github.com/cheesehaqi/dsh-qq-onebot-bridge/tar.gz/78594612bb5f9c728342888801453c50868fff43(patch_hash=f8b9830a0349bfe6b3bd59a885e56ab3b0780ddd0701a1e86f8296ca35bb416d)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-agent-default-model@packages+core+agent-default-model)(@deepseek-ai/dsh-agent@packages+core+agent)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-system-prompt@0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-scope@0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)))(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery):
+  dsh-qq-onebot-bridge@https://codeload.github.com/cheesehaqi/dsh-qq-onebot-bridge/tar.gz/78594612bb5f9c728342888801453c50868fff43(patch_hash=f8b9830a0349bfe6b3bd59a885e56ab3b0780ddd0701a1e86f8296ca35bb416d)(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-agent-default-model@packages+core+agent-default-model)(@deepseek-ai/dsh-agent@packages+core+agent)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-session@packages+core+session)(@deepseek-ai/dsh-system-prompt@packages+core+system-prompt)(@deepseek-ai/dsh-tools@packages+core+tools)(@deepseek-ai/schemastery@vendor+schemastery):
     dependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
       '@deepseek-ai/dsh-agent': link:packages/core/agent
       '@deepseek-ai/dsh-agent-default-model': link:packages/core/agent-default-model
       '@deepseek-ai/dsh-llm': link:packages/llm/llm
       '@deepseek-ai/dsh-session': link:packages/core/session
-      '@deepseek-ai/dsh-system-prompt': 0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/dsh-llm@packages+llm+llm)(@deepseek-ai/dsh-scope@0.2.2-rc.1(@deepseek-ai/cordis@vendor+cordis))
+      '@deepseek-ai/dsh-system-prompt': link:packages/core/system-prompt
       '@deepseek-ai/dsh-tools': link:packages/core/tools
       '@deepseek-ai/schemastery': link:vendor/schemastery
       ws: 8.21.3
