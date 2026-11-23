@@ -898,16 +898,6 @@ export class Spontaneity {
         const receipt = this.store.read().runs.find(item => item.key === run.key)
         if (outcome === undefined || receipt?.thoughtId === undefined)
           throw new GenesisError('invalid-state', 'Exploration result ownership is missing. Inspect its life and thought records.')
-        if (outcome.outcome.sourceEventIds.length) {
-          await this.core.remember({
-            category: 'episodic',
-            content: `Bounded exploration of thought ${receipt.thoughtId}: recorded outcome ${outcome.outcome.status}. Source Session ${agent.id}. This receipt does not establish the truth of generated content.`,
-            sourceEventIds: outcome.outcome.sourceEventIds,
-            importance: this.policy.experienceImportance,
-            confidence: 1,
-            attribution: 'model-inference',
-          })
-        }
         if (outcome.outcome.status === 'interrupted' || outcome.outcome.status === 'failed')
           active.reason = `Exploration outcome: ${outcome.outcome.status}; inspect its Session before continuing.`
       }

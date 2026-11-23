@@ -6050,7 +6050,7 @@ class SpontaneityModel extends ScriptedModel {
   }
 }
 
-it('spontaneity privately explores without a goal, records actual results and restores thoughts without redispatch', async () => {
+it('spontaneity records exploration outcomes without creating receipt memories and restores thoughts without redispatch', async () => {
   const root = await directory()
   const memory = { ...(await embeddingFixture()).config, associationLimit: 0 }
   const open = () => boot(root, true, memory, true, false, true, true, true, true, undefined, true, {}, false, undefined, false, {})
@@ -6073,7 +6073,8 @@ it('spontaneity privately explores without a goal, records actual results and re
   await agent.whenIdle()
   await first.genesis.learn('write', agent.id)
   const output = join(root, 'personal', 'paper-bird.txt')
-  const source = [...(await first.genesis.snapshot()).events]
+  const beforeExploration = await first.genesis.snapshot()
+  const source = [...beforeExploration.events]
     .reverse()
     .find(event => event.relatedSessionId === agent.id && event.source === 'user')!
   const thinking = new SpontaneityModel([
@@ -6178,14 +6179,19 @@ it('spontaneity privately explores without a goal, records actual results and re
   expect(state.emotion!.current.happiness).toBeGreaterThan(0)
   expect(state.agency!.decisions.at(-1)!.purpose).toBe('exploration')
   expect(state.agency!.decisions.at(-1)!.outcome.status).toBe('succeeded')
+  expect(state.agency!.decisions.at(-1)!.outcome.sourceEventIds.length).toBeGreaterThan(0)
   expect(await readFile(output, 'utf8')).toBe('A paper bird circles its first page.')
-  expect(state.memories.some(item => item.category === 'episodic' && item.content.includes(status.runs[0]!.thoughtId))).toBe(true)
+  const memoryIds = beforeExploration.memories.map(item => item.id)
+  expect(state.memories.map(item => item.id)).toEqual(memoryIds)
   await owner.consider(agent)
   expect(thinking.requests).toHaveLength(4)
   const lifeId = state.identity.id
   await first.fiber.dispose()
   const second = await open()
-  expect((await second.genesis.snapshot()).identity.id).toBe(lifeId)
+  const restoredLife = await second.genesis.snapshot()
+  expect(restoredLife.identity.id).toBe(lifeId)
+  expect(restoredLife.agency!.decisions.at(-1)!.outcome).toEqual(state.agency!.decisions.at(-1)!.outcome)
+  expect(restoredLife.memories.map(item => item.id)).toEqual(memoryIds)
   await vi.waitFor(() => expect(second.get('genesisSpontaneity')).toBeDefined())
   const restored = z
     .object({ runs: z.array(z.object({ status: z.string(), thoughtId: z.string() })), thoughts: z.number() })

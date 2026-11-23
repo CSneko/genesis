@@ -38,7 +38,7 @@ Contacts in Genesis → Contacts link names, email addresses and other handles t
 
 Mount the supplied `cordis.patch.yml` above a base-backed profile. It requires Storage Domain, Agent, tool and prompt services plus sandbox policy, and takes a shared absolute `leasePath`. See the [run instructions](../../../docs/genesis/README.md) and generated [configuration catalog](../../../docs/config-catalog.md) for deployment bounds.
 
-Optional [spontaneous cognition](../../../docs/genesis/spontaneity.md) provides private, bounded ideas and short explorations after an idle Life exchange. Thoughts can survive restart without becoming goals or messages to the operator. Its output budget defaults to 50M tokens; the Thoughts page edits millions of tokens, with no additional per-request output, request-count or tool-call-count caps.
+Optional [spontaneous cognition](../../../docs/genesis/spontaneity.md) provides private, bounded ideas and short explorations after an idle Life exchange. Thoughts and their exploration receipts survive restart without becoming goals or messages to the operator. Its output budget defaults to 50M tokens; the Thoughts page edits millions of tokens, with no additional per-request output, request-count or tool-call-count caps.
 
 <a id="configuration"></a>
 ## Configuration

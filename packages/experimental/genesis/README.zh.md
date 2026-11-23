@@ -38,7 +38,7 @@ Genesis → 联系人将称呼、邮箱和其他账号关联到与人物关系�
 
 将提供的 `cordis.patch.yml` 叠加到使用 base 的配置，需具备 Storage Domain、Agent、工具与提示词服务，并指定共享绝对路径 `leasePath`。[运行说明](../../../docs/genesis/README.zh.md)与生成的[配置目录](../../../docs/config-catalog.zh.md)说明部署上限。
 
-可选[自发认知](../../../docs/genesis/spontaneity.zh.md)在 Life 交流后的空闲时段提供私有、有预算的念头与短暂探索。念头可以跨重启保留，无需成为目标或发给操作者的消息。 输出预算默认为 50M token，念头页面以百万 token 为单位编辑，不额外限制单次输出、请求次数或工具调用次数。
+可选[自发认知](../../../docs/genesis/spontaneity.zh.md)在 Life 交流后的空闲时段提供私有、有预算的念头与短暂探索。念头与探索回执可跨重启保留，无需成为目标或发给操作者的消息。输出预算默认为 50M token，念头页面以百万 token 为单位编辑，不额外限制单次输出、请求次数或工具调用次数。
 
 <a id="configuration"></a>
 ## 配置

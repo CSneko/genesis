@@ -49,7 +49,7 @@ export interface SpontaneityConfig {
   maxOutputTokens: number
   /** Maximum opportunities in a rolling twenty-four hours; empty and failed runs count. */
   maxPer24Hours: number
-  /** Importance assigned to factual exploration receipts in episodic memory. */
+  /** Deprecated field reserved for compatibility with older exploration configurations. */
   experienceImportance: number
   /** Maximum thoughts, audit receipts and opportunities retained together. */
   maxRecords: number
